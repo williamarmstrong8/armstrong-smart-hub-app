@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Rings your wake-up alarm, even when the app is closed or the iPad is on silent.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Listens on the iPad for "Hey Jarvis" so you can control the hub by voice. Audio only leaves the iPad after the wake word.</string>
+</dict>
+</plist>
