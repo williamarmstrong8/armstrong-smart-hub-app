@@ -261,9 +261,12 @@ struct DashboardView: View {
 }
 
 /// The whole card is the switch. Long press adjusts lights; TVs open the remote.
-private struct DeviceButton: View {
+/// A device as a card that is itself the switch: tap toggles, hold adjusts.
+/// Shared by the iPad dashboard and the iPhone's Home tab (compact).
+struct DeviceButton: View {
     let entity: HAEntity
     let pending: Bool
+    var compact = false
     let onTap: () -> Void
     let onAdjust: () -> Void
 
@@ -272,27 +275,27 @@ private struct DeviceButton: View {
     var body: some View {
         let on = entity.isOn
         let tint = tintColor
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: compact ? 10 : 14) {
             HStack {
                 Image(systemName: entity.symbol)
-                    .font(.title2)
-                    .frame(width: 48, height: 48)
+                    .font(compact ? .title3 : .title2)
+                    .frame(width: compact ? 40 : 48, height: compact ? 40 : 48)
                     .foregroundStyle(on ? .white : .secondary)
                     .background(on ? tint : Color(.tertiarySystemFill), in: .circle)
                 Spacer()
                 if pending { ProgressView() }
-                else if entity.hasLightControls || entity.isTV {
+                else if !compact, entity.hasLightControls || entity.isTV {
                     Image(systemName: entity.isTV ? "chevron.right" : "slider.horizontal.3")
                         .foregroundStyle(.tertiary)
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(entity.name).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
-                Text(entity.stateLabel).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                Text(entity.name).font(compact ? .subheadline.weight(.semibold) : .headline).lineLimit(compact ? 1 : 2).multilineTextAlignment(.leading)
+                Text(entity.stateLabel).font(compact ? .caption : .subheadline).foregroundStyle(.secondary).monospacedDigit()
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
+        .padding(compact ? 14 : 16)
+        .frame(maxWidth: .infinity, minHeight: compact ? 108 : 140, alignment: .topLeading)
         .background(on ? tint.opacity(0.18) : Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(on ? tint.opacity(0.5) : .clear, lineWidth: 1.5))
         .contentShape(.rect(cornerRadius: 20))
@@ -326,7 +329,7 @@ private struct DeviceButton: View {
     }
 }
 
-private struct CardPressStyle: ButtonStyle {
+struct CardPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
@@ -575,31 +578,33 @@ private struct HabitsColumn: View {
     }
 }
 
-private struct HabitButton: View {
+/// A habit as the dashboard's big circle: tap to fill it for today.
+struct HabitButton: View {
     let habit: Habit
     let done: Bool
     let saving: Bool
+    var size: CGFloat = 110
     let onTap: () -> Void
 
     var body: some View {
         let color = Color(hex: habit.color)
         Button(action: onTap) {
-            VStack(spacing: 10) {
+            VStack(spacing: size * 0.09) {
                 ZStack {
-                    Circle().strokeBorder(color, lineWidth: 5)
+                    Circle().strokeBorder(color, lineWidth: size > 90 ? 5 : 4)
                     Circle().fill(done ? color : color.opacity(0.08)).padding(done ? 0 : 5)
                     if done {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 44, weight: .bold))
+                            .font(.system(size: size * 0.4, weight: .bold))
                             .foregroundStyle(.white)
                             .transition(.scale.combined(with: .opacity))
                     } else if let icon = habit.icon {
-                        Text(icon).font(.system(size: 40))
+                        Text(icon).font(.system(size: size * 0.36))
                     }
                 }
-                .frame(width: 110, height: 110)
+                .frame(width: size, height: size)
                 Text(habit.name)
-                    .font(.headline)
+                    .font(size > 90 ? .headline : .subheadline.weight(.semibold))
                     .foregroundStyle(done ? color : .primary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)

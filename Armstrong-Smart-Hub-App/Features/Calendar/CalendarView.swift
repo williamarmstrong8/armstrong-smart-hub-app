@@ -53,41 +53,27 @@ struct CalendarView: View {
                 MessageView(title: "Nothing coming up", systemImage: "calendar",
                             message: "Nothing on your calendar for the next \(data.upcomingDays) days.")
             } else {
-                List {
-                    ForEach(data.days) { day in
-                        Section(header: dayHeader(day.day, today: data.today, zone: data.timeZone)) {
-                            ForEach(day.events) { event in
-                                EventRow(event: event, zone: data.timeZone)
-                                    .contentShape(.rect)
-                                    .onTapGesture {
-                                        if let s = event.url, let url = URL(string: s) { openURL(url) }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        ForEach(data.days) { day in
+                            HStack(alignment: .top, spacing: 14) {
+                                DateMarker(day: day.day, isToday: day.day == data.today)
+                                VStack(spacing: 8) {
+                                    ForEach(day.events) { event in
+                                        EventCard(event: event, zone: data.timeZone)
+                                            .onTapGesture {
+                                                if let s = event.url, let url = URL(string: s) { openURL(url) }
+                                            }
                                     }
+                                }
                             }
                         }
                     }
+                    .padding(16)
                 }
-                .listStyle(.insetGrouped)
+                .background(Color(.systemGroupedBackground))
             }
         }
-    }
-
-    private func dayHeader(_ day: String, today: String?, zone: String) -> some View {
-        let date = DayFormat.parse(day) ?? .now
-        var utc = Date.FormatStyle.dateTime.weekday(.wide)
-        utc.timeZone = TimeZone(identifier: "UTC")!
-        var short = Date.FormatStyle.dateTime.month(.abbreviated).day()
-        short.timeZone = TimeZone(identifier: "UTC")!
-        let label: String = {
-            if day == today { return "Today" }
-            if let today, day == addDays(today, 1) { return "Tomorrow" }
-            return date.formatted(utc)
-        }()
-        return HStack(spacing: 6) {
-            Text(label).foregroundStyle(.primary)
-            Text(date.formatted(short))
-        }
-        .font(.subheadline.weight(.semibold))
-        .textCase(nil)
     }
 
     private func load(refresh: Bool = false) async {
@@ -101,34 +87,58 @@ struct CalendarView: View {
     }
 }
 
-private struct EventRow: View {
+/// Google's day marker: weekday over the date, filled blue for today.
+private struct DateMarker: View {
+    let day: String
+    let isToday: Bool
+
+    var body: some View {
+        let date = DayFormat.parse(day) ?? .now
+        VStack(spacing: 4) {
+            Text(date.formatted(Date.FormatStyle(timeZone: .gmt).weekday(.abbreviated)).uppercased())
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(isToday ? Color.googleBlue : .secondary)
+            Text(date.formatted(Date.FormatStyle(timeZone: .gmt).day()))
+                .font(.title3.weight(.medium)).monospacedDigit()
+                .foregroundStyle(isToday ? .white : .primary)
+                .frame(width: 40, height: 40)
+                .background(isToday ? Color.googleBlue : .clear, in: .circle)
+        }
+        .frame(width: 44)
+    }
+}
+
+/// One event as a solid card in its calendar's color: the name and the time.
+private struct EventCard: View {
     let event: CalendarEvent
     let zone: String
 
     var body: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 2).fill(Color(hex: event.color)).frame(width: 4)
-            Text(time).font(.subheadline).foregroundStyle(.secondary).monospacedDigit().frame(width: 72, alignment: .leading)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(event.title).font(.subheadline.weight(.medium)).lineLimit(2)
-                HStack(spacing: 4) {
-                    if let location = event.location {
-                        Image(systemName: "mappin").imageScale(.small)
-                        Text(location).lineLimit(1)
-                        Text("·")
-                    }
-                    Text(event.calendar).lineLimit(1)
-                }
-                .font(.caption).foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: 2) {
+            Text(event.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Text(time).font(.caption.weight(.medium)).monospacedDigit().opacity(0.85)
         }
-        .padding(.vertical, 2)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(hex: event.color), in: .rect(cornerRadius: 12))
+        .contentShape(.rect(cornerRadius: 12))
     }
 
+    /// "6 PM" or "6:30 PM – 8 PM", like Google Calendar.
     private var time: String {
-        guard !event.allDay, let date = event.startDate else { return "All day" }
-        var style = Date.FormatStyle.dateTime.hour().minute()
-        style.timeZone = TimeZone(identifier: zone) ?? .current
-        return date.formatted(style)
+        guard !event.allDay, let start = event.startDate else { return "All day" }
+        let tz = TimeZone(identifier: zone) ?? .current
+        func short(_ d: Date) -> String {
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = tz
+            var style = Date.FormatStyle.dateTime.hour()
+            if cal.component(.minute, from: d) != 0 { style = style.minute() }
+            style.timeZone = tz
+            return d.formatted(style)
+        }
+        guard let end = ISO.parse(event.end) else { return short(start) }
+        return "\(short(start)) – \(short(end))"
     }
 }

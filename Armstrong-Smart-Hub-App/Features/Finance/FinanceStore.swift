@@ -7,7 +7,6 @@ final class FinanceStore {
     private(set) var response: FinanceResponse?
     private(set) var error: String?
     private(set) var syncing = false
-    var goal: GoalSettings = .default
 
     var dashboard: Dashboard? { response?.dashboard }
     var currency: String { dashboard?.currency ?? "USD" }
@@ -23,7 +22,6 @@ final class FinanceStore {
         do {
             let r: FinanceResponse = try await api.get("/api/mobile/finance")
             response = r
-            goal = r.goal ?? .default
             error = nil
         } catch is CancellationError {
         } catch {
@@ -73,38 +71,6 @@ final class FinanceStore {
             let r: StatusResult = try await api.action("confirmCategories", args)
             if r.status == "error" { throw APIError(message: r.message ?? "Couldn't save those categories.") }
             toast.show("Saved \(items.count) categories")
-        } catch {
-            response = before
-            toast.error(error)
-        }
-    }
-
-    func saveGoal(_ goal: GoalSettings, api: APIClient, toast: Toast) async {
-        let previous = self.goal
-        self.goal = goal
-        do {
-            let _: Empty? = try await api.run("saveGoal", [.object([
-                "target": .number(goal.target),
-                "monthlyContribution": .optional(goal.monthlyContribution),
-                "annualReturnPct": .number(goal.annualReturnPct),
-            ])])
-        } catch {
-            self.goal = previous
-            toast.error(error)
-        }
-    }
-
-    func ignoreRecurring(_ charge: RecurringCharge, api: APIClient, toast: Toast) async {
-        guard var r = response else { return }
-        let before = response
-        r = FinanceResponse(
-            configured: r.configured, hasData: r.hasData, sync: r.sync, historyDays: r.historyDays, dashboard: r.dashboard,
-            recurring: r.recurring?.filter { $0.id != charge.id }, history: r.history, goal: r.goal,
-            customCategories: r.customCategories, quickCategories: r.quickCategories
-        )
-        response = r
-        do {
-            let _: Empty? = try await api.run("ignoreRecurring", [.string(charge.id)])
         } catch {
             response = before
             toast.error(error)

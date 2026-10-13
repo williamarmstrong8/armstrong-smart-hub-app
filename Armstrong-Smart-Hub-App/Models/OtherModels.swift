@@ -66,18 +66,3 @@ struct HabitsResponse: Decodable, Sendable {
     let colors: [String]
     let historyDays: Int
 }
-
-// MARK: Agent glance
-
-struct GlanceCell: Decodable, Identifiable, Sendable {
-    let label: String
-    let value: String
-    let detail: String?
-    let href: String
-    var id: String { label }
-}
-
-struct MeResponse: Decodable, Sendable {
-    let user: HubUser
-    let glance: [GlanceCell]
-}

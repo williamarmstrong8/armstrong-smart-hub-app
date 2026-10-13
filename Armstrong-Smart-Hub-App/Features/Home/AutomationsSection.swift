@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Automations, scenes and scripts from Home Assistant. Run, enable or disable
-/// here; the agent can also create, edit and delete hub automations.
+/// Automations, scenes and scripts from Home Assistant, as small cards you tap.
 struct AutomationsSection: View {
     let payload: AutomationsPayload
     let store: HomeStore
@@ -12,73 +11,41 @@ struct AutomationsSection: View {
     @State private var deleting: HAAutomation?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Automations", meta: "\(payload.automations.filter { $0.state == "on" }.count) active")
-
-            if !payload.scenes.isEmpty || !payload.scripts.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(payload.scenes + payload.scripts) { item in
-                            Button {
-                                run(item.id, name: item.name)
-                            } label: {
-                                Label(item.name, systemImage: item.id.hasPrefix("scene.") ? "sparkles" : "play.circle")
-                                    .font(.subheadline)
-                            }
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.capsule)
-                            .disabled(running == item.id)
-                        }
+        let items = payload.scenes + payload.scripts
+        if !items.isEmpty || !payload.automations.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(title: "Automations")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+                    // Scenes and scripts: tap to run.
+                    ForEach(items) { item in
+                        AutomationCard(
+                            name: item.name,
+                            symbol: item.id.hasPrefix("scene.") ? "sparkles" : "play.fill",
+                            detail: running == item.id ? "Running…" : "Tap to run",
+                            on: running == item.id
+                        ) { run(item.id, name: item.name) }
                     }
-                }
-            }
-
-            if payload.automations.isEmpty {
-                Text("No automations yet. Ask the agent to make one, like \"turn on the porch light at sunset\".")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            } else {
-                VStack(spacing: 0) {
+                    // Automations: tap to switch on or off; hold to run or delete.
                     ForEach(payload.automations) { a in
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(a.name).font(.subheadline.weight(.medium)).lineLimit(1)
-                                    if a.hubMade {
-                                        Text("Hub").font(.caption2.weight(.semibold))
-                                            .padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(Color.accentColor.opacity(0.15), in: .capsule)
-                                    }
-                                }
-                                Text(lastRun(a.lastTriggered)).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Toggle(a.name, isOn: Binding(
-                                get: { a.state == "on" },
-                                set: { on in Task { await store.setAutomation(a, enabled: on, api: session.api, toast: toast) } }
-                            ))
-                            .labelsHidden()
+                        AutomationCard(name: a.name, symbol: "bolt.fill", detail: a.state == "on" ? "On" : "Off", on: a.state == "on") {
+                            Task { await store.setAutomation(a, enabled: a.state != "on", api: session.api, toast: toast) }
                         }
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 14)
                         .contextMenu {
                             Button("Run now", systemImage: "play") { run(a.id, name: a.name) }
                             if a.hubMade, a.configId != nil {
                                 Button("Delete", systemImage: "trash", role: .destructive) { deleting = a }
                             }
                         }
-                        if a.id != payload.automations.last?.id { Divider().padding(.leading, 14) }
                     }
                 }
-                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 14))
-                Text("Touch and hold an automation to run or delete it.").font(.caption).foregroundStyle(.secondary)
             }
-        }
-        .confirmationDialog("Delete \(deleting?.name ?? "")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                if let a = deleting, let id = a.configId { delete(id, name: a.name) }
+            .confirmationDialog("Delete \(deleting?.name ?? "")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+                Button("Delete", role: .destructive) {
+                    if let a = deleting, let id = a.configId { delete(id, name: a.name) }
+                }
+            } message: {
+                Text("It's removed from Home Assistant.")
             }
-        } message: {
-            Text("It's removed from Home Assistant.")
         }
     }
 
@@ -106,9 +73,36 @@ struct AutomationsSection: View {
             }
         }
     }
+}
 
-    private func lastRun(_ iso: String?) -> String {
-        guard let iso, let date = ISO.parse(iso) else { return "Never run" }
-        return "Ran \(date.formatted(.relative(presentation: .named)))"
+/// A small card that is itself the button.
+private struct AutomationCard: View {
+    let name: String
+    let symbol: String
+    let detail: String
+    let on: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(on ? .white : .secondary)
+                    .frame(width: 32, height: 32)
+                    .background(on ? Color.accentColor : Color(.tertiarySystemFill), in: .circle)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+            .contentShape(.rect(cornerRadius: 16))
+        }
+        .buttonStyle(CardPressStyle())
+        .sensoryFeedback(.selection, trigger: on)
+        .animation(.easeOut(duration: 0.2), value: on)
     }
 }

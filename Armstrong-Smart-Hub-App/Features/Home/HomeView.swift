@@ -6,17 +6,20 @@ private let groups: [(title: String, kinds: Set<ControlKind>)] = [
     ("Climate", [.climate]),
     ("Locks", [.lock]),
     ("Switches", [.toggle]),
-    ("Sensors", [.sensor]),
 ]
 
+/// Home on the iPhone: devices as cards you tap, automations, today's habits,
+/// and what's downloading or ready to watch.
 struct HomeView: View {
     @Environment(AppSession.self) private var session
     @Environment(\.scenePhase) private var scenePhase
     @State private var store = HomeStore()
+    @State private var habits = HabitsStore()
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
     @State private var pick: MediaPick?
+    @State private var editingHabit: HabitEditTarget?
     @State private var managing = false
     @State private var display = false
 
@@ -33,17 +36,26 @@ struct HomeView: View {
             .navigationTitle("Home")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { AccountButton() }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Display mode", systemImage: "rectangle.on.rectangle") { display = true }
-                    Button("Manage devices", systemImage: "slider.horizontal.3") { managing = true }
-                        .disabled(store.entities.isEmpty)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu("More", systemImage: "ellipsis") {
+                        Button("Display mode", systemImage: "rectangle.on.rectangle") { display = true }
+                        Button("Choose devices", systemImage: "slider.horizontal.3") { managing = true }
+                            .disabled(store.entities.isEmpty)
+                        Button("Add habit", systemImage: "plus.circle") { editingHabit = .new }
+                    }
                 }
             }
-            .refreshable { await store.refresh(api: session.api) }
+            .refreshable {
+                async let a: Void = store.refresh(api: session.api)
+                async let b: Void = habits.load(api: session.api)
+                _ = await (a, b)
+            }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
+                habits.rollDay()
                 await store.poll(api: session.api)
             }
+            .task { if !habits.loaded { await habits.load(api: session.api) } }
             .sheet(item: $light) { e in
                 LightSheet(entityID: e.id, store: store, toast: toast)
                     .presentationDetents([.medium, .large])
@@ -63,6 +75,7 @@ struct HomeView: View {
             .fullScreenCover(isPresented: $display) {
                 DisplayModeView(store: store)
             }
+            .habitEditor($editingHabit, store: habits)
             .toast(toast)
         }
     }
@@ -86,34 +99,24 @@ struct HomeView: View {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)
             } else {
                 DeviceGroups(store: store, large: false, onOpen: open, onToggle: toggle)
-                if store.shownEntities.isEmpty, store.state?.errors.entities == nil {
-                    Text("No devices. Add entity ids to ALLOWED_ENTITIES on the Pi.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
             }
+
+            habitsSection
 
             if let payload = store.state?.automations, store.state?.errors.automations == nil {
                 AutomationsSection(payload: payload, store: store, toast: toast)
-            } else if let error = store.state?.errors.automations {
-                SectionHeader(title: "Automations")
-                Text("Unavailable: \(error)").font(.subheadline).foregroundStyle(.secondary)
             }
 
             if !store.activeDownloads.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(title: "Downloads", meta: "\(store.activeDownloads.count) in progress")
+                    SectionHeader(title: "Downloading")
                     RequestList(requests: store.activeDownloads) { pick = $0 }
                 }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(title: "Find something to watch", meta: "Overseerr")
-                MediaSearchView { pick = $0 }
-            }
-
             if !store.ready.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(title: "Ready to watch", meta: "\(store.ready.count) in Jellyfin")
+                    SectionHeader(title: "Ready to watch")
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
                             ForEach(store.ready) { r in
@@ -122,10 +125,7 @@ struct HomeView: View {
                                         pick = MediaPick(id: tmdb, mediaType: r.mediaType, title: r.title, posterURL: r.posterURL)
                                     }
                                 } label: {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Poster(url: r.posterURL, width: 110)
-                                        Text(r.title).font(.footnote.weight(.medium)).lineLimit(1).frame(width: 110, alignment: .leading)
-                                    }
+                                    Poster(url: r.posterURL, width: 110)
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(r.tmdbId == nil)
@@ -134,24 +134,51 @@ struct HomeView: View {
                     }
                 }
             }
+
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(title: "Find something to watch")
+                MediaSearchView { pick = $0 }
+            }
+        }
+    }
+
+    /// Today's habits as the dashboard's circles. Tap to fill; hold to edit.
+    @ViewBuilder
+    private var habitsSection: some View {
+        if habits.loaded, !habits.habits.isEmpty {
+            let today = habits.today
+            VStack(alignment: .leading, spacing: 14) {
+                SectionHeader(title: "Habits")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 12)], spacing: 18) {
+                    ForEach(habits.habits) { habit in
+                        HabitButton(habit: habit, done: habits.isDone(habit.id, today), saving: habits.isSaving(habit.id, today), size: 84) {
+                            Task { await habits.toggle(habit, today, api: session.api, toast: toast) }
+                        }
+                        .contextMenu { Button("Edit", systemImage: "pencil") { editingHabit = .habit(habit) } }
+                    }
+                }
+                .animation(.spring(duration: 0.4, bounce: 0.2), value: habits.done)
+                .sensoryFeedback(.success, trigger: habits.doneToday) { old, new in new > old }
+            }
         }
     }
 
     private func open(_ entity: HAEntity) {
-        if entity.isTV { remote = entity } else { light = entity }
+        if entity.isTV { remote = entity } else if entity.hasLightControls { light = entity }
     }
 
     private func toggle(_ entity: HAEntity) {
+        if entity.isTV { remote = entity; return }
         Task { await store.toggle(entity, api: session.api, toast: toast) }
     }
 }
 
-/// Devices grouped by kind; sensors from the same device share a card.
+/// Devices grouped by kind, each a card that is itself the switch.
 struct DeviceGroups: View {
     let store: HomeStore
     let large: Bool
-    /// The dashboard toggles a device when its tile is tapped.
-    var tapToToggle = false
+    /// Kept for callers; every card toggles on tap now.
+    var tapToToggle = true
     let onOpen: (HAEntity) -> Void
     let onToggle: (HAEntity) -> Void
 
@@ -161,54 +188,19 @@ struct DeviceGroups: View {
             let items = shown.filter { group.kinds.contains($0.control) }
             if !items.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(title: group.title, meta: summary(items))
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: large ? 300 : 280), spacing: 10)], spacing: 10) {
-                        ForEach(sensorCards(items), id: \.key) { card in
-                            if let device = card.device {
-                                DeviceCard(device: device, sensors: card.items, large: large)
-                            } else {
-                                EntityTile(
-                                    entity: card.items[0],
-                                    pending: store.pending.contains(card.items[0].id),
-                                    large: large,
-                                    tapToToggle: tapToToggle,
-                                    onToggle: onToggle,
-                                    onOpen: onOpen
-                                )
+                    SectionHeader(title: group.title)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: large ? 200 : 150), spacing: 10)], spacing: 10) {
+                        ForEach(items) { e in
+                            DeviceButton(entity: e, pending: store.pending.contains(e.id), compact: !large) {
+                                onToggle(e)
+                            } onAdjust: {
+                                onOpen(e)
                             }
                         }
                     }
                 }
             }
         }
-    }
-
-    private struct SensorCard { let key: String; let device: String?; var items: [HAEntity] }
-
-    private func sensorCards(_ items: [HAEntity]) -> [SensorCard] {
-        var out: [SensorCard] = []
-        var index: [String: Int] = [:]
-        for e in items {
-            guard e.control == .sensor, let device = e.device else {
-                out.append(SensorCard(key: e.id, device: nil, items: [e]))
-                continue
-            }
-            if let i = index[device] {
-                out[i].items.append(e)
-            } else {
-                index[device] = out.count
-                out.append(SensorCard(key: "device:\(device)", device: device, items: [e]))
-            }
-        }
-        return out.map { $0.device != nil && $0.items.count == 1 ? SensorCard(key: $0.items[0].id, device: nil, items: $0.items) : $0 }
-    }
-
-    private func summary(_ items: [HAEntity]) -> String {
-        let toggles = items.filter { $0.control != .sensor }
-        guard !toggles.isEmpty else { return "\(items.count)" }
-        let on = toggles.filter(\.isOn).count
-        if items[0].control == .lock { return on > 0 ? "\(on) unlocked" : "All locked" }
-        return on > 0 ? "\(on) of \(toggles.count) on" : "All off"
     }
 }
 
@@ -222,99 +214,5 @@ struct SectionHeader: View {
             Spacer()
             if let meta { Text(meta).font(.subheadline).foregroundStyle(.secondary).monospacedDigit() }
         }
-    }
-}
-
-struct EntityTile: View {
-    let entity: HAEntity
-    let pending: Bool
-    var large = false
-    var tapToToggle = false
-    let onToggle: (HAEntity) -> Void
-    let onOpen: (HAEntity) -> Void
-
-    var body: some View {
-        let on = entity.isOn
-        let readOnly = entity.control == .sensor
-        HStack(spacing: 12) {
-            Image(systemName: entity.symbol)
-                .font(large ? .title3 : .body)
-                .frame(width: large ? 46 : 38, height: large ? 46 : 38)
-                .foregroundStyle(on && !readOnly ? Color(.systemBackground) : .secondary)
-                .background(on && !readOnly ? lightTint : Color(.tertiarySystemFill), in: .rect(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entity.name).font(large ? .headline : .subheadline.weight(.medium)).lineLimit(1)
-                Text(entity.stateLabel).font(.footnote).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
-            }
-            Spacer(minLength: 4)
-            if entity.isTV {
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-            } else {
-                if entity.hasLightControls {
-                    Button("Adjust \(entity.name)", systemImage: "slider.horizontal.3") { onOpen(entity) }
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(.secondary)
-                        .buttonStyle(.borderless)
-                        .disabled(entity.isUnavailable)
-                }
-                if !readOnly {
-                    Toggle(entity.name, isOn: Binding(get: { on }, set: { _ in onToggle(entity) }))
-                        .labelsHidden()
-                        .disabled(entity.isUnavailable || pending)
-                }
-            }
-        }
-        .padding(large ? 16 : 12)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 14))
-        .opacity(entity.isUnavailable ? 0.6 : 1)
-        .contentShape(.rect(cornerRadius: 14))
-        .onTapGesture {
-            if entity.isTV {
-                onOpen(entity)
-            } else if tapToToggle, entity.control != .sensor, !entity.isUnavailable, !pending {
-                onToggle(entity)
-            } else if entity.hasLightControls {
-                onOpen(entity)
-            }
-        }
-        .onLongPressGesture { if entity.hasLightControls || entity.isTV { onOpen(entity) } }
-        .sensoryFeedback(.selection, trigger: entity.state)
-        .accessibilityElement(children: .combine)
-    }
-
-    /// Lights glow in their own color when they have one.
-    private var lightTint: Color {
-        if entity.control == .light, let rgb = entity.rgbColor { return Color(rgb: rgb) }
-        if entity.control == .light { return .yellow }
-        if entity.control == .lock { return .orange }
-        return .accentColor
-    }
-}
-
-struct DeviceCard: View {
-    let device: String
-    let sensors: [HAEntity]
-    var large = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(device, systemImage: "iphone.gen3").font(large ? .headline : .subheadline.weight(.medium))
-            ForEach(sensors) { s in
-                HStack {
-                    Text(shortName(s)).foregroundStyle(.secondary)
-                    Spacer()
-                    Text(s.stateLabel).monospacedDigit()
-                }
-                .font(.footnote)
-            }
-        }
-        .padding(large ? 16 : 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 14))
-    }
-
-    /// "William's iPhone Battery level" reads as "Battery level" inside the card.
-    private func shortName(_ s: HAEntity) -> String {
-        s.name.hasPrefix(device) ? s.name.dropFirst(device.count).trimmingCharacters(in: .whitespaces) : s.name
     }
 }

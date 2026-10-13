@@ -34,18 +34,15 @@ struct RootView: View {
 }
 
 enum HubTab: Hashable {
-    case agent, home, finance, calendar, habits, food
+    case home, finance, calendar, food
 }
 
-/// The web app's sidebar (and its iPhone tab bar), as a native tab bar.
+/// The iPhone's tabs.
 struct MainTabView: View {
-    @State private var tab: HubTab = .agent
+    @State private var tab: HubTab = .home
 
     var body: some View {
         TabView(selection: $tab) {
-            Tab("Agent", systemImage: "bubble.left.and.text.bubble.right", value: .agent) {
-                AgentView(switchTab: { tab = $0 })
-            }
             Tab("Home", systemImage: "house", value: .home) {
                 HomeView()
             }
@@ -54,9 +51,6 @@ struct MainTabView: View {
             }
             Tab("Calendar", systemImage: "calendar", value: .calendar) {
                 CalendarView()
-            }
-            Tab("Habits", systemImage: "checkmark.circle", value: .habits) {
-                HabitsView()
             }
             Tab("Food", systemImage: "fork.knife", value: .food) {
                 FoodView()
