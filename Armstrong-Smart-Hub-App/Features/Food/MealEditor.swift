@@ -124,8 +124,10 @@ struct MealEditor: View {
             grams = text(e.grams); calories = text(e.calories); protein = text(e.protein); carbs = text(e.carbs); fat = text(e.fat)
         } else if let p = product {
             name = [p.brand, p.name].filter { !$0.isEmpty }.joined(separator: " ")
-            grams = "100"
-            calories = text(p.calories); protein = text(p.protein); carbs = text(p.carbs); fat = text(p.fat)
+            // Start at the label's serving when it's given in grams; rescale fills in the nutrition.
+            let portion = text(Self.servingGrams(p.serving) ?? 100)
+            grams = portion
+            rescale(portion)
         }
     }
 
@@ -153,6 +155,12 @@ struct MealEditor: View {
             }
             saving = false
         }
+    }
+
+    /// "1 serving (150 g)" → 150.
+    static func servingGrams(_ serving: String) -> Double? {
+        guard let match = serving.firstMatch(of: /(\d+(?:\.\d+)?)\s*g\b/.ignoresCase()), let g = Double(match.1), g > 0, g < 5000 else { return nil }
+        return g
     }
 
     private func text(_ v: Double?) -> String {
