@@ -155,25 +155,25 @@ enum FitnessFormat {
         raw == "generic" ? "Activity" : raw.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
-    /// Lucide icon names (see LucideIcon); Lucide has no runner, so running uses footprints.
+    /// Tabler icon names (see TablerIcon); Tabler has run, walk, bike and swim glyphs.
     static func symbol(sport: String, subSport: String?) -> String {
         switch subSport {
-        case "strength_training": return "dumbbell"
-        case "yoga", "pilates": return "flame"
-        case "hiit": return "zap"
-        case "indoor_rowing": return "sailboat"
+        case "strength_training": return "barbell"
+        case "yoga", "pilates": return "yoga"
+        case "hiit": return "bolt"
+        case "indoor_rowing": return "ship"
         default: break
         }
         switch sport {
-        case "running": return "footprints"
+        case "running": return "run"
         case "cycling", "e_biking": return "bike"
-        case "swimming": return "waves"
-        case "walking": return "person-standing"
+        case "swimming": return "swimming"
+        case "walking": return "walk"
         case "hiking", "mountaineering": return "mountain"
-        case "training", "fitness_equipment": return "dumbbell"
-        case "rowing", "paddling", "kayaking": return "sailboat"
+        case "training", "fitness_equipment": return "barbell"
+        case "rowing", "paddling", "kayaking": return "ship"
         case "tennis", "racket", "soccer", "basketball", "golf", "boxing", "mixed_martial_arts": return "target"
-        case "alpine_skiing", "snowboarding", "cross_country_skiing": return "mountain-snow"
+        case "alpine_skiing", "snowboarding", "cross_country_skiing": return "ski-jumping"
         default: return "activity"
         }
     }

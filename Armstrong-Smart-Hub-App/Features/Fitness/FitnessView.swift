@@ -11,6 +11,7 @@ struct FitnessView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var store = FitnessStore()
     @State private var showingWatch = false
+    @AppStorage("fitness.pplOffset") private var pplOffset = 0
     @State private var pairing = false
 
     var body: some View {
@@ -42,7 +43,7 @@ struct FitnessView: View {
                 ToolbarItem(placement: .topBarLeading) { AccountButton() }
                 if watch.savedWatchID != nil {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button { showingWatch = true } label: { LucideIcon(name: "watch", size: 22) }.accessibilityLabel("Watch")
+                        Button { showingWatch = true } label: { TablerIcon(name: "device-watch", size: 22) }.accessibilityLabel("Watch")
                     }
                 }
             }
@@ -73,7 +74,7 @@ struct FitnessView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button { pairing = true } label: {
-                HStack(spacing: 6) { LucideIcon(name: "plus", size: 18); Text("Pair your watch") }
+                HStack(spacing: 6) { TablerIcon(name: "plus", size: 18); Text("Pair your watch") }
             }
                 .buttonStyle(.borderedProminent)
                 .padding(.top, 6)
@@ -146,6 +147,50 @@ struct FitnessView: View {
         return count
     }
 
+    // MARK: Next workout
+
+    /// Push / pull / legs rotation. The watch doesn't label strength sessions, so the
+    /// cycle is counted from the order of logged strength sessions, and tapping the
+    /// suggestion shifts it by one when it is off (stored in `pplOffset`).
+    private static let split = ["Push day", "Pull day", "Leg day"]
+
+    private var nextWorkout: (icon: String, title: String, detail: String) {
+        let calendar = Calendar.current
+        let all = store.activities.sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
+        let strength = all.filter { $0.subSport == "strength_training" || $0.sport == "training" || $0.sport == "fitness_equipment" }
+        let todayStart = calendar.startOfDay(for: .now)
+        let doneToday = workoutDays.contains(todayStart)
+        let lastDate = all.last?.start
+        let daysSince = lastDate.map { calendar.dateComponents([.day], from: calendar.startOfDay(for: $0), to: todayStart).day ?? 0 }
+        guard let last = all.last, let gap = daysSince else {
+            return ("walk", "Start easy", "Log a first workout to begin the streak")
+        }
+        if gap >= 5 {
+            return ("walk", "Ease back in", "Easy 30 minutes, nothing heavy. Last workout \(gap) days ago")
+        }
+        let index = ((strength.count + pplOffset) % 3 + 3) % 3
+        let name = Self.split[index]
+        let lastWhen = gap == 0 ? "today" : gap == 1 ? "yesterday" : "\(gap) days ago"
+        let detail = doneToday ? "Tomorrow. Last: \(last.title.lowercased()) \(lastWhen)"
+                               : "Today. Last: \(last.title.lowercased()) \(lastWhen)"
+        return ("barbell", name, detail)
+    }
+
+    private var nextWorkoutView: some View {
+        let next = nextWorkout
+        return HStack(spacing: 16) {
+            TablerIcon(name: next.icon, size: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("NEXT WORKOUT").font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(.secondary)
+                Text(next.title).font(.system(size: 28, weight: .bold, design: .rounded))
+                Text(next.detail).font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(.rect)
+        .onTapGesture { pplOffset += 1 }
+    }
+
     private var today: some View {
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: .now)
@@ -159,6 +204,8 @@ struct FitnessView: View {
         let bpm = watch.heartRate?.bpm
         return VStack(alignment: .leading, spacing: 28) {
             FloatingSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
+                nextWorkoutView
+                    .padding(.bottom, 8)
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(done ? "Done" : "Not yet")
@@ -179,7 +226,7 @@ struct FitnessView: View {
                         let worked = days.contains(day)
                         let isToday = calendar.isDate(day, inSameDayAs: start)
                         VStack(spacing: 8) {
-                            LucideIcon(name: worked ? "circle-check" : "circle", size: 46)
+                            TablerIcon(name: worked ? "circle-check" : "circle", size: 46)
                                 .foregroundStyle(worked ? Color.primary : Color.primary.opacity(0.2))
                                 .frame(height: 50)
                             Text(day.formatted(.dateTime.weekday(.narrow)))
@@ -193,10 +240,10 @@ struct FitnessView: View {
                 .animation(.smooth, value: streakCount)
             }
             HStack(alignment: .top) {
-                BigMetric(symbol: "footprints", color: .primary, title: "Steps", value: steps.formatted(), unit: "today")
+                BigMetric(symbol: "walk", color: .primary, title: "Steps", value: steps.formatted(), unit: "today")
                 BigMetric(symbol: "heart", color: .primary, title: "Heart rate",
                           value: bpm.map { "\($0)" } ?? "–", unit: "bpm", live: bpm != nil && watch.state == .connected)
-                BigMetric(symbol: "bed-double", color: .primary, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
+                BigMetric(symbol: "bed", color: .primary, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
             }
         }
     }
@@ -298,7 +345,7 @@ struct FitnessView: View {
                                 ActivitiesView(activities: store.activities)
                             } label: {
                                 VStack(spacing: 8) {
-                                    LucideIcon(name: "arrow-right", size: 34).foregroundStyle(.primary)
+                                    TablerIcon(name: "arrow-right", size: 34).foregroundStyle(.primary)
                                     Text("All \(store.activities.count)").font(.subheadline.weight(.semibold))
                                 }
                                 .frame(width: 80, height: 120)
@@ -344,7 +391,7 @@ private struct Metric: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            LucideIcon(name: symbol, size: 18).foregroundStyle(color)
+            TablerIcon(name: symbol, size: 18).foregroundStyle(color)
             VStack(alignment: .leading, spacing: 0) {
                 Text(title).font(.caption).foregroundStyle(.secondary)
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
@@ -404,7 +451,7 @@ struct ActivityRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            LucideIcon(name: activity.symbol, size: 26).foregroundStyle(.primary)
+            TablerIcon(name: activity.symbol, size: 26).foregroundStyle(.primary)
                 .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(activity.title).font(.subheadline.weight(.semibold))
@@ -419,11 +466,11 @@ struct ActivityRow: View {
                     .font(.subheadline.weight(.semibold)).monospacedDigit()
                 HStack(spacing: 6) {
                     if activity.hasDistance { Text(FitnessFormat.duration(activity.duration)) }
-                    if let hr = activity.avgHr { HStack(spacing: 3) { LucideIcon(name: "heart", size: 11); Text("\(hr)") } }
+                    if let hr = activity.avgHr { HStack(spacing: 3) { TablerIcon(name: "heart", size: 11); Text("\(hr)") } }
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
-            LucideIcon(name: "chevron-right", size: 14).foregroundStyle(.tertiary)
+            TablerIcon(name: "chevron-right", size: 14).foregroundStyle(.tertiary)
         }
         .contentShape(.rect)
     }

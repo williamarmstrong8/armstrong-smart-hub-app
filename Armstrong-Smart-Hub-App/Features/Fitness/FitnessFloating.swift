@@ -94,7 +94,7 @@ struct BigMetric: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            LucideIcon(name: symbol, size: 28)
+            TablerIcon(name: symbol, size: 28)
                 .foregroundStyle(.primary)
             Text(value)
                 .font(.system(size: 30, weight: .bold, design: .rounded))
@@ -113,7 +113,7 @@ struct ActivityTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            LucideIcon(name: activity.symbol, size: 40)
+            TablerIcon(name: activity.symbol, size: 40)
                 .foregroundStyle(.primary)
                 .frame(height: 48, alignment: .leading)
             Text(activity.title).font(.subheadline.weight(.semibold)).lineLimit(1)
@@ -124,7 +124,7 @@ struct ActivityTile: View {
                 .lineLimit(1)
             HStack(spacing: 8) {
                 if activity.hasDistance { Text(FitnessFormat.duration(activity.duration)) }
-                if let hr = activity.avgHr { HStack(spacing: 3) { LucideIcon(name: "heart", size: 11); Text("\(hr)") } }
+                if let hr = activity.avgHr { HStack(spacing: 3) { TablerIcon(name: "heart", size: 11); Text("\(hr)") } }
             }
             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             if let start = activity.start {
@@ -137,14 +137,14 @@ struct ActivityTile: View {
 }
 
 
-/// Lucide line icon (lucide.dev, ISC license), bundled as a template vector asset
-/// named "lucide-<name>" so it tints with the foreground style.
-struct LucideIcon: View {
+/// Tabler line icon (tabler.io/icons, MIT license), bundled as a template vector asset
+/// named "tabler-<name>" so it tints with the foreground style.
+struct TablerIcon: View {
     var name: String
     var size: CGFloat = 24
 
     var body: some View {
-        Image("lucide-\(name)")
+        Image("tabler-\(name)")
             .renderingMode(.template)
             .resizable()
             .scaledToFit()
