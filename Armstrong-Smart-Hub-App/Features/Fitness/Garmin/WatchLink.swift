@@ -71,6 +71,8 @@ final class WatchLink: NSObject {
     /// Bumped per request, so a timeout never answers a later request.
     private var waiterGeneration = 0
     private var wantsConnection = false
+    /// Whether this connection has told the watch its setup is done.
+    private var setupSent = false
 
     override init() {
         super.init()
@@ -161,6 +163,7 @@ final class WatchLink: NSObject {
 
     private func reset() {
         handles = [:]
+        setupSent = false
         assembler.reset()
         outbox = []
         rx = nil
@@ -196,6 +199,11 @@ final class WatchLink: NSObject {
             }
             state = .connected
             note("Connected")
+            // The watch normally sends CONFIGURATION first; finish setup anyway if it doesn't.
+            Task {
+                try? await Task.sleep(for: .seconds(5))
+                if state == .connected { completeSetup() }
+            }
             for service in [Garmin.Service.realtimeHeartRate, .realtimeSteps] {
                 guard !Task.isCancelled else { return }
                 if await register(service), let handle = handles[service.rawValue] {
@@ -318,11 +326,28 @@ final class WatchLink: NSObject {
         case .currentTimeRequest:
             send(GFDIMessage.timeResponse())
             return
+        case .configuration:
+            send(GFDIMessage.ack(message.type))
+            completeSetup()
+            return
         default:
             break
         }
         // Every other message gets a plain ACK, as garmin-ble does.
         send(GFDIMessage.ack(message.type))
+    }
+}
+
+extension WatchLink {
+    /// Without these the watch shows "Finish setup in the app". Same events,
+    /// same order, as Gadgetbridge's completeInitialization on a first connect.
+    fileprivate func completeSetup() {
+        guard !setupSent else { return }
+        setupSent = true
+        for event in [Garmin.SystemEvent.syncReady, .pairComplete, .syncComplete, .setupWizardComplete] {
+            send(GFDIMessage.systemEvent(event))
+        }
+        note("Told the watch setup is complete")
     }
 }
 

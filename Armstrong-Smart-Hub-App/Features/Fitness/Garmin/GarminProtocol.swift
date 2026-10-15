@@ -35,6 +35,15 @@ enum Garmin {
         case realtimeSteps = 7
     }
 
+    /// GFDI SYSTEM_EVENT types (Gadgetbridge's GarminSystemEventType, in order).
+    enum SystemEvent: UInt8 {
+        case syncComplete = 0
+        case pairComplete = 4
+        case syncReady = 8
+        case setupWizardComplete = 14
+        case timeUpdated = 16
+    }
+
     enum Control: UInt8 {
         case registerRequest = 0
         case registerResponse = 1
@@ -240,6 +249,11 @@ struct GFDIMessage {
         payload.appendLE(Int32(0)) // DST end
         payload.appendLE(Int32(0)) // DST start
         return frame(Garmin.Message.response.rawValue, payload)
+    }
+
+    /// Tells the watch something happened on the phone, such as setup finishing.
+    static func systemEvent(_ event: Garmin.SystemEvent, value: UInt8 = 0) -> [UInt8] {
+        frame(Garmin.Message.systemEvent.rawValue, [event.rawValue, value])
     }
 
     /// The protobuf header's request id and offset, for acknowledging it.

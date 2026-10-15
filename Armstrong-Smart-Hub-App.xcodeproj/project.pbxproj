@@ -270,6 +270,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Armstrong-Smart-Hub-App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Armstrong-Smart-Hub";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connects to your Garmin watch to read heart rate, steps, activities and sleep, instead of Garmin Connect.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scans food barcodes and takes photos of meals and grocery receipts for your food journal.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listens on the iPad for \"Hey Jarvis\" so you can control the hub by voice. Audio only leaves the iPad after the wake word.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -310,6 +313,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Armstrong-Smart-Hub-App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Armstrong-Smart-Hub";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connects to your Garmin watch to read heart rate, steps, activities and sleep, instead of Garmin Connect.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scans food barcodes and takes photos of meals and grocery receipts for your food journal.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listens on the iPad for \"Hey Jarvis\" so you can control the hub by voice. Audio only leaves the iPad after the wake word.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

@@ -4,11 +4,5 @@
 <dict>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>Rings your wake-up alarm, even when the app is closed or the iPad is on silent.</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Connects to your Garmin watch to read heart rate, steps, activities and sleep, instead of Garmin Connect.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Scans food barcodes and takes photos of meals and grocery receipts for your food journal.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Listens on the iPad for "Hey Jarvis" so you can control the hub by voice. Audio only leaves the iPad after the wake word.</string>
 </dict>
 </plist>
