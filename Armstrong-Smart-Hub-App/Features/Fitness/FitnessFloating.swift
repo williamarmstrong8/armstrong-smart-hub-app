@@ -32,13 +32,13 @@ struct FloatingSection<Content: View>: View {
 struct WatchHero: View {
     var body: some View {
         ZStack {
-            Circle().fill(Color.green.opacity(0.35)).frame(width: 220).blur(radius: 70).offset(x: -90, y: -40)
-            Circle().fill(Color.blue.opacity(0.30)).frame(width: 240).blur(radius: 80).offset(x: 100, y: 30)
-            Circle().fill(Color.red.opacity(0.22)).frame(width: 160).blur(radius: 60).offset(x: 60, y: -100)
+            Circle().fill(Color.green.opacity(0.35)).frame(width: 150).blur(radius: 50).offset(x: -70, y: -20)
+            Circle().fill(Color.blue.opacity(0.30)).frame(width: 160).blur(radius: 55).offset(x: 80, y: 20)
+            Circle().fill(Color.red.opacity(0.22)).frame(width: 110).blur(radius: 45).offset(x: 50, y: -70)
             Image("GarminHero")
                 .resizable()
                 .scaledToFit()
-                .frame(height: 300)
+                .frame(height: 190)
                 .rotationEffect(.degrees(-6))
                 .shadow(color: .black.opacity(0.35), radius: 28, y: 18)
                 .mask(
@@ -50,7 +50,7 @@ struct WatchHero: View {
                 )
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 320)
+        .frame(height: 210)
         .accessibilityHidden(true)
     }
 }

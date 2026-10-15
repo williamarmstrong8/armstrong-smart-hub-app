@@ -8,6 +8,7 @@ import SwiftUI
 struct FitnessView: View {
     @Environment(AppSession.self) private var session
     @Environment(WatchLink.self) private var watch
+    @Environment(\.scenePhase) private var scenePhase
     @State private var store = FitnessStore()
     @State private var showingWatch = false
     @State private var pairing = false
@@ -16,7 +17,7 @@ struct FitnessView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 28) {
-                    WatchHero().padding(.horizontal, -16).padding(.top, -8)
+                    WatchHero().padding(.horizontal, -16).padding(.top, -12)
                     if watch.savedWatchID == nil {
                         welcome
                     } else {
@@ -46,10 +47,16 @@ struct FitnessView: View {
                 }
             }
             .navigationDestination(for: FitnessActivity.self) { ActivityDetailView(activity: $0, store: store) }
-            .task { await store.load(api: session.api) }
-            .refreshable {
-                if watch.state == .connected { await watch.files.sync(api: session.api) }
+            .task {
                 await store.load(api: session.api)
+                await autoSync()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await autoSync() } }
+            }
+            .refreshable {
+                await store.load(api: session.api)
+                await autoSync(force: true)
             }
             .onChange(of: watch.files.lastSync) { Task { await store.load(api: session.api) } }
             .sheet(isPresented: $showingWatch) { WatchSheet() }
@@ -71,29 +78,47 @@ struct FitnessView: View {
         }
     }
 
-    /// The watch's state and the sync button, in one line.
+    /// The watch's state, with a thin progress bar while a sync runs.
     private var watchBar: some View {
         let files = watch.files
-        return HStack(spacing: 10) {
-            Circle().fill(watch.state == .connected ? Color.green : Color.secondary.opacity(0.5)).frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(watch.identity?.model ?? watch.savedWatchName ?? "Watch").font(.subheadline.weight(.semibold))
-                Text(files.progress ?? watchStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        return VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Circle().fill(watch.state == .connected ? Color.green : Color.secondary.opacity(0.5)).frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(watch.identity?.model ?? watch.savedWatchName ?? "Watch").font(.subheadline.weight(.semibold))
+                    Text(files.progress ?? watchStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
             }
-            Spacer()
             if files.isSyncing {
-                ProgressView()
-            } else if watch.state == .connected || files.store.pendingUpload > 0 {
-                Button("Sync", systemImage: "arrow.triangle.2.circlepath") { Task { await files.sync(api: session.api) } }
-                    .buttonStyle(.bordered).controlSize(.small)
-            } else if !watch.isBusy {
-                Button("Connect") { watch.connectSaved() }
-                    .buttonStyle(.bordered).controlSize(.small)
+                ProgressView(value: files.fraction ?? 0.02)
+                    .progressViewStyle(.linear)
+                    .tint(.green)
+                    .transition(.opacity)
             }
         }
+        .animation(.smooth, value: files.isSyncing)
         .padding(.horizontal, 4)
         .contentShape(.rect)
         .onTapGesture { showingWatch = true }
+    }
+
+    /// Reconnects if needed, waits briefly for the watch, then syncs. Runs on
+    /// open, when the app returns to the foreground, and on pull-to-refresh.
+    private func autoSync(force: Bool = false) async {
+        guard watch.savedWatchID != nil else { return }
+        let files = watch.files
+        if !force, files.isSyncing { return }
+        if !force, let last = files.lastSync, Date.now.timeIntervalSince(last.finishedAt) < 60 { return }
+        if watch.state != .connected, !watch.isBusy { watch.connectSaved() }
+        var waited = 0.0
+        while watch.state != .connected, waited < 20 {
+            try? await Task.sleep(for: .milliseconds(500))
+            waited += 0.5
+            if Task.isCancelled { return }
+        }
+        await files.sync(api: session.api)
+        await store.load(api: session.api)
     }
 
     private var watchStatus: String {

@@ -23,6 +23,8 @@ final class WatchFiles {
 
     private(set) var isSyncing = false
     private(set) var progress: String?
+    /// 0...1 while a sync runs; nil when idle.
+    private(set) var fraction: Double?
     private(set) var lastSync: Summary?
     let store = FitStore()
 
@@ -57,9 +59,11 @@ final class WatchFiles {
     func sync(api: APIClient) async {
         guard !isSyncing, let link else { return }
         isSyncing = true
+        fraction = 0.02
         defer {
             isSyncing = false
             progress = nil
+            fraction = nil
             reset()
         }
         var listed: [GarminFiles.ListedFile] = []
@@ -68,6 +72,7 @@ final class WatchFiles {
         var failure: String?
         if link.state == .connected { do {
             progress = "Reading the watch's directory"
+            fraction = 0.05
             // Makes the watch flush pending data, as Gadgetbridge does before every sync.
             let directory = try await downloadLegacy(GarminFiles.directoryIndex, maxBytes: 256 * 1024)
             link.note("Legacy directory: \(GarminFiles.directoryFITCount(directory)) FIT files")
@@ -75,6 +80,7 @@ final class WatchFiles {
             try? await Task.sleep(for: .seconds(2))
 
             progress = "Listing files"
+            fraction = 0.15
             listed = try await listFiles()
             store.saveListing(listed)
 
@@ -84,6 +90,7 @@ final class WatchFiles {
                 .prefix(perSyncLimit)
             for (number, file) in wanted.enumerated() {
                 progress = "Downloading \(file.kind.replacingOccurrences(of: "_", with: " ")) \(number + 1) of \(wanted.count)"
+                fraction = 0.2 + 0.65 * Double(number) / Double(max(wanted.count, 1))
                 let data = try await download(file)
                 try store.save(file, data: data)
                 downloaded += 1
@@ -94,6 +101,7 @@ final class WatchFiles {
             link.note("Sync stopped: \(failure!)")
         } }
         // Whatever made it onto the phone goes to the hub, even after a watch error.
+        fraction = 0.9
         do {
             await postLive(api: api)
             uploaded = try await upload(api: api)
