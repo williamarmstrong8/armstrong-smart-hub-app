@@ -28,16 +28,13 @@ struct FloatingSection<Content: View>: View {
     }
 }
 
-/// The watch, cut out and floating over a soft glow, fading into the page.
+/// The watch, cut out and floating on the page, fading at the edges.
 struct WatchHero: View {
     /// 0...1 while the watch syncs; nil shows the watch's own face.
     var progress: Double?
 
     var body: some View {
         ZStack {
-            Circle().fill(Color.green.opacity(0.35)).frame(width: 150).blur(radius: 50).offset(x: -70, y: -20)
-            Circle().fill(Color.blue.opacity(0.30)).frame(width: 160).blur(radius: 55).offset(x: 80, y: 20)
-            Circle().fill(Color.red.opacity(0.22)).frame(width: 110).blur(radius: 45).offset(x: 50, y: -70)
             Image("GarminHero")
                 .resizable()
                 .scaledToFit()
@@ -60,7 +57,7 @@ struct WatchHero: View {
 
     /// The watch's screen as it sits in the cutout (835x992 px): an ellipse
     /// centered at (0.640, 0.4175) with semi-axes 279 and 303 px, tilted 14.4 degrees.
-    /// A progress ring is drawn on it while syncing.
+    /// A progress ring (no text) is drawn on it while syncing.
     private var syncFace: some View {
         GeometryReader { geo in
             let k = geo.size.height / 992
@@ -74,19 +71,9 @@ struct WatchHero: View {
                     .padding(inset)
                 Ellipse().trim(from: 0, to: max(0.02, min(progress ?? 0, 1)))
                     .stroke(Color.green, style: StrokeStyle(lineWidth: ring, lineCap: .round))
+                    .frame(width: screenHeight - 2 * inset, height: screenWidth - 2 * inset)
                     .rotationEffect(.degrees(-90))
-                    .padding(inset)
                     .shadow(color: .green.opacity(0.7), radius: 4)
-                VStack(spacing: 1) {
-                    Text("\(Int(((progress ?? 0) * 100).rounded()))%")
-                        .font(.system(size: screenWidth * 0.27, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.white)
-                    Text("SYNCING")
-                        .font(.system(size: screenWidth * 0.085, weight: .semibold))
-                        .tracking(1.5)
-                        .foregroundStyle(.green)
-                }
             }
             .frame(width: screenWidth, height: screenHeight)
             .rotationEffect(.degrees(-14.43))
@@ -98,21 +85,30 @@ struct WatchHero: View {
     }
 }
 
-/// One ring of the Today view.
+/// One ring of the Today view, in the Apple Fitness style: a dim track,
+/// a rounded gradient arc that starts at 12 o'clock, and a small glyph at the start.
 struct RingArc: View {
     var progress: Double
     var color: Color
     var lineWidth: CGFloat
+    var symbol: String
 
     var body: some View {
+        let shown = max(0.001, min(progress, 1))
         ZStack {
-            Circle().stroke(color.opacity(0.16), lineWidth: lineWidth)
-            Circle().trim(from: 0, to: max(0.012, min(progress, 1)))
-                .stroke(AngularGradient(colors: [color.opacity(0.55), color], center: .center,
-                                        startAngle: .degrees(0), endAngle: .degrees(360 * max(0.05, min(progress, 1)))),
+            Circle().stroke(color.opacity(0.22), lineWidth: lineWidth)
+            Circle().trim(from: 0, to: shown)
+                .stroke(AngularGradient(colors: [color.opacity(0.7), color], center: .center,
+                                        startAngle: .degrees(0), endAngle: .degrees(360 * shown)),
                         style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .shadow(color: color.opacity(0.55), radius: 6)
+        }
+        .overlay(alignment: .top) {
+            Image(systemName: symbol)
+                .font(.system(size: lineWidth * 0.55, weight: .black))
+                .foregroundStyle(.black.opacity(0.75))
+                .frame(height: lineWidth)
+                .offset(y: -lineWidth / 2)
         }
     }
 }

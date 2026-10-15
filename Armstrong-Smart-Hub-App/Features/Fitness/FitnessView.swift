@@ -125,6 +125,10 @@ struct FitnessView: View {
 
     // MARK: Today
 
+    private static let moveRed = Color(red: 0.98, green: 0.07, blue: 0.31)
+    private static let exerciseGreen = Color(red: 0.57, green: 0.91, blue: 0.16)
+    private static let standCyan = Color(red: 0.12, green: 0.92, blue: 0.94)
+
     private var today: some View {
         let steps = max(watch.steps?.count ?? 0, store.today?.steps ?? 0)
         let goal = watch.steps.flatMap { $0.goal > 0 ? $0.goal : nil } ?? store.today?.stepGoal ?? 10_000
@@ -136,26 +140,26 @@ struct FitnessView: View {
         let percent = Int((stepProgress * 100).rounded())
         return FloatingSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
             ZStack {
-                RingArc(progress: stepProgress, color: .green, lineWidth: 20)
-                RingArc(progress: weekProgress, color: .orange, lineWidth: 20).padding(26)
-                RingArc(progress: heartProgress, color: .red, lineWidth: 20).padding(52)
+                RingArc(progress: stepProgress, color: Self.moveRed, lineWidth: 18, symbol: "arrow.right")
+                RingArc(progress: weekProgress, color: Self.exerciseGreen, lineWidth: 18, symbol: "chevron.forward.2").padding(21)
+                RingArc(progress: heartProgress, color: Self.standCyan, lineWidth: 18, symbol: "arrow.up").padding(42)
                 VStack(spacing: 0) {
                     Text(steps.formatted())
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
                     Text("of \(goal.formatted()) steps").font(.caption).foregroundStyle(.secondary)
-                    Text("\(percent)%").font(.caption.weight(.bold)).foregroundStyle(.green)
+                    Text("\(percent)%").font(.caption.weight(.bold)).foregroundStyle(Self.moveRed)
                 }
             }
             .frame(width: 270, height: 270)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
             HStack(alignment: .top) {
-                BigMetric(symbol: "heart.fill", color: .red, title: "Heart rate",
+                BigMetric(symbol: "heart.fill", color: Self.standCyan, title: "Heart rate",
                           value: bpm.map { "\($0)" } ?? "–", unit: "bpm", live: bpm != nil && watch.state == .connected)
                 BigMetric(symbol: "bed.double.fill", color: .indigo, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
-                BigMetric(symbol: "flame.fill", color: .orange, title: "This week",
+                BigMetric(symbol: "flame.fill", color: Self.exerciseGreen, title: "This week",
                           value: "\(store.thisWeek.count)", unit: store.thisWeek.count == 1 ? "activity" : "activities")
             }
             .animation(.smooth, value: steps)
