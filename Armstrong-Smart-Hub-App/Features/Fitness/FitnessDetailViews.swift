@@ -30,10 +30,9 @@ struct ActivityDetailView: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            Image(systemName: activity.symbol)
-                .font(.title).foregroundStyle(.white)
+            TablerIcon(name: activity.symbol, size: 40)
+                .foregroundStyle(.primary)
                 .frame(width: 56, height: 56)
-                .background(activity.color.gradient, in: .rect(cornerRadius: 14))
             VStack(alignment: .leading, spacing: 2) {
                 Text(activity.title).font(.title3.bold())
                 if let start = activity.start {
@@ -282,7 +281,7 @@ struct TrendsView: View {
                     let sports = Dictionary(grouping: store.activities, by: \.title).sorted { $0.value.count > $1.value.count }
                     ForEach(sports, id: \.key) { title, items in
                         HStack {
-                            Image(systemName: items[0].symbol).foregroundStyle(items[0].color).frame(width: 24)
+                            TablerIcon(name: items[0].symbol, size: 22).foregroundStyle(.primary)
                             Text(title)
                             Spacer()
                             Text("\(items.count) · \(FitnessFormat.duration(items.compactMap(\.duration).reduce(0, +)))")

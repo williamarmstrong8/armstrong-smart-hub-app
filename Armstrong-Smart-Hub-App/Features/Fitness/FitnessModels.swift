@@ -155,32 +155,26 @@ enum FitnessFormat {
         raw == "generic" ? "Activity" : raw.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
+    /// Tabler icon names (see TablerIcon); Tabler has run, walk, bike and swim glyphs.
     static func symbol(sport: String, subSport: String?) -> String {
         switch subSport {
-        case "strength_training": return "dumbbell.fill"
-        case "yoga": return "figure.yoga"
-        case "pilates": return "figure.pilates"
-        case "hiit": return "figure.highintensity.intervaltraining"
-        case "indoor_rowing": return "figure.rower"
-        case "elliptical": return "figure.elliptical"
-        case "stair_climbing": return "figure.stair.stepper"
+        case "strength_training": return "barbell"
+        case "yoga", "pilates": return "yoga"
+        case "hiit": return "bolt"
+        case "indoor_rowing": return "ship"
         default: break
         }
         switch sport {
-        case "running": return "figure.run"
-        case "cycling", "e_biking": return "figure.outdoor.cycle"
-        case "swimming": return "figure.pool.swim"
-        case "walking": return "figure.walk"
-        case "hiking", "mountaineering": return "figure.hiking"
-        case "training", "fitness_equipment": return "figure.strengthtraining.traditional"
-        case "rowing", "paddling", "kayaking": return "figure.rower"
-        case "tennis", "racket": return "figure.tennis"
-        case "soccer": return "figure.soccer"
-        case "basketball": return "figure.basketball"
-        case "golf": return "figure.golf"
-        case "alpine_skiing", "snowboarding", "cross_country_skiing": return "figure.skiing.downhill"
-        case "boxing", "mixed_martial_arts": return "figure.boxing"
-        default: return "figure.mixed.cardio"
+        case "running": return "run"
+        case "cycling", "e_biking": return "bike"
+        case "swimming": return "swimming"
+        case "walking": return "walk"
+        case "hiking", "mountaineering": return "mountain"
+        case "training", "fitness_equipment": return "barbell"
+        case "rowing", "paddling", "kayaking": return "ship"
+        case "tennis", "racket", "soccer", "basketball", "golf", "boxing", "mixed_martial_arts": return "target"
+        case "alpine_skiing", "snowboarding", "cross_country_skiing": return "ski-jumping"
+        default: return "activity"
         }
     }
 
