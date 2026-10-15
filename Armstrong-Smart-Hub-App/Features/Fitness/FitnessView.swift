@@ -198,11 +198,9 @@ struct FitnessView: View {
     private var today: some View {
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: .now)
-        let done = workoutDays.contains(start)
         let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? start
         let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
         let days = workoutDays
-        let streakCount = self.streak
         let steps = max(watch.steps?.count ?? 0, store.today?.steps ?? 0)
         let resting = watch.heartRate?.restingBPM ?? store.today?.restingHr ?? store.restingHr
         let bpm = watch.heartRate?.bpm
@@ -211,29 +209,12 @@ struct FitnessView: View {
             FloatingSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
                 VStack(alignment: .leading, spacing: 32) {
                     nextWorkoutView
-                    HStack(alignment: .lastTextBaseline) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(done ? "Done" : "Not yet")
-                                .font(.system(size: 48, weight: .heavy, design: .rounded))
-                                .foregroundStyle(done ? Color.green : Color.primary)
-                            Text("workout today").font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(streakCount)")
-                                .font(.system(size: 48, weight: .heavy, design: .rounded))
-                                .foregroundStyle(streakCount > 0 ? Color.orange : Color.secondary)
-                                .monospacedDigit()
-                                .contentTransition(.numericText())
-                            Text("day streak").font(.subheadline).foregroundStyle(.secondary)
-                        }
-                    }
                     HStack(spacing: 0) {
                         ForEach(weekDays, id: \.self) { day in
                             let worked = days.contains(day)
                             let isToday = calendar.isDate(day, inSameDayAs: start)
                             VStack(spacing: 10) {
-                                TablerIcon(name: worked ? "circle-check" : "circle", size: 40)
+                                TablerIcon(name: worked ? "circle-check" : "circle", size: 44)
                                     .foregroundStyle(worked ? Color.green : Color.primary.opacity(isToday ? 0.5 : 0.18))
                                 Text(day.formatted(.dateTime.weekday(.narrow)))
                                     .font(.caption.weight(isToday ? .bold : .regular))
@@ -242,7 +223,7 @@ struct FitnessView: View {
                             .frame(maxWidth: .infinity)
                         }
                     }
-                    .animation(.smooth, value: streakCount)
+                    .animation(.smooth, value: days.count)
                 }
             }
             HStack(alignment: .top, spacing: 12) {
