@@ -256,6 +256,8 @@ struct MacroBars: View {
 struct FoodImage: View {
     let source: String?
     var fit = false
+    /// Space around a fitted product photo.
+    var inset: CGFloat = 16
 
     var body: some View {
         if let source, source.hasPrefix("data:image"), let comma = source.firstIndex(of: ","),
@@ -264,7 +266,7 @@ struct FoodImage: View {
         } else if let source, let url = URL(string: source) {
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
-                    image.resizable().aspectRatio(contentMode: fit ? .fit : .fill).padding(fit ? 16 : 0)
+                    image.resizable().aspectRatio(contentMode: fit ? .fit : .fill).padding(fit ? inset : 0)
                 } else {
                     placeholder
                 }

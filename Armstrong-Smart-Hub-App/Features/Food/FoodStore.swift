@@ -90,10 +90,11 @@ final class FoodStore {
 
     // MARK: Groceries
 
-    /// Adds groceries from a receipt or list photo, or a scanned barcode.
-    func addGroceries(photo image: UIImage? = nil, barcode: String? = nil, api: APIClient, toast: Toast) async {
+    /// Adds groceries from a receipt or list photo, or a scanned barcode. False if nothing could be added.
+    @discardableResult
+    func addGroceries(photo image: UIImage? = nil, barcode: String? = nil, api: APIClient, toast: Toast) async -> Bool {
         let photo = image.flatMap(PhotoUpload.init)
-        if image != nil, photo == nil { toast.show("Couldn't read that photo.", error: true); return }
+        if image != nil, photo == nil { toast.show("Couldn't read that photo.", error: true); return false }
         working = barcode == nil ? "Reading your groceries…" : "Adding to groceries…"
         defer { working = nil }
         struct Body: Encodable { let photo: PhotoUpload?; let barcode: String? }
@@ -102,7 +103,7 @@ final class FoodStore {
             let reply: Reply = try await api.send(api.request("/api/mobile/food/groceries", method: "POST", body: Body(photo: photo, barcode: barcode), timeout: 90))
             guard let groceries = reply.groceries, let added = reply.added, let found = reply.found else {
                 toast.show(reply.error ?? "Couldn't add that.", error: true)
-                return
+                return false
             }
             self.groceries = groceries
             if barcode != nil {
@@ -110,8 +111,44 @@ final class FoodStore {
             } else {
                 toast.show(added == found ? "Added \(added) item\(added == 1 ? "" : "s")" : "Added \(added) new of \(found)")
             }
+            return true
         } catch {
             toast.error(error)
+            return false
+        }
+    }
+
+    /// Usuals and products for the search sheet. Empty text lists the store's usuals.
+    func searchGroceries(_ text: String, store: String?, api: APIClient) async throws -> GrocerySearchResult {
+        var components = URLComponents()
+        components.path = "/api/mobile/food/groceries/search"
+        components.queryItems = [URLQueryItem(name: "q", value: text), URLQueryItem(name: "store", value: store ?? "")]
+        return try await api.get(components.string ?? components.path)
+    }
+
+    /// Adds a pick from the search sheet, remembering the store and what was searched. True if it went on the list.
+    func addGrocery(_ pick: GroceryPick, store: String?, query: String, api: APIClient, toast: Toast) async -> Bool {
+        struct Body: Encodable { var barcode, again, name, store, query: String? }
+        var body = Body(store: store, query: query.isEmpty ? nil : query)
+        switch pick {
+        case .product(let barcode): body.barcode = barcode
+        case .again(let id): body.again = id
+        case .named(let name): body.name = name
+        }
+        struct Reply: Decodable { let added: Int?; let groceries: [GroceryItem]?; let error: String? }
+        do {
+            let reply: Reply = try await api.send(api.request("/api/mobile/food/groceries", method: "POST", body: body, timeout: 90))
+            guard let groceries = reply.groceries, let added = reply.added else {
+                toast.show(reply.error ?? "Couldn't add that.", error: true)
+                return false
+            }
+            self.groceries = groceries
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            toast.show(added > 0 ? "Added to groceries" : "Already on your list")
+            return true
+        } catch {
+            toast.error(error)
+            return false
         }
     }
 

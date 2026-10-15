@@ -15,6 +15,7 @@ struct FoodView: View {
     @State private var libraryFor: Purpose?
     @State private var showingLibrary = false
     @State private var libraryItem: PhotosPickerItem?
+    @State private var finding = false
 
     /// What a photo or scan is for.
     enum Purpose: Identifiable {
@@ -58,6 +59,7 @@ struct FoodView: View {
             .task { if !store.loaded { await store.load(api: session.api) } }
             .refreshable { await store.load(api: session.api) }
             .sheet(item: $sheet) { target in FoodSheet(target: target, store: store, toast: toast) }
+            .sheet(isPresented: $finding) { GrocerySearchView(store: store, toast: toast) }
             .fullScreenCover(item: $scanning) { purpose in ScannerSheet { code in scanned(code, for: purpose) } }
             .fullScreenCover(item: $camera) { purpose in
                 CameraPicker { image in picked(image, for: purpose) }.ignoresSafeArea()
@@ -126,7 +128,16 @@ struct FoodView: View {
             case .meal:
                 if let product = await store.lookup(code, api: session.api, toast: toast) { sheet = .product(product) }
             case .groceries:
-                await store.addGroceries(barcode: code, api: session.api, toast: toast)
+                // Store-weighed items (cheese wedges, meat, deli) print a new
+                // "02…" barcode on every package, so they never look up.
+                if code.count >= 12, code.hasPrefix("02") || code.hasPrefix("002") {
+                    toast.show("Store-weighed items have a different barcode on every package. Search for it instead.")
+                    // Let the scanner finish closing before the search sheet opens.
+                    try? await Task.sleep(for: .milliseconds(600))
+                    finding = true
+                } else if !(await store.addGroceries(barcode: code, api: session.api, toast: toast)) {
+                    finding = true
+                }
             }
         }
     }
@@ -198,6 +209,8 @@ struct FoodView: View {
                 Label("Groceries", systemImage: "basket").font(.headline)
                 Spacer()
                 HStack(spacing: 6) {
+                    Button("Find", systemImage: "magnifyingglass") { finding = true }
+                        .buttonStyle(.borderedProminent)
                     Button("Photo", systemImage: "camera") { open(.camera, for: .groceries) }
                     Button("Scan", systemImage: "barcode.viewfinder") { scanning = .groceries }
                     Button("Upload", systemImage: "photo") { open(.library, for: .groceries) }
@@ -208,7 +221,7 @@ struct FoodView: View {
                 .disabled(store.working != nil)
             }
             if store.groceries.isEmpty {
-                Text("Photograph a receipt or scan what you bought. Meal photos match against this.")
+                Text("Find what you're getting, photograph a receipt or scan what you bought. Meal photos match against this.")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80)
                     .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
@@ -218,7 +231,7 @@ struct FoodView: View {
                         VStack(spacing: 6) {
                             Group {
                                 if item.image != nil {
-                                    FoodImage(source: item.image, fit: true)
+                                    FoodImage(source: item.image, fit: true, inset: 6)
                                 } else {
                                     Text(item.name.prefix(1).uppercased())
                                         .font(.title.weight(.semibold)).foregroundStyle(.tertiary)
@@ -228,7 +241,12 @@ struct FoodView: View {
                             .aspectRatio(1, contentMode: .fit)
                             .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 12))
                             .clipShape(.rect(cornerRadius: 12))
-                            Text(item.name).font(.caption.weight(.medium)).lineLimit(1)
+                            VStack(spacing: 1) {
+                                Text(item.name).font(.caption.weight(.medium)).lineLimit(1)
+                                if let shop = item.store {
+                                    Text(shop).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
                         }
                         .contextMenu {
                             Button("Remove", systemImage: "trash", role: .destructive) {

@@ -55,6 +55,51 @@ struct GroceryItem: Decodable, Identifiable, Hashable, Sendable {
     let fat: Double?
     let source: String
     let image: String?
+    /// Where it was bought, when known.
+    let store: String?
+}
+
+/// Something bought before, from the grocery search: its latest pick and how often.
+struct GroceryUsual: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let store: String?
+    let image: String?
+    let calories: Double?
+    let times: Int
+}
+
+/// A packaged product from the grocery search. Nutrition is per 100 g.
+struct ProductHit: Decodable, Identifiable, Hashable, Sendable {
+    let barcode: String
+    let name: String
+    let brand: String
+    let quantity: String?
+    let image: String?
+    let calories: Double?
+    /// Made by the chosen store's own brands.
+    let atStore: Bool
+
+    var id: String { barcode }
+}
+
+struct GrocerySearchResult: Decodable, Sendable {
+    let usual: [GroceryUsual]
+    let products: [ProductHit]
+    let notice: String?
+    let stores: GroceryStores
+}
+
+struct GroceryStores: Decodable, Sendable {
+    let main: [String]
+    let other: [String]
+}
+
+/// What to add from the search sheet.
+enum GroceryPick {
+    case product(barcode: String)
+    case again(id: String)
+    case named(String)
 }
 
 /// Per 100 g, from Open Food Facts.
