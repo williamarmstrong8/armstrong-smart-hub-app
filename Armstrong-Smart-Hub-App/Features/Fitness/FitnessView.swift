@@ -88,7 +88,6 @@ struct FitnessView: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 4)
         .contentShape(.rect)
         .onTapGesture { showingWatch = true }
     }
@@ -225,7 +224,6 @@ struct FitnessView: View {
                         }
                     }
                     StageBar(night: night).frame(height: 22)
-                        .shadow(color: .indigo.opacity(0.45), radius: 10, y: 2)
                     HStack(alignment: .top) {
                         ForEach(SleepNight.Stage.allCases) { stage in
                             VStack(spacing: 2) {

@@ -41,7 +41,6 @@ struct WatchHero: View {
                 .frame(height: 190)
                 .overlay { syncFace }
                 .rotationEffect(.degrees(-6))
-                .shadow(color: .black.opacity(0.35), radius: 28, y: 18)
                 .mask(
                     LinearGradient(stops: [.init(color: .clear, location: 0),
                                            .init(color: .black, location: 0.12),
@@ -73,7 +72,6 @@ struct WatchHero: View {
                     .stroke(Color.green, style: StrokeStyle(lineWidth: ring, lineCap: .round))
                     .frame(width: screenHeight - 2 * inset, height: screenWidth - 2 * inset)
                     .rotationEffect(.degrees(-90))
-                    .shadow(color: .green.opacity(0.7), radius: 4)
             }
             .frame(width: screenWidth, height: screenHeight)
             .rotationEffect(.degrees(-14.43))
@@ -127,7 +125,6 @@ struct BigMetric: View {
             Image(systemName: symbol)
                 .font(.title2)
                 .foregroundStyle(color.gradient)
-                .shadow(color: color.opacity(0.6), radius: 8)
                 .symbolEffect(.pulse, isActive: live)
             Text(value)
                 .font(.system(size: 30, weight: .bold, design: .rounded))
@@ -140,14 +137,13 @@ struct BigMetric: View {
     }
 }
 
-/// A recent activity as a floating tile: glowing sport icon, big number.
+/// A recent activity as a floating tile: sport icon, big number.
 struct ActivityTile: View {
     var activity: FitnessActivity
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ZStack {
-                Circle().fill(activity.color.opacity(0.35)).frame(width: 64, height: 64).blur(radius: 14)
                 Circle().fill(activity.color.gradient).frame(width: 56, height: 56)
                 Image(systemName: activity.symbol).font(.title2.weight(.semibold)).foregroundStyle(.white)
             }
