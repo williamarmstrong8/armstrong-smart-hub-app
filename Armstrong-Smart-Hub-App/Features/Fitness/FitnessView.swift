@@ -519,6 +519,27 @@ struct WatchSheet: View {
                     Text("Each sync copies up to \(watch.files.perSyncLimit) of the newest activity, sleep and monitoring files, then sends them to the hub. Nothing on the watch is changed or removed.")
                 }
 
+                Section {
+                    let files = watch.files
+                    if let last = files.lastSync {
+                        ForEach(last.byKind.sorted { $0.key < $1.key }, id: \.key) { kind, count in
+                            LabeledContent("Listed: \(kind)", value: "\(count)")
+                        }
+                    }
+                    let kinds = Dictionary(grouping: files.store.saved.values, by: \.kind)
+                    ForEach(kinds.keys.sorted(), id: \.self) { kind in
+                        let items = kinds[kind] ?? []
+                        LabeledContent("On phone: \(kind)", value: "\(items.count), \(items.filter { $0.uploadedAt != nil }.count) sent")
+                    }
+                    ForEach(files.store.saved.values.filter { $0.parseError != nil }.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }.prefix(10), id: \.id) { item in
+                        Text("\(item.kind): \(item.parseError ?? "")").font(.caption).foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("Data check")
+                } footer: {
+                    Text("Which file types the watch lists, what reached this phone, and any file the hub couldn't read.")
+                }
+
                 Section("Connection log") {
                     if watch.log.isEmpty { Text("Nothing yet.").foregroundStyle(.secondary) }
                     ForEach(watch.log.suffix(80).reversed()) { line in

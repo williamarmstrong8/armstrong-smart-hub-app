@@ -86,15 +86,27 @@ final class WatchFiles {
 
             let wanted = listed
                 .filter { GarminFiles.healthKinds.contains($0.kind) && $0.size > 0 && $0.size <= maxFileBytes && !store.has($0) }
-                .sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+                // Sleep, HRV and metrics first so the many monitoring files can't use up the
+                // per-sync limit; newest first within each kind.
+                .sorted {
+                    let (a, b) = (Self.priority($0.kind), Self.priority($1.kind))
+                    return a != b ? a < b : ($0.date ?? .distantPast) > ($1.date ?? .distantPast)
+                }
                 .prefix(perSyncLimit)
             for (number, file) in wanted.enumerated() {
                 progress = "Downloading \(file.kind.replacingOccurrences(of: "_", with: " ")) \(number + 1) of \(wanted.count)"
                 fraction = 0.2 + 0.65 * Double(number) / Double(max(wanted.count, 1))
-                let data = try await download(file)
-                try store.save(file, data: data)
-                downloaded += 1
-                link.note("Saved \(file.kind) (\(data.count) bytes, FIT \(GarminFiles.isFIT(data) ? "valid" : "INVALID"))")
+                do {
+                    let data = try await download(file)
+                    try store.save(file, data: data)
+                    downloaded += 1
+                    link.note("Saved \(file.kind) (\(data.count) bytes, FIT \(GarminFiles.isFIT(data) ? "valid" : "INVALID"))")
+                } catch {
+                    // One bad file shouldn't stop the rest; a lost connection does.
+                    link.note("Skipped \(file.kind): \(error.localizedDescription)")
+                    failure = failure ?? "\(file.kind): \(error.localizedDescription)"
+                    if link.state != .connected { throw error }
+                }
             }
         } catch {
             failure = error.localizedDescription
@@ -138,9 +150,20 @@ final class WatchFiles {
             var request = api.request("/api/mobile/fitness?\(query.percentEncodedQuery ?? "")", method: "POST", timeout: 120)
             request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             request.httpBody = data
-            let result: UploadResult = try await api.send(request)
+            let result: UploadResult
+            do {
+                result = try await api.send(request)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // The hub refused this file; keep going so it doesn't block the ones behind it.
+                store.markFailed(item.id, error: error.localizedDescription)
+                link?.note("Hub refused \(item.kind): \(error.localizedDescription)")
+                continue
+            }
             if let error = result.error, result.parsed == nil { throw APIError(message: error) }
             store.markUploaded(item.id, parseError: result.error)
+            if let error = result.error { link?.note("Hub couldn't read \(item.kind): \(error)") }
             count += 1
             link?.note("Sent \(item.kind) to the hub\(result.duplicate == true ? " (already there)" : "")")
         }
@@ -155,6 +178,12 @@ final class WatchFiles {
         let body = Live(day: day, steps: link.steps?.count, goal: link.steps.flatMap { $0.goal > 0 ? $0.goal : nil },
                         restingHr: link.heartRate?.restingBPM)
         let _: Empty? = try? await api.post("/api/mobile/fitness/live", body: body)
+    }
+
+    /// Download order: the data that was missing from the app comes before bulk monitoring.
+    private static func priority(_ kind: String) -> Int {
+        ["sleep": 0, "hrv_status": 1, "metrics": 2, "sleep_disruption": 3, "activity": 4,
+         "monitor_daily": 5, "monitor_a": 6, "monitor": 7, "skin_temp": 8, "weight": 9][kind] ?? 10
     }
 
     private func reset() {
@@ -427,6 +456,11 @@ final class FitStore {
         }
         saved[file.id] = Saved(id: file.id, kind: file.kind, size: data.count, date: file.date, path: path,
                                fitValid: GarminFiles.isFIT(data), savedAt: .now)
+        write(saved, to: "saved.json")
+    }
+
+    func markFailed(_ id: String, error: String) {
+        saved[id]?.parseError = "not accepted: \(error)"
         write(saved, to: "saved.json")
     }
 
