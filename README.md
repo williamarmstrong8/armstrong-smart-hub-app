@@ -16,6 +16,24 @@ The native app for [Armstrong Hub](https://github.com/williamarmstrong8/armstron
 - Tool calls run on the hub (`/api/mobile/voice/tool`), which returns the card to show. Jev
   (`/api/mobile/voice/intent`) guesses the screen early so the UI can morph before the tool finishes.
 
+## Fitness (Garmin watch, no Garmin cloud)
+
+The Fitness tab talks straight to a Garmin watch (built against a Forerunner 965) over Bluetooth, in place of Garmin
+Connect. iOS handles bonding: the system pairing prompt appears the first time the app subscribes to the watch. The
+app then opens Garmin's GFDI channel (`CLOSE_ALL`, a multi-link handle per service, COBS-framed messages) and streams
+live heart rate and steps. It never archives, deletes or changes anything on the watch.
+
+- **One pairing.** The watch pairs with one phone or computer at a time. Remove it from Garmin Connect (and from the
+  Pi: `bluetoothctl remove <address>`) first, then open Settings → Connectivity → Phone → Pair Phone on the watch.
+- **Background limits.** iOS only keeps Bluetooth sessions going in the background for apps that declare it, and
+  never for an app the user force-quits from the app switcher: after a force-quit nothing syncs until the app is
+  opened again.
+- **License.** `Features/Fitness/Garmin` is a port of protocol code from
+  [garmin-ble](https://github.com/gwerneckp/garmin-ble) (AGPL-3.0) and
+  [Gadgetbridge](https://codeberg.org/Freeyourgadget/Gadgetbridge) (AGPL-3.0-or-later). Keeping the app for personal
+  use is fine; distributing it (TestFlight to others, the App Store) would require releasing the app's source under
+  the AGPL, which also conflicts with App Store terms. Review this before sharing builds.
+
 ## Build
 
 Open `Armstrong-Smart-Hub-App.xcodeproj` in Xcode and run. ONNX Runtime comes in through Swift Package Manager.

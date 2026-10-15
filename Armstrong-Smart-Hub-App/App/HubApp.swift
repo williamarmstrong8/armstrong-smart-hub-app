@@ -3,11 +3,14 @@ import SwiftUI
 @main
 struct HubApp: App {
     @State private var session = AppSession()
+    /// One Bluetooth link to the watch for the app's lifetime.
+    @State private var watch = WatchLink()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(session)
+                .environment(watch)
         }
     }
 }
@@ -34,7 +37,7 @@ struct RootView: View {
 }
 
 enum HubTab: Hashable {
-    case home, finance, calendar, food
+    case home, finance, calendar, food, fitness
 }
 
 /// The iPhone's tabs.
@@ -54,6 +57,9 @@ struct MainTabView: View {
             }
             Tab("Food", systemImage: "fork.knife", value: .food) {
                 FoodView()
+            }
+            Tab("Fitness", systemImage: "figure.run", value: .fitness) {
+                FitnessView()
             }
         }
     }
