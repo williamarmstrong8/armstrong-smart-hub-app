@@ -179,9 +179,9 @@ struct FitnessView: View {
                         let worked = days.contains(day)
                         let isToday = calendar.isDate(day, inSameDayAs: start)
                         VStack(spacing: 8) {
-                            LucideIcon(name: worked ? "circle-check" : "circle", size: 30)
+                            LucideIcon(name: worked ? "circle-check" : "circle", size: 46)
                                 .foregroundStyle(worked ? Color.primary : Color.primary.opacity(0.2))
-                                .frame(height: 36)
+                                .frame(height: 50)
                             Text(day.formatted(.dateTime.weekday(.narrow)))
                                 .font(.caption.weight(isToday ? .bold : .regular))
                                 .foregroundStyle(isToday ? Color.primary : Color.secondary)
