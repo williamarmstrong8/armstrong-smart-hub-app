@@ -139,7 +139,7 @@ final class WatchFiles {
     private func postLive(api: APIClient) async {
         guard let link, link.steps != nil || link.heartRate?.restingBPM != nil else { return }
         struct Live: Encodable { var day: String; var steps: Int?; var goal: Int?; var restingHr: Int? }
-        let day = Date.now.formatted(.iso8601.year().month().day().dateSeparator(.dash))
+        let day = localDay()
         let body = Live(day: day, steps: link.steps?.count, goal: link.steps.flatMap { $0.goal > 0 ? $0.goal : nil },
                         restingHr: link.heartRate?.restingBPM)
         let _: Empty? = try? await api.post("/api/mobile/fitness/live", body: body)
