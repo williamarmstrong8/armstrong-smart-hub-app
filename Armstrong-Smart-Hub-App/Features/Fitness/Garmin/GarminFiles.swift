@@ -175,10 +175,21 @@ enum GarminFiles {
         return Protobuf.decode(inner)
     }
 
+    /// The "already synced" flag value, as both halves of a FileId (0xa5a5).
+    static let syncedFlag: UInt64 = 42405
+
     /// FileListRequest (field 9), continuing from a cursor or a page, with timestamps.
-    static func fileListRequest(cursor: UInt64? = nil, page: UInt64? = nil) -> [UInt8] {
+    /// `unsyncedOnly` excludes files flagged as synced, as Gadgetbridge always does;
+    /// without it the watch walks months of old files and may never reach the
+    /// recent monitoring and sleep files. This app never sets the flag, so it only
+    /// hides files Garmin Connect already took.
+    static func fileListRequest(cursor: UInt64? = nil, page: UInt64? = nil, unsyncedOnly: Bool = false) -> [UInt8] {
         var request: [(UInt64, Protobuf.Value)] = []
         if let cursor { request.append((1, .varint(cursor))) } else if let page { request.append((2, .varint(page))) }
+        if unsyncedOnly {
+            let flag = Protobuf.encode([(1, .fixed64(syncedFlag)), (2, .fixed64(syncedFlag))])
+            request += [(4, .bytes(flag)), (5, .bytes(flag))]
+        }
         request.append((7, .varint(0)))
         return fileSync([(9, .bytes(Protobuf.encode(request)))])
     }
@@ -208,6 +219,7 @@ enum GarminFiles {
         var kind: String
         var size: Int
         var date: Date?
+        var page: UInt64?
     }
 
     struct FileList {
@@ -221,9 +233,22 @@ enum GarminFiles {
     /// carries the type's name; the rest refer to it by name id.
     static func fileList(_ sync: Protobuf.Fields) -> FileList? {
         guard let raw = sync.bytes(10), let fields = Protobuf.decode(raw) else { return nil }
+        return FileList(status: fields.int(1), cursor: fields.int(2), nextPage: fields.int(3),
+                        files: listedFiles(fields.all(4).compactMap(\.bytes)))
+    }
+
+    /// NewFileNotification (field 12): files the watch announces on its own,
+    /// which can include ones its file list leaves out.
+    static func newFiles(_ sync: Protobuf.Fields) -> [ListedFile] {
+        guard let raw = sync.bytes(12), let fields = Protobuf.decode(raw) else { return [] }
+        return listedFiles(fields.all(1).compactMap(\.bytes))
+    }
+
+    /// File messages, resolving type names given only by name id.
+    private static func listedFiles(_ entries: [[UInt8]]) -> [ListedFile] {
         var names: [UInt64: String] = [:]
         var files: [ListedFile] = []
-        for entry in fields.all(4).compactMap(\.bytes) {
+        for entry in entries {
             guard let file = Protobuf.decode(entry) else { continue }
             let ident = file.bytes(1).flatMap(Protobuf.decode) ?? Protobuf.Fields()
             let type = file.bytes(2).flatMap(Protobuf.decode) ?? Protobuf.Fields()
@@ -232,9 +257,10 @@ enum GarminFiles {
             if let name, !name.isEmpty, let nameID, names[nameID] == nil { names[nameID] = name }
             let id = String(format: "%016llx%016llx", ident.int(1) ?? 0, ident.int(2) ?? 0)
             files.append(ListedFile(entry: entry, id: id, kind: kind(name: name ?? nameID.flatMap { names[$0] }, code: type.int(1)),
-                                    size: Int(file.int(3) ?? 0), date: file.int(7).flatMap { date(garminSeconds: $0) }))
+                                    size: Int(file.int(3) ?? 0), date: file.int(7).flatMap { date(garminSeconds: $0) },
+                                    page: file.int(5)))
         }
-        return FileList(status: fields.int(1), cursor: fields.int(2), nextPage: fields.int(3), files: files)
+        return files
     }
 
     /// Our name for a listed type: "FIT_TYPE_49" or "SLEEP" → "sleep".

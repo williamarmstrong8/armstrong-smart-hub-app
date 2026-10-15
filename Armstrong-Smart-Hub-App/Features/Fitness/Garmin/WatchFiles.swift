@@ -27,7 +27,7 @@ final class WatchFiles {
     let store = FitStore()
 
     /// Newest files fetched per sync, so a first sync of a full watch is gradual.
-    var perSyncLimit = 10
+    var perSyncLimit = 25
     private let maxFileBytes = 4 * 1024 * 1024
     private let idleTimeout: TimeInterval = 15
 
@@ -36,6 +36,8 @@ final class WatchFiles {
     // Protobuf requests waiting for their reply, by request id.
     private var pending: [UInt16: [UInt8]] = [:]
     private var inbox: [Protobuf.Fields] = []
+    /// Files the watch announced with a NewFileNotification during this sync.
+    private var announced: [GarminFiles.ListedFile] = []
     private var nextRequestID: UInt16 = 0xC000
     private var lastProgress = Date()
 
@@ -69,6 +71,8 @@ final class WatchFiles {
             // Makes the watch flush pending data, as Gadgetbridge does before every sync.
             let directory = try await downloadLegacy(GarminFiles.directoryIndex, maxBytes: 256 * 1024)
             link.note("Legacy directory: \(GarminFiles.directoryFITCount(directory)) FIT files")
+            // The flush can make the watch announce new files; give it a moment.
+            try? await Task.sleep(for: .seconds(2))
 
             progress = "Listing files"
             listed = try await listFiles()
@@ -199,25 +203,49 @@ final class WatchFiles {
     }
 
     /// The whole file list: follow the cursor, then newer pages, at most 30 responses.
+    /// Lists files not yet synced (where new monitoring and sleep files are),
+    /// then everything, and merges the two by id.
     private func listFiles() async throws(FileError) -> [GarminFiles.ListedFile] {
         var files: [GarminFiles.ListedFile] = []
+        var ids: Set<String> = []
+        for unsyncedOnly in [true, false] {
+            let listed = try await listFiles(unsyncedOnly: unsyncedOnly)
+            link?.note("Watch lists \(unsyncedOnly ? "unsynced" : "all"): \(Self.describe(listed))")
+            for file in listed where ids.insert(file.id).inserted { files.append(file) }
+        }
+        for file in announced where ids.insert(file.id).inserted { files.append(file) }
+        return files
+    }
+
+    private func listFiles(unsyncedOnly: Bool) async throws(FileError) -> [GarminFiles.ListedFile] {
+        var files: [GarminFiles.ListedFile] = []
+        var ids: Set<String> = []
         var cursor: UInt64?
         var page: UInt64?
         var seen: Set<UInt64> = []
         for _ in 0..<30 {
-            let reply = try await request(GarminFiles.fileListRequest(cursor: cursor, page: page), answer: 10)
+            let reply = try await request(GarminFiles.fileListRequest(cursor: cursor, page: page, unsyncedOnly: unsyncedOnly), answer: 10)
             guard let list = GarminFiles.fileList(reply) else { throw .protocolError("file list didn't decode") }
             if let status = list.status, status != 0 { throw .refused("file list status \(status)") }
-            files += list.files
+            let fresh = list.files.filter { ids.insert($0.id).inserted }
+            files += fresh
             progress = "Listing files (\(files.count))"
             cursor = list.cursor
             if cursor == nil {
-                guard !list.files.isEmpty, let next = list.nextPage, !seen.contains(next) else { break }
+                // Some watches leave out next_page_id; it matches the highest page id
+                // listed (Gadgetbridge #5461).
+                let next = list.nextPage ?? list.files.compactMap(\.page).max()
+                guard !fresh.isEmpty, let next, seen.insert(next).inserted else { break }
                 page = next
-                seen.insert(next)
             }
         }
         return files
+    }
+
+    /// "activity 12, sleep 3, …", most first.
+    private static func describe(_ files: [GarminFiles.ListedFile]) -> String {
+        let counts = Dictionary(grouping: files, by: \.kind).mapValues(\.count).sorted { $0.value > $1.value }
+        return counts.isEmpty ? "none" : counts.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
     }
 
     private func download(_ file: GarminFiles.ListedFile) async throws(FileError) -> [UInt8] {
@@ -326,6 +354,11 @@ final class WatchFiles {
         if !ours { link.send(GFDIMessage.protobufAck(message.type, requestID: chunk.requestID, offset: 0)) }
         if sync.has(5) { // TransferStatusRequest: answer as Gadgetbridge does
             link.send(GarminFiles.protobufRequest(.protobufResponse, requestID: chunk.requestID, body: GarminFiles.transferStatusResponse()))
+        }
+        if sync.has(12) {
+            let files = GarminFiles.newFiles(sync)
+            announced += files
+            link.note("Watch announced \(files.count) new file(s): \(Self.describe(files))")
         }
         inbox.append(sync)
         return true

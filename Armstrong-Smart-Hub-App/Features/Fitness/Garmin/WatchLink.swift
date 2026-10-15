@@ -184,6 +184,25 @@ final class WatchLink: NSObject {
     func note(_ text: String) {
         log.append(LogLine(text: text))
         if log.count > 200 { log.removeFirst(log.count - 200) }
+        Self.appendToLogFile(text)
+    }
+
+    /// The log also goes to Application Support/Fitness/connection.log (last ~200 KB),
+    /// so a sync can be diagnosed off the phone.
+    private static func appendToLogFile(_ text: String) {
+        let url = URL.applicationSupportDirectory.appending(path: "Fitness/connection.log")
+        let line = Data("\(Date.now.formatted(.iso8601)) \(text)\n".utf8)
+        guard let handle = try? FileHandle(forWritingTo: url) else {
+            try? line.write(to: url)
+            return
+        }
+        defer { try? handle.close() }
+        if let size = try? handle.seekToEnd(), size > 200_000 {
+            try? handle.close()
+            try? line.write(to: url)
+            return
+        }
+        try? handle.write(contentsOf: line)
     }
 
     /// CLOSE_ALL, the GFDI handle, then the live heart rate and steps services.
