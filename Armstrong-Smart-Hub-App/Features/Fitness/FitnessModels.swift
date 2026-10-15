@@ -7,8 +7,27 @@ struct FitnessSnapshot: Decodable {
     var sleep: [SleepNight]
     var heartRate: [HeartRatePoint]
     var files: [FileCount]
+    /// Overnight HRV, newest first. Absent until the hub has the HRV update.
+    var hrv: [FitnessHrv]?
 
     struct FileCount: Decodable { var kind: String; var count: Int }
+}
+
+struct FitnessHrv: Decodable, Identifiable {
+    var id: String
+    var day: String
+    var weeklyAverage: Double?
+    var lastNightAverage: Double?
+    var lastNight5MinHigh: Double?
+    var baselineLowUpper: Double?
+    var baselineBalancedLower: Double?
+    var baselineBalancedUpper: Double?
+    var status: String?
+    var date: Date? {
+        let parts = day.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
 }
 
 struct FitnessDay: Decodable, Identifiable {

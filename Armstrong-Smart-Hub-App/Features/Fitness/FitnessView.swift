@@ -31,6 +31,7 @@ struct FitnessView: View {
                         today
                         heartRate
                         sleep
+                        hrv
                         activities
                         trends
                     }
@@ -303,6 +304,53 @@ struct FitnessView: View {
         .disabled(store.nights.isEmpty)
     }
 
+    // MARK: HRV
+
+    @ViewBuilder private var hrv: some View {
+        let nights = (store.snapshot?.hrv ?? []).filter { $0.lastNightAverage != nil && $0.date != nil }
+        if let last = nights.first, let value = last.lastNightAverage {
+            FloatingSection(title: "HRV", trailing: last.status.map { $0.capitalized }) {
+                HStack(alignment: .firstTextBaseline) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("\(Int(value.rounded()))")
+                            .font(.system(size: 40, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.teal)
+                            .monospacedDigit()
+                        Text("ms").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if let weekly = last.weeklyAverage {
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text("\(Int(weekly.rounded()))").font(.system(size: 30, weight: .heavy, design: .rounded)).monospacedDigit()
+                            Text("7-day avg").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Chart {
+                    if let low = last.baselineBalancedLower, let high = last.baselineBalancedUpper, let first = nights.last?.date {
+                        RectangleMark(xStart: .value("From", first), xEnd: .value("To", last.date ?? first),
+                                      yStart: .value("Low", low), yEnd: .value("High", high))
+                            .foregroundStyle(Color.teal.opacity(0.12))
+                    }
+                    ForEach(nights.reversed()) { night in
+                        if let date = night.date, let average = night.lastNightAverage {
+                            LineMark(x: .value("Night", date), y: .value("HRV", average))
+                                .interpolationMethod(.monotone)
+                                .foregroundStyle(.teal)
+                                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+                            PointMark(x: .value("Night", date), y: .value("HRV", average))
+                                .foregroundStyle(.teal)
+                                .symbolSize(18)
+                        }
+                    }
+                }
+                .chartYScale(domain: .automatic(includesZero: false))
+                .chartYAxis(.hidden)
+                .frame(height: 110)
+            }
+        }
+    }
+
     // MARK: Activities
 
     private var activities: some View {
@@ -479,6 +527,20 @@ struct WatchSheet: View {
     @Environment(WatchLink.self) private var watch
     @Environment(\.dismiss) private var dismiss
     @State private var pairing = false
+    @State private var reparse: String?
+
+    /// Asks the hub to parse every file it has stored again, so data from before a parser fix shows up.
+    private func rereadHub() async {
+        reparse = "Working…"
+        struct Result: Decodable { var files: Int; var parsed: Int; var failed: Int }
+        do {
+            let request = session.api.request("/api/mobile/fitness/reparse?tz=\(TimeZone.current.secondsFromGMT())", method: "POST", timeout: 300)
+            let result: Result = try await session.api.send(request)
+            reparse = "\(result.parsed) of \(result.files) read\(result.failed > 0 ? ", \(result.failed) failed" : "")"
+        } catch {
+            reparse = error.localizedDescription
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -507,6 +569,16 @@ struct WatchSheet: View {
                         }
                     }
                     .disabled(files.isSyncing || (watch.state != .connected && files.store.pendingUpload == 0))
+                    Button {
+                        Task { await rereadHub() }
+                    } label: {
+                        HStack {
+                            Text("Re-read stored files on the hub")
+                            Spacer()
+                            if let reparse { Text(reparse).foregroundStyle(.secondary).font(.caption) }
+                        }
+                    }
+                    .disabled(reparse == "Working…")
                     LabeledContent("Files on this phone", value: "\(files.store.saved.count)")
                     LabeledContent("Waiting to send", value: "\(files.store.pendingUpload)")
                     if let last = files.lastSync {
