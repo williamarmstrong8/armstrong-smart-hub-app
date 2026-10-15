@@ -123,15 +123,15 @@ struct BigMetric: View {
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: symbol)
-                .font(.title2)
-                .foregroundStyle(color.gradient)
+                .font(.system(size: 26, weight: .ultraLight))
+                .foregroundStyle(.primary)
                 .symbolEffect(.pulse, isActive: live)
             Text(value)
                 .font(.system(size: 30, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText())
             Text(unit).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-            Text(title).font(.caption).foregroundStyle(color)
+            Text(title).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -143,10 +143,10 @@ struct ActivityTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ZStack {
-                Circle().fill(activity.color.gradient).frame(width: 56, height: 56)
-                Image(systemName: activity.symbol).font(.title2.weight(.semibold)).foregroundStyle(.white)
-            }
+            Image(systemName: activity.symbol)
+                .font(.system(size: 40, weight: .ultraLight))
+                .foregroundStyle(.primary)
+                .frame(height: 48, alignment: .leading)
             Text(activity.title).font(.subheadline.weight(.semibold)).lineLimit(1)
             Text(activity.hasDistance ? FitnessFormat.distance(activity.distanceMeters) : FitnessFormat.duration(activity.duration))
                 .font(.system(size: 26, weight: .bold, design: .rounded))
@@ -155,7 +155,7 @@ struct ActivityTile: View {
                 .lineLimit(1)
             HStack(spacing: 8) {
                 if activity.hasDistance { Text(FitnessFormat.duration(activity.duration)) }
-                if let hr = activity.avgHr { Label("\(hr)", systemImage: "heart.fill").labelStyle(TintedDot(color: .red)) }
+                if let hr = activity.avgHr { Label("\(hr)", systemImage: "heart").font(.caption.weight(.light)) }
             }
             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             if let start = activity.start {

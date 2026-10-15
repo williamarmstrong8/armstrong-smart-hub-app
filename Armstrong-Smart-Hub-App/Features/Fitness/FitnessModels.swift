@@ -157,7 +157,7 @@ enum FitnessFormat {
 
     static func symbol(sport: String, subSport: String?) -> String {
         switch subSport {
-        case "strength_training": return "dumbbell.fill"
+        case "strength_training": return "dumbbell"
         case "yoga": return "figure.yoga"
         case "pilates": return "figure.pilates"
         case "hiit": return "figure.highintensity.intervaltraining"

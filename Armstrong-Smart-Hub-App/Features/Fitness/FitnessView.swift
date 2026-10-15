@@ -155,10 +155,10 @@ struct FitnessView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
             HStack(alignment: .top) {
-                BigMetric(symbol: "heart.fill", color: Self.standCyan, title: "Heart rate",
+                BigMetric(symbol: "heart", color: Self.standCyan, title: "Heart rate",
                           value: bpm.map { "\($0)" } ?? "–", unit: "bpm", live: bpm != nil && watch.state == .connected)
-                BigMetric(symbol: "bed.double.fill", color: .indigo, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
-                BigMetric(symbol: "flame.fill", color: Self.exerciseGreen, title: "This week",
+                BigMetric(symbol: "bed.double", color: .indigo, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
+                BigMetric(symbol: "flame", color: Self.exerciseGreen, title: "This week",
                           value: "\(store.thisWeek.count)", unit: store.thisWeek.count == 1 ? "activity" : "activities")
             }
             .animation(.smooth, value: steps)
@@ -262,7 +262,7 @@ struct FitnessView: View {
                                 ActivitiesView(activities: store.activities)
                             } label: {
                                 VStack(spacing: 8) {
-                                    Image(systemName: "arrow.right.circle.fill").font(.system(size: 40)).foregroundStyle(.tint)
+                                    Image(systemName: "arrow.right").font(.system(size: 34, weight: .ultraLight)).foregroundStyle(.primary)
                                     Text("All \(store.activities.count)").font(.subheadline.weight(.semibold))
                                 }
                                 .frame(width: 80, height: 120)
@@ -370,9 +370,8 @@ struct ActivityRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: activity.symbol)
-                .font(.title3).foregroundStyle(.white)
+                .font(.system(size: 24, weight: .ultraLight)).foregroundStyle(.primary)
                 .frame(width: 40, height: 40)
-                .background(activity.color.gradient, in: .rect(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 2) {
                 Text(activity.title).font(.subheadline.weight(.semibold))
                 if let start = activity.start {
@@ -386,7 +385,7 @@ struct ActivityRow: View {
                     .font(.subheadline.weight(.semibold)).monospacedDigit()
                 HStack(spacing: 6) {
                     if activity.hasDistance { Text(FitnessFormat.duration(activity.duration)) }
-                    if let hr = activity.avgHr { Label("\(hr)", systemImage: "heart.fill").labelStyle(TintedDot(color: .red)) }
+                    if let hr = activity.avgHr { Label("\(hr)", systemImage: "heart").font(.caption.weight(.light)) }
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
