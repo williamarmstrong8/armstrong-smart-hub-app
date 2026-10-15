@@ -42,7 +42,7 @@ struct FitnessView: View {
                 ToolbarItem(placement: .topBarLeading) { AccountButton() }
                 if watch.savedWatchID != nil {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Watch", systemImage: "applewatch") { showingWatch = true }
+                        Button { showingWatch = true } label: { LucideIcon(name: "watch", size: 22) }.accessibilityLabel("Watch")
                     }
                 }
             }
@@ -72,7 +72,9 @@ struct FitnessView: View {
             Text("The watch talks straight to this phone, and your history goes to the hub. No Garmin Connect, no Garmin cloud.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            Button("Pair your watch", systemImage: "plus") { pairing = true }
+            Button { pairing = true } label: {
+                HStack(spacing: 6) { LucideIcon(name: "plus", size: 18); Text("Pair your watch") }
+            }
                 .buttonStyle(.borderedProminent)
                 .padding(.top, 6)
         }
@@ -177,8 +179,7 @@ struct FitnessView: View {
                         let worked = days.contains(day)
                         let isToday = calendar.isDate(day, inSameDayAs: start)
                         VStack(spacing: 8) {
-                            Image(systemName: worked ? "checkmark.circle" : "circle")
-                                .font(.system(size: 28, weight: .ultraLight))
+                            LucideIcon(name: worked ? "circle-check" : "circle", size: 30)
                                 .foregroundStyle(worked ? Color.primary : Color.primary.opacity(0.2))
                                 .frame(height: 36)
                             Text(day.formatted(.dateTime.weekday(.narrow)))
@@ -191,58 +192,11 @@ struct FitnessView: View {
                 .padding(.top, 6)
                 .animation(.smooth, value: streakCount)
             }
-            triathlon
             HStack(alignment: .top) {
-                BigMetric(symbol: "figure.walk", color: .primary, title: "Steps", value: steps.formatted(), unit: "today")
+                BigMetric(symbol: "footprints", color: .primary, title: "Steps", value: steps.formatted(), unit: "today")
                 BigMetric(symbol: "heart", color: .primary, title: "Heart rate",
                           value: bpm.map { "\($0)" } ?? "–", unit: "bpm", live: bpm != nil && watch.state == .connected)
-                BigMetric(symbol: "bed.double", color: .primary, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
-            }
-        }
-    }
-
-    // MARK: Triathlon mix
-
-    private var triathlon: some View {
-        let calendar = Calendar.current
-        let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? calendar.startOfDay(for: .now)
-        let thisWeek = store.activities.filter { ($0.start ?? .distantPast) >= week }
-        let legs: [(name: String, symbol: String, sports: Set<String>)] = [
-            ("Swim", "figure.pool.swim", ["swimming"]),
-            ("Bike", "figure.outdoor.cycle", ["cycling", "e_biking"]),
-            ("Run", "figure.run", ["running"]),
-        ]
-        let rows = legs.map { leg -> (String, String, [FitnessActivity]) in
-            (leg.name, leg.symbol, thisWeek.filter { leg.sports.contains($0.sport) })
-        }
-        let totals = rows.map { $0.2.reduce(0) { $0 + ($1.duration ?? 0) } }
-        let biggest = max(totals.max() ?? 0, 1)
-        return FloatingSection(title: "Triathlon mix", trailing: "This week") {
-            VStack(spacing: 18) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    let distance = row.2.reduce(0) { $0 + ($1.distanceMeters ?? 0) }
-                    HStack(spacing: 14) {
-                        Image(systemName: row.1)
-                            .font(.system(size: 26, weight: .ultraLight))
-                            .frame(width: 34)
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(row.0).font(.subheadline.weight(.semibold))
-                                Spacer()
-                                Text(row.2.isEmpty ? "–" : "\(FitnessFormat.distance(distance))  \(FitnessFormat.duration(totals[index]))")
-                                    .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
-                            }
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(Color.primary.opacity(0.12))
-                                    Capsule().fill(Color.primary)
-                                        .frame(width: geo.size.width * totals[index] / biggest)
-                                }
-                            }
-                            .frame(height: 3)
-                        }
-                    }
-                }
+                BigMetric(symbol: "bed-double", color: .primary, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
             }
         }
     }
@@ -344,7 +298,7 @@ struct FitnessView: View {
                                 ActivitiesView(activities: store.activities)
                             } label: {
                                 VStack(spacing: 8) {
-                                    Image(systemName: "arrow.right").font(.system(size: 34, weight: .ultraLight)).foregroundStyle(.primary)
+                                    LucideIcon(name: "arrow-right", size: 34).foregroundStyle(.primary)
                                     Text("All \(store.activities.count)").font(.subheadline.weight(.semibold))
                                 }
                                 .frame(width: 80, height: 120)
@@ -390,8 +344,7 @@ private struct Metric: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: symbol).foregroundStyle(color).frame(width: 18)
-                .symbolEffect(.pulse, isActive: live)
+            LucideIcon(name: symbol, size: 18).foregroundStyle(color)
             VStack(alignment: .leading, spacing: 0) {
                 Text(title).font(.caption).foregroundStyle(.secondary)
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
@@ -451,8 +404,7 @@ struct ActivityRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: activity.symbol)
-                .font(.system(size: 24, weight: .ultraLight)).foregroundStyle(.primary)
+            LucideIcon(name: activity.symbol, size: 26).foregroundStyle(.primary)
                 .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(activity.title).font(.subheadline.weight(.semibold))
@@ -467,11 +419,11 @@ struct ActivityRow: View {
                     .font(.subheadline.weight(.semibold)).monospacedDigit()
                 HStack(spacing: 6) {
                     if activity.hasDistance { Text(FitnessFormat.duration(activity.duration)) }
-                    if let hr = activity.avgHr { Label("\(hr)", systemImage: "heart").font(.caption.weight(.light)) }
+                    if let hr = activity.avgHr { HStack(spacing: 3) { LucideIcon(name: "heart", size: 11); Text("\(hr)") } }
                 }
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
-            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+            LucideIcon(name: "chevron-right", size: 14).foregroundStyle(.tertiary)
         }
         .contentShape(.rect)
     }
@@ -595,9 +547,9 @@ struct PairWatchSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Label("Unpair the watch from Garmin Connect or any other phone or computer. It holds one pairing at a time.", systemImage: "1.circle")
-                    Label("On the watch: Settings → Connectivity → Phone → Pair Phone. Don't scan its QR code.", systemImage: "2.circle")
-                    Label("Pick it below, then accept the pairing request iOS shows.", systemImage: "3.circle")
+                    Label { Text("Unpair the watch from Garmin Connect or any other phone or computer. It holds one pairing at a time.") } icon: { Text("1").monospacedDigit().foregroundStyle(.secondary) }
+                    Label { Text("On the watch: Settings → Connectivity → Phone → Pair Phone. Don't scan its QR code.") } icon: { Text("2").monospacedDigit().foregroundStyle(.secondary) }
+                    Label { Text("Pick it below, then accept the pairing request iOS shows.") } icon: { Text("3").monospacedDigit().foregroundStyle(.secondary) }
                 }
                 .font(.subheadline)
 

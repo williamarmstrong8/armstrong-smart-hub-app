@@ -155,32 +155,26 @@ enum FitnessFormat {
         raw == "generic" ? "Activity" : raw.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
+    /// Lucide icon names (see LucideIcon); Lucide has no runner, so running uses footprints.
     static func symbol(sport: String, subSport: String?) -> String {
         switch subSport {
         case "strength_training": return "dumbbell"
-        case "yoga": return "figure.yoga"
-        case "pilates": return "figure.pilates"
-        case "hiit": return "figure.highintensity.intervaltraining"
-        case "indoor_rowing": return "figure.rower"
-        case "elliptical": return "figure.elliptical"
-        case "stair_climbing": return "figure.stair.stepper"
+        case "yoga", "pilates": return "flame"
+        case "hiit": return "zap"
+        case "indoor_rowing": return "sailboat"
         default: break
         }
         switch sport {
-        case "running": return "figure.run"
-        case "cycling", "e_biking": return "figure.outdoor.cycle"
-        case "swimming": return "figure.pool.swim"
-        case "walking": return "figure.walk"
-        case "hiking", "mountaineering": return "figure.hiking"
-        case "training", "fitness_equipment": return "figure.strengthtraining.traditional"
-        case "rowing", "paddling", "kayaking": return "figure.rower"
-        case "tennis", "racket": return "figure.tennis"
-        case "soccer": return "figure.soccer"
-        case "basketball": return "figure.basketball"
-        case "golf": return "figure.golf"
-        case "alpine_skiing", "snowboarding", "cross_country_skiing": return "figure.skiing.downhill"
-        case "boxing", "mixed_martial_arts": return "figure.boxing"
-        default: return "figure.mixed.cardio"
+        case "running": return "footprints"
+        case "cycling", "e_biking": return "bike"
+        case "swimming": return "waves"
+        case "walking": return "person-standing"
+        case "hiking", "mountaineering": return "mountain"
+        case "training", "fitness_equipment": return "dumbbell"
+        case "rowing", "paddling", "kayaking": return "sailboat"
+        case "tennis", "racket", "soccer", "basketball", "golf", "boxing", "mixed_martial_arts": return "target"
+        case "alpine_skiing", "snowboarding", "cross_country_skiing": return "mountain-snow"
+        default: return "activity"
         }
     }
 
