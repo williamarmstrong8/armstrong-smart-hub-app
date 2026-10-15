@@ -11,7 +11,7 @@ struct FloatingSection<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title.uppercased())
                     .font(.caption.weight(.bold))
@@ -83,25 +83,34 @@ struct WatchHero: View {
     }
 }
 
-/// A big number with a glowing icon, no container.
+/// A big colored number over a quiet icon, no container. Steps carry a slim goal bar.
 struct BigMetric: View {
     var symbol: String
-    var color: Color
+    var tint: Color
     var title: String
     var value: String
-    var unit: String
-    var live = false
+    var progress: Double?
 
     var body: some View {
-        VStack(spacing: 6) {
-            TablerIcon(name: symbol, size: 28)
-                .foregroundStyle(.primary)
+        VStack(spacing: 8) {
+            TablerIcon(name: symbol, size: 24)
+                .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .font(.system(size: 32, weight: .heavy, design: .rounded))
+                .foregroundStyle(tint)
                 .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
                 .contentTransition(.numericText())
-            Text(unit).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
             Text(title).font(.caption).foregroundStyle(.secondary)
+            Capsule().fill(Color.primary.opacity(progress == nil ? 0 : 0.1))
+                .frame(height: 3)
+                .overlay(alignment: .leading) {
+                    if let progress {
+                        GeometryReader { geo in Capsule().fill(tint).frame(width: geo.size.width * progress) }
+                    }
+                }
+                .padding(.horizontal, 12)
         }
         .frame(maxWidth: .infinity)
     }
@@ -113,6 +122,7 @@ struct ActivityTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Capsule().fill(activity.color).frame(width: 28, height: 3)
             TablerIcon(name: activity.symbol, size: 40)
                 .foregroundStyle(.primary)
                 .frame(height: 48, alignment: .leading)

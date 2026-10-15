@@ -17,12 +17,14 @@ struct FitnessView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 28) {
-                    WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil).padding(.horizontal, -16).padding(.top, -12)
+                VStack(spacing: 40) {
+                    VStack(spacing: 4) {
+                        WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil).padding(.horizontal, -20).padding(.top, -12)
+                        if watch.savedWatchID != nil { watchBar }
+                    }
                     if watch.savedWatchID == nil {
                         welcome
                     } else {
-                        watchBar
                         if let error = store.error, !store.loaded {
                             ErrorBanner(message: error)
                         }
@@ -33,7 +35,9 @@ struct FitnessView: View {
                         trends
                     }
                 }
-                .padding(16)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .padding(.bottom, 24)
                 .animation(.smooth, value: watch.state)
             }
             .background(Color(.systemBackground))
@@ -202,48 +206,50 @@ struct FitnessView: View {
         let steps = max(watch.steps?.count ?? 0, store.today?.steps ?? 0)
         let resting = watch.heartRate?.restingBPM ?? store.today?.restingHr ?? store.restingHr
         let bpm = watch.heartRate?.bpm
-        return VStack(alignment: .leading, spacing: 28) {
+        let goal = store.today?.stepGoal ?? watch.steps?.goal
+        return VStack(alignment: .leading, spacing: 36) {
             FloatingSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
-                nextWorkoutView
-                    .padding(.bottom, 8)
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(done ? "Done" : "Not yet")
-                            .font(.system(size: 44, weight: .bold, design: .rounded))
-                        Text("workout today").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("\(streakCount)")
-                            .font(.system(size: 44, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                        Text("day streak").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }
-                HStack(spacing: 0) {
-                    ForEach(weekDays, id: \.self) { day in
-                        let worked = days.contains(day)
-                        let isToday = calendar.isDate(day, inSameDayAs: start)
-                        VStack(spacing: 8) {
-                            TablerIcon(name: worked ? "circle-check" : "circle", size: 46)
-                                .foregroundStyle(worked ? Color.primary : Color.primary.opacity(0.2))
-                                .frame(height: 50)
-                            Text(day.formatted(.dateTime.weekday(.narrow)))
-                                .font(.caption.weight(isToday ? .bold : .regular))
-                                .foregroundStyle(isToday ? Color.primary : Color.secondary)
+                VStack(alignment: .leading, spacing: 32) {
+                    nextWorkoutView
+                    HStack(alignment: .lastTextBaseline) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(done ? "Done" : "Not yet")
+                                .font(.system(size: 48, weight: .heavy, design: .rounded))
+                                .foregroundStyle(done ? Color.green : Color.primary)
+                            Text("workout today").font(.subheadline).foregroundStyle(.secondary)
                         }
-                        .frame(maxWidth: .infinity)
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(streakCount)")
+                                .font(.system(size: 48, weight: .heavy, design: .rounded))
+                                .foregroundStyle(streakCount > 0 ? Color.orange : Color.secondary)
+                                .monospacedDigit()
+                                .contentTransition(.numericText())
+                            Text("day streak").font(.subheadline).foregroundStyle(.secondary)
+                        }
                     }
+                    HStack(spacing: 0) {
+                        ForEach(weekDays, id: \.self) { day in
+                            let worked = days.contains(day)
+                            let isToday = calendar.isDate(day, inSameDayAs: start)
+                            VStack(spacing: 10) {
+                                TablerIcon(name: worked ? "circle-check" : "circle", size: 40)
+                                    .foregroundStyle(worked ? Color.green : Color.primary.opacity(isToday ? 0.5 : 0.18))
+                                Text(day.formatted(.dateTime.weekday(.narrow)))
+                                    .font(.caption.weight(isToday ? .bold : .regular))
+                                    .foregroundStyle(isToday ? Color.primary : Color.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .animation(.smooth, value: streakCount)
                 }
-                .padding(.top, 6)
-                .animation(.smooth, value: streakCount)
             }
-            HStack(alignment: .top) {
-                BigMetric(symbol: "walk", color: .primary, title: "Steps", value: steps.formatted(), unit: "today")
-                BigMetric(symbol: "heart", color: .primary, title: "Heart rate",
-                          value: bpm.map { "\($0)" } ?? "–", unit: "bpm", live: bpm != nil && watch.state == .connected)
-                BigMetric(symbol: "bed", color: .primary, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
+            HStack(alignment: .top, spacing: 12) {
+                BigMetric(symbol: "walk", tint: .green, title: "Steps", value: steps.formatted(),
+                          progress: goal.flatMap { $0 > 0 ? min(Double(steps) / Double($0), 1) : nil })
+                BigMetric(symbol: "heart", tint: .red, title: "Heart bpm", value: bpm.map { "\($0)" } ?? "–")
+                BigMetric(symbol: "bed", tint: .indigo, title: "Resting bpm", value: resting.map(String.init) ?? "–")
             }
         }
     }
@@ -252,38 +258,26 @@ struct FitnessView: View {
 
     private var heartRate: some View {
         let points = (store.snapshot?.heartRate ?? []).compactMap { p in p.date.map { ($0, p.bpm) } }
-        return FloatingSection(title: "Heart rate", trailing: points.isEmpty ? nil : "24 hours") {
+        return FloatingSection(title: "Heart rate", trailing: points.isEmpty ? nil : "\(points.map(\.1).min() ?? 0)–\(points.map(\.1).max() ?? 0) bpm today") {
             if points.isEmpty {
                 Text("All-day heart rate appears once the watch hands over a monitoring file, usually after a day of wear.")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
-                let low = points.map(\.1).min() ?? 0, high = points.map(\.1).max() ?? 0
-                HStack(alignment: .firstTextBaseline, spacing: 24) {
-                    heartStat("Low", "\(low)")
-                    heartStat("High", "\(high)")
-                    heartStat("Resting", store.restingHr.map(String.init) ?? "–")
-                }
+                let low = points.map(\.1).min() ?? 0
                 Chart(points, id: \.0) { point in
                     AreaMark(x: .value("Time", point.0), yStart: .value("Floor", max(low - 10, 0)), yEnd: .value("BPM", point.1))
                         .interpolationMethod(.monotone)
-                        .foregroundStyle(LinearGradient(colors: [.red.opacity(0.4), .red.opacity(0)], startPoint: .top, endPoint: .bottom))
+                        .foregroundStyle(LinearGradient(colors: [.red.opacity(0.28), .red.opacity(0)], startPoint: .top, endPoint: .bottom))
                     LineMark(x: .value("Time", point.0), y: .value("BPM", point.1))
                         .interpolationMethod(.monotone)
                         .foregroundStyle(.red)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                 }
                 .chartYScale(domain: .automatic(includesZero: false))
                 .chartXAxis { AxisMarks(values: .stride(by: .hour, count: 6)) { _ in AxisValueLabel(format: .dateTime.hour()) } }
                 .chartYAxis(.hidden)
-                .frame(height: 150)
+                .frame(height: 140)
             }
-        }
-    }
-
-    private func heartStat(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(value).font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit()
-            Text(label).font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -297,16 +291,16 @@ struct FitnessView: View {
                 if let night = store.lastNight {
                     HStack(alignment: .firstTextBaseline) {
                         Text(FitnessFormat.duration(Double(night.asleepSeconds)))
-                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                            .font(.system(size: 40, weight: .heavy, design: .rounded))
                         Spacer()
                         if let score = night.score {
                             VStack(spacing: 0) {
-                                Text("\(score)").font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.indigo)
+                                Text("\(score)").font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.indigo)
                                 Text("score").font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
-                    StageBar(night: night).frame(height: 22)
+                    StageBar(night: night).frame(height: 14)
                     HStack(alignment: .top) {
                         ForEach(SleepNight.Stage.allCases) { stage in
                             VStack(spacing: 2) {
