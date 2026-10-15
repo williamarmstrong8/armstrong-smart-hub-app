@@ -303,6 +303,8 @@ struct WatchIdentity: Equatable, Codable {
 enum MLRPacket: Equatable {
     case data(handle: UInt8, payload: [UInt8])
     case closeAllResponse
+    /// The watch closed a service's handle, as it does after a file stream.
+    case closedHandle(service: UInt16)
     case registered(service: UInt16, status: UInt8, handle: UInt8)
     case control(UInt8)
 
@@ -320,6 +322,9 @@ enum MLRPacket: Equatable {
             switch Garmin.Control(rawValue: data[1]) {
             case .closeAllResponse:
                 self = .closeAllResponse
+            case .closeHandleResponse:
+                guard data.count >= 12, let service = data.readLE(UInt16.self, at: 10) else { return nil }
+                self = .closedHandle(service: service)
             case .registerResponse:
                 guard data.count >= 14, let service = data.readLE(UInt16.self, at: 10) else { return nil }
                 self = .registered(service: service, status: data[12], handle: data[13])

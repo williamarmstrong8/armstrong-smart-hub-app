@@ -43,6 +43,8 @@ final class WatchLink: NSObject {
     private(set) var stepsAt: Date?
     /// Protocol events for the diagnostics list: message names and sizes, never contents.
     private(set) var log: [LogLine] = []
+    /// History downloads over this link.
+    let files = WatchFiles()
 
     /// The paired watch, remembered so the app can reconnect without scanning.
     private(set) var savedWatchID: UUID? {
@@ -65,17 +67,17 @@ final class WatchLink: NSObject {
     private var assembler = COBSAssembler()
     private var maxWrite = 20
     private var outbox: [[UInt8]] = []
-    private var closeAllWaiter: CheckedContinuation<Bool, Never>?
-    private var registerWaiters: [UInt16: CheckedContinuation<Bool, Never>] = [:]
+    /// Requests waiting for the watch, each with a token so a timeout only answers its own.
+    private var closeAllWaiter: (token: UUID, continuation: CheckedContinuation<Bool, Never>)?
+    private var registerWaiters: [UInt16: (token: UUID, continuation: CheckedContinuation<Bool, Never>)] = [:]
     private var handshakeTask: Task<Void, Never>?
-    /// Bumped per request, so a timeout never answers a later request.
-    private var waiterGeneration = 0
     private var wantsConnection = false
     /// Whether this connection has told the watch its setup is done.
     private var setupSent = false
 
     override init() {
         super.init()
+        files.link = self
         savedWatchID = UserDefaults.standard.string(forKey: Self.savedKey).flatMap(UUID.init(uuidString:))
         savedWatchName = UserDefaults.standard.string(forKey: Self.savedNameKey)
         central = CBCentralManager(delegate: self, queue: .main)
@@ -168,9 +170,9 @@ final class WatchLink: NSObject {
         outbox = []
         rx = nil
         tx = nil
-        closeAllWaiter?.resume(returning: false)
+        closeAllWaiter?.continuation.resume(returning: false)
         closeAllWaiter = nil
-        registerWaiters.values.forEach { $0.resume(returning: false) }
+        registerWaiters.values.forEach { $0.continuation.resume(returning: false) }
         registerWaiters = [:]
     }
 
@@ -179,7 +181,7 @@ final class WatchLink: NSObject {
         note("Stopped: \(message)")
     }
 
-    private func note(_ text: String) {
+    func note(_ text: String) {
         log.append(LogLine(text: text))
         if log.count > 200 { log.removeFirst(log.count - 200) }
     }
@@ -193,7 +195,7 @@ final class WatchLink: NSObject {
                 if !Task.isCancelled { fail("The watch didn't answer. If it's still paired to Garmin Connect or the Pi, remove it there first.") }
                 return
             }
-            guard await register(.gfdi) else {
+            guard await register(Garmin.Service.gfdi.rawValue) != nil else {
                 if !Task.isCancelled { fail("The watch refused the data channel.") }
                 return
             }
@@ -206,7 +208,7 @@ final class WatchLink: NSObject {
             }
             for service in [Garmin.Service.realtimeHeartRate, .realtimeSteps] {
                 guard !Task.isCancelled else { return }
-                if await register(service), let handle = handles[service.rawValue] {
+                if let handle = await register(service.rawValue) {
                     write([handle, 0x01])
                 } else {
                     note("Watch refused \(service)")
@@ -217,36 +219,39 @@ final class WatchLink: NSObject {
 
     private func closeAll() async -> Bool {
         write(MLRPacket.closeAll())
-        waiterGeneration += 1
-        let generation = waiterGeneration
+        let token = UUID()
         return await withCheckedContinuation { continuation in
-            closeAllWaiter = continuation
+            closeAllWaiter = (token, continuation)
             Task {
                 try? await Task.sleep(for: .seconds(10))
-                guard generation == waiterGeneration else { return }
-                closeAllWaiter?.resume(returning: false)
+                guard closeAllWaiter?.token == token else { return }
+                closeAllWaiter?.continuation.resume(returning: false)
                 closeAllWaiter = nil
             }
         }
     }
 
-    private func register(_ service: Garmin.Service) async -> Bool {
-        write(MLRPacket.register(service.rawValue))
-        waiterGeneration += 1
-        let generation = waiterGeneration
-        return await withCheckedContinuation { continuation in
-            registerWaiters[service.rawValue] = continuation
+    /// Asks for a handle for a service; nil if the watch refuses or doesn't answer.
+    func register(_ service: UInt16) async -> UInt8? {
+        handles[service] = nil // the watch may have closed it since
+        registerWaiters.removeValue(forKey: service)?.continuation.resume(returning: false)
+        write(MLRPacket.register(service))
+        let token = UUID()
+        let accepted = await withCheckedContinuation { continuation in
+            registerWaiters[service] = (token, continuation)
             Task {
                 try? await Task.sleep(for: .seconds(5))
-                guard generation == waiterGeneration else { return }
-                registerWaiters.removeValue(forKey: service.rawValue)?.resume(returning: false)
+                guard registerWaiters[service]?.token == token else { return }
+                registerWaiters.removeValue(forKey: service)?.continuation.resume(returning: false)
             }
         }
+        return accepted ? handles[service] : nil
     }
 
     // MARK: Sending
 
-    private func write(_ packet: [UInt8]) {
+    /// Queues one raw multi-link packet.
+    func write(_ packet: [UInt8]) {
         outbox.append(packet)
         flush()
     }
@@ -259,7 +264,9 @@ final class WatchLink: NSObject {
         }
     }
 
-    private func send(_ frame: [UInt8]) {
+    /// Sends a GFDI frame on the GFDI handle. A frame's packets are queued
+    /// together, so frames never interleave.
+    func send(_ frame: [UInt8]) {
         guard let handle = handles[Garmin.Service.gfdi.rawValue] else { return }
         for packet in MLRPacket.packets(COBS.encode(frame), handle: handle, maxWrite: maxWrite) {
             write(packet)
@@ -273,17 +280,21 @@ final class WatchLink: NSObject {
             note("Undecodable packet (\(bytes.count) bytes)")
             return
         }
+        if case let .closedHandle(service) = packet { handles[service] = nil }
+        if files.handle(packet) { return }
         switch packet {
         case .closeAllResponse:
             handles = [:]
-            closeAllWaiter?.resume(returning: true)
+            closeAllWaiter?.continuation.resume(returning: true)
             closeAllWaiter = nil
         case let .registered(service, status, handle):
             if status == 0 { handles[service] = handle }
             note("Service \(service) \(status == 0 ? "on handle \(handle)" : "refused (\(status))")")
-            registerWaiters.removeValue(forKey: service)?.resume(returning: status == 0)
+            registerWaiters.removeValue(forKey: service)?.continuation.resume(returning: status == 0)
         case let .control(type):
             note("Control message \(type)")
+        case let .closedHandle(service):
+            note("Watch closed service \(service)")
         case let .data(handle, payload):
             switch handles.first(where: { $0.value == handle })?.key {
             case Garmin.Service.gfdi.rawValue:
@@ -310,6 +321,7 @@ final class WatchLink: NSObject {
             return
         }
         note("← \(message.name) (\(message.payload.count) bytes)")
+        if files.handle(message) { return }
         switch Garmin.Message(rawValue: message.type) {
         case .response:
             return

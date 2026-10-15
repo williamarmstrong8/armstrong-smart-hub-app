@@ -23,6 +23,10 @@ Connect. iOS handles bonding: the system pairing prompt appears the first time t
 app then opens Garmin's GFDI channel (`CLOSE_ALL`, a multi-link handle per service, COBS-framed messages) and streams
 live heart rate and steps. It never archives, deletes or changes anything on the watch.
 
+- **History.** "Sync from watch" reads the watch's legacy directory first (so it flushes pending data, as Gadgetbridge
+  does), then lists its files over protobuf file sync and streams each one on service `0x2018` as deflate data. It
+  copies up to 10 of the newest activity, sleep and monitoring FIT files per sync to Application Support/Fitness
+  (excluded from backups). Nothing on the watch is archived, deleted or marked synced.
 - **One pairing.** The watch pairs with one phone or computer at a time. Remove it from Garmin Connect (and from the
   Pi: `bluetoothctl remove <address>`) first, then open Settings → Connectivity → Phone → Pair Phone on the watch.
 - **Background limits.** iOS only keeps Bluetooth sessions going in the background for apps that declare it, and

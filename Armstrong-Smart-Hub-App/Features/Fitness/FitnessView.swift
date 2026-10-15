@@ -13,6 +13,7 @@ struct FitnessView: View {
                     status
                     if watch.savedWatchID != nil {
                         live
+                        history
                     }
                     diagnostics
                 }
@@ -113,6 +114,63 @@ struct FitnessView: View {
         }
         .animation(.smooth, value: watch.heartRate)
         .animation(.smooth, value: watch.steps)
+    }
+
+    // MARK: History
+
+    private var history: some View {
+        let files = watch.files
+        let saved = files.store.saved.values.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+        return Card(title: "History", trailing: saved.isEmpty ? nil : "\(saved.count) on this phone") {
+            if let progress = files.progress {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text(progress).font(.subheadline).foregroundStyle(.secondary)
+                }
+            } else {
+                Button("Sync from watch", systemImage: "arrow.triangle.2.circlepath") { Task { await files.sync() } }
+                    .buttonStyle(.bordered)
+                    .disabled(watch.state != .connected)
+            }
+            if let last = files.lastSync {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(last.failed ?? "Copied \(last.downloaded) new file\(last.downloaded == 1 ? "" : "s")")
+                        .foregroundStyle(last.failed == nil ? Color.primary : Color.red)
+                    Text("Watch lists \(last.listed) files: " + last.byKind.sorted { $0.value > $1.value }.prefix(5)
+                        .map { "\($0.value) \($0.key.replacingOccurrences(of: "_", with: " "))" }.joined(separator: ", "))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
+            ForEach(saved.prefix(8), id: \.id) { item in
+                HStack {
+                    Image(systemName: icon(item.kind)).foregroundStyle(.secondary).frame(width: 22)
+                    VStack(alignment: .leading) {
+                        Text(item.kind.replacingOccurrences(of: "_", with: " ").capitalized).font(.subheadline)
+                        if let date = item.date {
+                            Text(date, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Text(item.size.formatted(.byteCount(style: .file))).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    if !item.fitValid {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                }
+            }
+            Text("Copies up to \(files.perSyncLimit) of the newest activity, sleep and monitoring files per sync. Nothing on the watch is changed or removed.")
+                .font(.caption2).foregroundStyle(.tertiary)
+        }
+        .animation(.smooth, value: files.progress)
+    }
+
+    private func icon(_ kind: String) -> String {
+        switch kind {
+        case "activity": "figure.run"
+        case "sleep", "sleep_disruption": "bed.double"
+        case "hrv_status": "waveform.path.ecg"
+        default: "chart.bar"
+        }
     }
 
     // MARK: Diagnostics
