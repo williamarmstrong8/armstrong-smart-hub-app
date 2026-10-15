@@ -15,7 +15,8 @@ struct FitnessView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 28) {
+                    WatchHero().padding(.horizontal, -16).padding(.top, -8)
                     if watch.savedWatchID == nil {
                         welcome
                     } else {
@@ -33,8 +34,9 @@ struct FitnessView: View {
                 .padding(16)
                 .animation(.smooth, value: watch.state)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color(.systemBackground))
             .navigationTitle("Fitness")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { AccountButton() }
                 if watch.savedWatchID != nil {
@@ -58,13 +60,14 @@ struct FitnessView: View {
     // MARK: Watch
 
     private var welcome: some View {
-        Card {
-            Image(systemName: "applewatch.radiowaves.left.and.right").font(.largeTitle).foregroundStyle(.tint)
-            Text("Connect your Garmin").font(.title3.bold())
+        VStack(spacing: 10) {
+            Text("Connect your Garmin").font(.title2.bold())
             Text("The watch talks straight to this phone, and your history goes to the hub. No Garmin Connect, no Garmin cloud.")
+                .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button("Pair your watch", systemImage: "plus") { pairing = true }
                 .buttonStyle(.borderedProminent)
+                .padding(.top, 6)
         }
     }
 
@@ -88,8 +91,8 @@ struct FitnessView: View {
                     .buttonStyle(.bordered).controlSize(.small)
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(Color(.secondarySystemGroupedBackground), in: .capsule)
+        .padding(.horizontal, 4)
+        .contentShape(.rect)
         .onTapGesture { showingWatch = true }
     }
 
@@ -111,27 +114,34 @@ struct FitnessView: View {
         let steps = max(watch.steps?.count ?? 0, store.today?.steps ?? 0)
         let goal = watch.steps.flatMap { $0.goal > 0 ? $0.goal : nil } ?? store.today?.stepGoal ?? 10_000
         let resting = watch.heartRate?.restingBPM ?? store.today?.restingHr ?? store.restingHr
-        return Card(title: "Today") {
-            HStack(spacing: 20) {
-                ZStack {
-                    Circle().stroke(Color.green.opacity(0.18), lineWidth: 12)
-                    Circle().trim(from: 0, to: min(Double(steps) / Double(max(goal, 1)), 1))
-                        .stroke(Color.green, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    VStack(spacing: 0) {
-                        Text(steps.formatted()).font(.title2.bold()).monospacedDigit().contentTransition(.numericText())
-                        Text("of \(goal.formatted())").font(.caption2).foregroundStyle(.secondary)
-                    }
+        let stepProgress = Double(steps) / Double(max(goal, 1))
+        let weekProgress = Double(store.thisWeek.count) / 5
+        let bpm = watch.heartRate?.bpm
+        let heartProgress = Double(bpm ?? resting ?? 0) / 190
+        let percent = Int((stepProgress * 100).rounded())
+        return FloatingSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
+            ZStack {
+                RingArc(progress: stepProgress, color: .green, lineWidth: 20)
+                RingArc(progress: weekProgress, color: .orange, lineWidth: 20).padding(26)
+                RingArc(progress: heartProgress, color: .red, lineWidth: 20).padding(52)
+                VStack(spacing: 0) {
+                    Text(steps.formatted())
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                    Text("of \(goal.formatted()) steps").font(.caption).foregroundStyle(.secondary)
+                    Text("\(percent)%").font(.caption.weight(.bold)).foregroundStyle(.green)
                 }
-                .frame(width: 112, height: 112)
-                VStack(alignment: .leading, spacing: 12) {
-                    Metric(symbol: "heart.fill", color: .red, title: "Heart rate",
-                           value: watch.heartRate.map { "\($0.bpm)" } ?? "–", unit: "bpm", live: watch.heartRate != nil && watch.state == .connected)
-                    Metric(symbol: "bed.double.fill", color: .indigo, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
-                    Metric(symbol: "flame.fill", color: .orange, title: "This week",
-                           value: "\(store.thisWeek.count)", unit: store.thisWeek.count == 1 ? "activity" : "activities")
-                }
-                Spacer(minLength: 0)
+            }
+            .frame(width: 270, height: 270)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            HStack(alignment: .top) {
+                BigMetric(symbol: "heart.fill", color: .red, title: "Heart rate",
+                          value: bpm.map { "\($0)" } ?? "–", unit: "bpm", live: bpm != nil && watch.state == .connected)
+                BigMetric(symbol: "bed.double.fill", color: .indigo, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
+                BigMetric(symbol: "flame.fill", color: .orange, title: "This week",
+                          value: "\(store.thisWeek.count)", unit: store.thisWeek.count == 1 ? "activity" : "activities")
             }
             .animation(.smooth, value: steps)
         }
@@ -141,26 +151,38 @@ struct FitnessView: View {
 
     private var heartRate: some View {
         let points = (store.snapshot?.heartRate ?? []).compactMap { p in p.date.map { ($0, p.bpm) } }
-        return Card(title: "Heart rate", trailing: points.isEmpty ? nil : "24 hours") {
+        return FloatingSection(title: "Heart rate", trailing: points.isEmpty ? nil : "24 hours") {
             if points.isEmpty {
                 Text("All-day heart rate appears once the watch hands over a monitoring file, usually after a day of wear.")
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
                 let low = points.map(\.1).min() ?? 0, high = points.map(\.1).max() ?? 0
-                HStack {
-                    Stat(label: "Low", value: "\(low)")
-                    Stat(label: "High", value: "\(high)")
-                    Stat(label: "Resting", value: store.restingHr.map(String.init) ?? "–")
+                HStack(alignment: .firstTextBaseline, spacing: 24) {
+                    heartStat("Low", "\(low)")
+                    heartStat("High", "\(high)")
+                    heartStat("Resting", store.restingHr.map(String.init) ?? "–")
                 }
                 Chart(points, id: \.0) { point in
+                    AreaMark(x: .value("Time", point.0), yStart: .value("Floor", max(low - 10, 0)), yEnd: .value("BPM", point.1))
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(LinearGradient(colors: [.red.opacity(0.4), .red.opacity(0)], startPoint: .top, endPoint: .bottom))
                     LineMark(x: .value("Time", point.0), y: .value("BPM", point.1))
                         .interpolationMethod(.monotone)
                         .foregroundStyle(.red)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 }
                 .chartYScale(domain: .automatic(includesZero: false))
-                .chartXAxis { AxisMarks(values: .stride(by: .hour, count: 6)) { _ in AxisGridLine(); AxisValueLabel(format: .dateTime.hour()) } }
-                .frame(height: 140)
+                .chartXAxis { AxisMarks(values: .stride(by: .hour, count: 6)) { _ in AxisValueLabel(format: .dateTime.hour()) } }
+                .chartYAxis(.hidden)
+                .frame(height: 150)
             }
+        }
+    }
+
+    private func heartStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value).font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit()
+            Text(label).font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -170,23 +192,32 @@ struct FitnessView: View {
         NavigationLink {
             SleepView(nights: store.nights)
         } label: {
-            Card(title: "Sleep", trailing: store.lastNight?.startDate.map { $0.formatted(.dateTime.weekday(.wide)) }) {
+            FloatingSection(title: "Sleep", trailing: store.lastNight?.startDate.map { $0.formatted(.dateTime.weekday(.wide)) }) {
                 if let night = store.lastNight {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(FitnessFormat.duration(Double(night.asleepSeconds))).font(.title.bold())
+                        Text(FitnessFormat.duration(Double(night.asleepSeconds)))
+                            .font(.system(size: 40, weight: .bold, design: .rounded))
                         Spacer()
-                        if let score = night.score { Stat(label: "Score", value: "\(score)").fixedSize() }
-                    }
-                    StageBar(night: night).frame(height: 12)
-                    HStack {
-                        ForEach(SleepNight.Stage.allCases) { stage in
-                            Label(FitnessFormat.duration(Double(night.seconds(stage))), systemImage: "circle.fill")
-                                .labelStyle(TintedDot(color: stage.color))
-                                .font(.caption)
-                            if stage != .deep { Spacer() }
+                        if let score = night.score {
+                            VStack(spacing: 0) {
+                                Text("\(score)").font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.indigo)
+                                Text("score").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    .foregroundStyle(.secondary)
+                    StageBar(night: night).frame(height: 22)
+                        .shadow(color: .indigo.opacity(0.45), radius: 10, y: 2)
+                    HStack(alignment: .top) {
+                        ForEach(SleepNight.Stage.allCases) { stage in
+                            VStack(spacing: 2) {
+                                Text(FitnessFormat.duration(Double(night.seconds(stage)))).font(.subheadline.weight(.bold)).monospacedDigit()
+                                Label(stage.name, systemImage: "circle.fill")
+                                    .labelStyle(TintedDot(color: stage.color))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
                 } else {
                     Text("Sleep shows up after a night with the watch on, once it hands over the sleep file.")
                         .font(.subheadline).foregroundStyle(.secondary)
@@ -200,21 +231,31 @@ struct FitnessView: View {
     // MARK: Activities
 
     private var activities: some View {
-        Card(title: "Activities", trailing: store.activities.isEmpty ? nil : "\(store.thisWeek.count) this week") {
+        FloatingSection(title: "Activities", trailing: store.activities.isEmpty ? nil : "\(store.thisWeek.count) this week") {
             if store.activities.isEmpty {
                 Text("Activities from the watch show here after a sync.").font(.subheadline).foregroundStyle(.secondary)
-            }
-            ForEach(store.activities.prefix(4)) { activity in
-                NavigationLink(value: activity) { ActivityRow(activity: activity) }.buttonStyle(.plain)
-                if activity.id != store.activities.prefix(4).last?.id { Divider() }
-            }
-            if store.activities.count > 4 {
-                NavigationLink {
-                    ActivitiesView(activities: store.activities)
-                } label: {
-                    Text("All \(store.activities.count) activities").font(.subheadline.weight(.medium)).frame(maxWidth: .infinity)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 26) {
+                        ForEach(store.activities.prefix(8)) { activity in
+                            NavigationLink(value: activity) { ActivityTile(activity: activity) }.buttonStyle(.plain)
+                        }
+                        if store.activities.count > 8 {
+                            NavigationLink {
+                                ActivitiesView(activities: store.activities)
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "arrow.right.circle.fill").font(.system(size: 40)).foregroundStyle(.tint)
+                                    Text("All \(store.activities.count)").font(.subheadline.weight(.semibold))
+                                }
+                                .frame(width: 80, height: 120)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
-                .buttonStyle(.bordered)
+                .scrollClipDisabled()
             }
         }
     }
@@ -226,11 +267,11 @@ struct FitnessView: View {
         return NavigationLink {
             TrendsView(store: store)
         } label: {
-            Card(title: "Steps", trailing: "Trends ›") {
+            FloatingSection(title: "Steps", trailing: "Trends ›") {
                 if days.isEmpty {
                     Text("Daily totals build up as you sync.").font(.subheadline).foregroundStyle(.secondary)
                 } else {
-                    StepsChart(days: Array(days), goal: store.today?.stepGoal ?? watch.steps?.goal).frame(height: 120)
+                    StepsChart(days: Array(days), goal: store.today?.stepGoal ?? watch.steps?.goal).frame(height: 140)
                 }
             }
         }
@@ -346,8 +387,9 @@ struct StepsChart: View {
         Chart {
             ForEach(days) { day in
                 BarMark(x: .value("Day", day.date ?? .now, unit: .day), y: .value("Steps", day.steps ?? 0))
-                    .foregroundStyle((day.steps ?? 0) >= (goal ?? .max) ? Color.green : Color.green.opacity(0.5))
-                    .cornerRadius(3)
+                    .foregroundStyle(LinearGradient(colors: [.green, .mint.opacity((day.steps ?? 0) >= (goal ?? .max) ? 0.9 : 0.35)],
+                                                    startPoint: .top, endPoint: .bottom))
+                    .cornerRadius(5)
             }
             if let goal, goal > 0 {
                 RuleMark(y: .value("Goal", goal)).foregroundStyle(.secondary).lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
