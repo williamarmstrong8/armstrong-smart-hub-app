@@ -83,34 +83,6 @@ struct WatchHero: View {
     }
 }
 
-/// One ring of the Today view, in the Apple Fitness style: a dim track,
-/// a rounded gradient arc that starts at 12 o'clock, and a small glyph at the start.
-struct RingArc: View {
-    var progress: Double
-    var color: Color
-    var lineWidth: CGFloat
-    var symbol: String
-
-    var body: some View {
-        let shown = max(0.001, min(progress, 1))
-        ZStack {
-            Circle().stroke(color.opacity(0.22), lineWidth: lineWidth)
-            Circle().trim(from: 0, to: shown)
-                .stroke(AngularGradient(colors: [color.opacity(0.7), color], center: .center,
-                                        startAngle: .degrees(0), endAngle: .degrees(360 * shown)),
-                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-        }
-        .overlay(alignment: .top) {
-            Image(systemName: symbol)
-                .font(.system(size: lineWidth * 0.55, weight: .black))
-                .foregroundStyle(.black.opacity(0.75))
-                .frame(height: lineWidth)
-                .offset(y: -lineWidth / 2)
-        }
-    }
-}
-
 /// A big number with a glowing icon, no container.
 struct BigMetric: View {
     var symbol: String

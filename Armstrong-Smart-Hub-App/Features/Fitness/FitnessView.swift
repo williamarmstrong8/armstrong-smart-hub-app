@@ -124,44 +124,126 @@ struct FitnessView: View {
 
     // MARK: Today
 
-    private static let moveRed = Color(red: 0.98, green: 0.07, blue: 0.31)
-    private static let exerciseGreen = Color(red: 0.57, green: 0.91, blue: 0.16)
-    private static let standCyan = Color(red: 0.12, green: 0.92, blue: 0.94)
+    private var workoutDays: Set<Date> {
+        Set(store.activities.compactMap { $0.start.map { Calendar.current.startOfDay(for: $0) } })
+    }
+
+    /// Consecutive days with a workout, counting back from today (or from
+    /// yesterday while today's workout is still to come).
+    private var streak: Int {
+        let calendar = Calendar.current
+        let days = workoutDays
+        var day = calendar.startOfDay(for: .now)
+        if !days.contains(day), let yesterday = calendar.date(byAdding: .day, value: -1, to: day) { day = yesterday }
+        var count = 0
+        while days.contains(day) {
+            count += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+            day = previous
+        }
+        return count
+    }
 
     private var today: some View {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: .now)
+        let done = workoutDays.contains(start)
+        let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? start
+        let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
+        let days = workoutDays
+        let streakCount = self.streak
         let steps = max(watch.steps?.count ?? 0, store.today?.steps ?? 0)
-        let goal = watch.steps.flatMap { $0.goal > 0 ? $0.goal : nil } ?? store.today?.stepGoal ?? 10_000
         let resting = watch.heartRate?.restingBPM ?? store.today?.restingHr ?? store.restingHr
-        let stepProgress = Double(steps) / Double(max(goal, 1))
-        let weekProgress = Double(store.thisWeek.count) / 5
         let bpm = watch.heartRate?.bpm
-        let heartProgress = Double(bpm ?? resting ?? 0) / 190
-        let percent = Int((stepProgress * 100).rounded())
-        return FloatingSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
-            ZStack {
-                RingArc(progress: stepProgress, color: Self.moveRed, lineWidth: 18, symbol: "arrow.right")
-                RingArc(progress: weekProgress, color: Self.exerciseGreen, lineWidth: 18, symbol: "chevron.forward.2").padding(21)
-                RingArc(progress: heartProgress, color: Self.standCyan, lineWidth: 18, symbol: "arrow.up").padding(42)
-                VStack(spacing: 0) {
-                    Text(steps.formatted())
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    Text("of \(goal.formatted()) steps").font(.caption).foregroundStyle(.secondary)
-                    Text("\(percent)%").font(.caption.weight(.bold)).foregroundStyle(Self.moveRed)
+        return VStack(alignment: .leading, spacing: 28) {
+            FloatingSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(done ? "Done" : "Not yet")
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                        Text("workout today").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(streakCount)")
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                        Text("day streak").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                HStack(spacing: 0) {
+                    ForEach(weekDays, id: \.self) { day in
+                        let worked = days.contains(day)
+                        let isToday = calendar.isDate(day, inSameDayAs: start)
+                        VStack(spacing: 8) {
+                            Image(systemName: worked ? "checkmark.circle" : "circle")
+                                .font(.system(size: 28, weight: .ultraLight))
+                                .foregroundStyle(worked ? Color.primary : Color.primary.opacity(0.2))
+                                .frame(height: 36)
+                            Text(day.formatted(.dateTime.weekday(.narrow)))
+                                .font(.caption.weight(isToday ? .bold : .regular))
+                                .foregroundStyle(isToday ? Color.primary : Color.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.top, 6)
+                .animation(.smooth, value: streakCount)
+            }
+            triathlon
+            HStack(alignment: .top) {
+                BigMetric(symbol: "figure.walk", color: .primary, title: "Steps", value: steps.formatted(), unit: "today")
+                BigMetric(symbol: "heart", color: .primary, title: "Heart rate",
+                          value: bpm.map { "\($0)" } ?? "–", unit: "bpm", live: bpm != nil && watch.state == .connected)
+                BigMetric(symbol: "bed.double", color: .primary, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
+            }
+        }
+    }
+
+    // MARK: Triathlon mix
+
+    private var triathlon: some View {
+        let calendar = Calendar.current
+        let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? calendar.startOfDay(for: .now)
+        let thisWeek = store.activities.filter { ($0.start ?? .distantPast) >= week }
+        let legs: [(name: String, symbol: String, sports: Set<String>)] = [
+            ("Swim", "figure.pool.swim", ["swimming"]),
+            ("Bike", "figure.outdoor.cycle", ["cycling", "e_biking"]),
+            ("Run", "figure.run", ["running"]),
+        ]
+        let rows = legs.map { leg -> (String, String, [FitnessActivity]) in
+            (leg.name, leg.symbol, thisWeek.filter { leg.sports.contains($0.sport) })
+        }
+        let totals = rows.map { $0.2.reduce(0) { $0 + ($1.duration ?? 0) } }
+        let biggest = max(totals.max() ?? 0, 1)
+        return FloatingSection(title: "Triathlon mix", trailing: "This week") {
+            VStack(spacing: 18) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    let distance = row.2.reduce(0) { $0 + ($1.distanceMeters ?? 0) }
+                    HStack(spacing: 14) {
+                        Image(systemName: row.1)
+                            .font(.system(size: 26, weight: .ultraLight))
+                            .frame(width: 34)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(row.0).font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Text(row.2.isEmpty ? "–" : "\(FitnessFormat.distance(distance))  \(FitnessFormat.duration(totals[index]))")
+                                    .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
+                            }
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.primary.opacity(0.12))
+                                    Capsule().fill(Color.primary)
+                                        .frame(width: geo.size.width * totals[index] / biggest)
+                                }
+                            }
+                            .frame(height: 3)
+                        }
+                    }
                 }
             }
-            .frame(width: 270, height: 270)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            HStack(alignment: .top) {
-                BigMetric(symbol: "heart", color: Self.standCyan, title: "Heart rate",
-                          value: bpm.map { "\($0)" } ?? "–", unit: "bpm", live: bpm != nil && watch.state == .connected)
-                BigMetric(symbol: "bed.double", color: .indigo, title: "Resting", value: resting.map(String.init) ?? "–", unit: "bpm")
-                BigMetric(symbol: "flame", color: Self.exerciseGreen, title: "This week",
-                          value: "\(store.thisWeek.count)", unit: store.thisWeek.count == 1 ? "activity" : "activities")
-            }
-            .animation(.smooth, value: steps)
         }
     }
 
