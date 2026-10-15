@@ -16,6 +16,7 @@ final class WatchFiles {
         var listed: Int
         var byKind: [String: Int]
         var downloaded: Int
+        var uploaded: Int
         var failed: String?
         var finishedAt: Date
     }
@@ -50,8 +51,9 @@ final class WatchFiles {
 
     // MARK: Sync
 
-    func sync() async {
-        guard !isSyncing, let link, link.state == .connected else { return }
+    /// Copies new files off the watch, then sends everything the hub doesn't have yet.
+    func sync(api: APIClient) async {
+        guard !isSyncing, let link else { return }
         isSyncing = true
         defer {
             isSyncing = false
@@ -60,8 +62,9 @@ final class WatchFiles {
         }
         var listed: [GarminFiles.ListedFile] = []
         var downloaded = 0
+        var uploaded = 0
         var failure: String?
-        do {
+        if link.state == .connected { do {
             progress = "Reading the watch's directory"
             // Makes the watch flush pending data, as Gadgetbridge does before every sync.
             let directory = try await downloadLegacy(GarminFiles.directoryIndex, maxBytes: 256 * 1024)
@@ -85,9 +88,61 @@ final class WatchFiles {
         } catch {
             failure = error.localizedDescription
             link.note("Sync stopped: \(failure!)")
+        } }
+        // Whatever made it onto the phone goes to the hub, even after a watch error.
+        do {
+            await postLive(api: api)
+            uploaded = try await upload(api: api)
+        } catch is CancellationError {
+        } catch {
+            failure = failure ?? error.localizedDescription
+            link.note("Upload stopped: \(error.localizedDescription)")
         }
         lastSync = Summary(listed: listed.count, byKind: Dictionary(grouping: listed, by: \.kind).mapValues(\.count),
-                           downloaded: downloaded, failed: failure, finishedAt: .now)
+                           downloaded: downloaded, uploaded: uploaded, failed: failure, finishedAt: .now)
+    }
+
+    // MARK: Hub
+
+    private struct UploadResult: Decodable {
+        var duplicate: Bool?
+        var parsed: Bool?
+        var error: String?
+    }
+
+    /// Sends saved files the hub hasn't acknowledged, oldest first. The hub
+    /// ignores files it already has, so a retry is harmless.
+    private func upload(api: APIClient) async throws -> Int {
+        var count = 0
+        for item in store.saved.values.filter({ $0.uploadedAt == nil }).sorted(by: { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }) {
+            progress = "Sending to the hub (\(count + 1))"
+            guard let data = try? Data(contentsOf: store.url(item)) else { continue }
+            var query = URLComponents()
+            query.queryItems = [
+                URLQueryItem(name: "id", value: item.id),
+                URLQueryItem(name: "kind", value: item.kind),
+                URLQueryItem(name: "tz", value: String(TimeZone.current.secondsFromGMT())),
+            ] + (item.date.map { [URLQueryItem(name: "recordedAt", value: $0.formatted(.iso8601))] } ?? [])
+            var request = api.request("/api/mobile/fitness?\(query.percentEncodedQuery ?? "")", method: "POST", timeout: 120)
+            request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            request.httpBody = data
+            let result: UploadResult = try await api.send(request)
+            if let error = result.error, result.parsed == nil { throw APIError(message: error) }
+            store.markUploaded(item.id, parseError: result.error)
+            count += 1
+            link?.note("Sent \(item.kind) to the hub\(result.duplicate == true ? " (already there)" : "")")
+        }
+        return count
+    }
+
+    /// Today's live step count, so the hub has today before a monitoring file does.
+    private func postLive(api: APIClient) async {
+        guard let link, link.steps != nil || link.heartRate?.restingBPM != nil else { return }
+        struct Live: Encodable { var day: String; var steps: Int?; var goal: Int?; var restingHr: Int? }
+        let day = Date.now.formatted(.iso8601.year().month().day().dateSeparator(.dash))
+        let body = Live(day: day, steps: link.steps?.count, goal: link.steps.flatMap { $0.goal > 0 ? $0.goal : nil },
+                        restingHr: link.heartRate?.restingBPM)
+        let _: Empty? = try? await api.post("/api/mobile/fitness/live", body: body)
     }
 
     private func reset() {
@@ -289,6 +344,9 @@ final class FitStore {
         var path: String
         var fitValid: Bool
         var savedAt: Date
+        /// When the hub stored it; nil until then.
+        var uploadedAt: Date?
+        var parseError: String?
     }
 
     struct Listed: Codable {
@@ -330,6 +388,14 @@ final class FitStore {
                                fitValid: GarminFiles.isFIT(data), savedAt: .now)
         write(saved, to: "saved.json")
     }
+
+    func markUploaded(_ id: String, parseError: String?) {
+        saved[id]?.uploadedAt = .now
+        saved[id]?.parseError = parseError
+        write(saved, to: "saved.json")
+    }
+
+    var pendingUpload: Int { saved.values.filter { $0.uploadedAt == nil }.count }
 
     func saveListing(_ files: [GarminFiles.ListedFile]) {
         listing = files.map { Listed(id: $0.id, kind: $0.kind, size: $0.size, date: $0.date) }

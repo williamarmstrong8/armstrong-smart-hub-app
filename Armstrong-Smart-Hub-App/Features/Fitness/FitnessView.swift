@@ -3,6 +3,7 @@ import SwiftUI
 /// Live data straight from the Garmin watch over Bluetooth: no Garmin
 /// Connect, no Garmin cloud.
 struct FitnessView: View {
+    @Environment(AppSession.self) private var session
     @Environment(WatchLink.self) private var watch
     @State private var pairing = false
 
@@ -121,20 +122,21 @@ struct FitnessView: View {
     private var history: some View {
         let files = watch.files
         let saved = files.store.saved.values.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
-        return Card(title: "History", trailing: saved.isEmpty ? nil : "\(saved.count) on this phone") {
+        let waiting = files.store.pendingUpload
+        return Card(title: "History", trailing: saved.isEmpty ? nil : waiting > 0 ? "\(waiting) to send" : "\(saved.count) on the hub") {
             if let progress = files.progress {
                 HStack(spacing: 8) {
                     ProgressView()
                     Text(progress).font(.subheadline).foregroundStyle(.secondary)
                 }
             } else {
-                Button("Sync from watch", systemImage: "arrow.triangle.2.circlepath") { Task { await files.sync() } }
+                Button("Sync from watch", systemImage: "arrow.triangle.2.circlepath") { Task { await files.sync(api: session.api) } }
                     .buttonStyle(.bordered)
-                    .disabled(watch.state != .connected)
+                    .disabled(watch.state != .connected && files.store.pendingUpload == 0)
             }
             if let last = files.lastSync {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(last.failed ?? "Copied \(last.downloaded) new file\(last.downloaded == 1 ? "" : "s")")
+                    Text(last.failed ?? "Copied \(last.downloaded) new file\(last.downloaded == 1 ? "" : "s"), sent \(last.uploaded) to the hub")
                         .foregroundStyle(last.failed == nil ? Color.primary : Color.red)
                     Text("Watch lists \(last.listed) files: " + last.byKind.sorted { $0.value > $1.value }.prefix(5)
                         .map { "\($0.value) \($0.key.replacingOccurrences(of: "_", with: " "))" }.joined(separator: ", "))
@@ -153,6 +155,9 @@ struct FitnessView: View {
                     }
                     Spacer()
                     Text(item.size.formatted(.byteCount(style: .file))).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    if item.uploadedAt == nil {
+                        Image(systemName: "icloud.and.arrow.up").foregroundStyle(.secondary)
+                    }
                     if !item.fitValid {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     }
