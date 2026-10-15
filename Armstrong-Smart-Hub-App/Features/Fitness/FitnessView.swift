@@ -17,7 +17,7 @@ struct FitnessView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 28) {
-                    WatchHero().padding(.horizontal, -16).padding(.top, -12)
+                    WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil).padding(.horizontal, -16).padding(.top, -12)
                     if watch.savedWatchID == nil {
                         welcome
                     } else {
@@ -78,26 +78,16 @@ struct FitnessView: View {
         }
     }
 
-    /// The watch's state, with a thin progress bar while a sync runs.
+    /// The watch's name and status; sync progress shows on the watch face above.
     private var watchBar: some View {
         let files = watch.files
-        return VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                Circle().fill(watch.state == .connected ? Color.green : Color.secondary.opacity(0.5)).frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(watch.identity?.model ?? watch.savedWatchName ?? "Watch").font(.subheadline.weight(.semibold))
-                    Text(files.progress ?? watchStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer()
+        return HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(watch.identity?.model ?? watch.savedWatchName ?? "Watch").font(.subheadline.weight(.semibold))
+                Text(files.progress ?? watchStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            if files.isSyncing {
-                ProgressView(value: files.fraction ?? 0.02)
-                    .progressViewStyle(.linear)
-                    .tint(.green)
-                    .transition(.opacity)
-            }
+            Spacer()
         }
-        .animation(.smooth, value: files.isSyncing)
         .padding(.horizontal, 4)
         .contentShape(.rect)
         .onTapGesture { showingWatch = true }

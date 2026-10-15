@@ -30,6 +30,9 @@ struct FloatingSection<Content: View>: View {
 
 /// The watch, cut out and floating over a soft glow, fading into the page.
 struct WatchHero: View {
+    /// 0...1 while the watch syncs; nil shows the watch's own face.
+    var progress: Double?
+
     var body: some View {
         ZStack {
             Circle().fill(Color.green.opacity(0.35)).frame(width: 150).blur(radius: 50).offset(x: -70, y: -20)
@@ -39,6 +42,7 @@ struct WatchHero: View {
                 .resizable()
                 .scaledToFit()
                 .frame(height: 190)
+                .overlay { syncFace }
                 .rotationEffect(.degrees(-6))
                 .shadow(color: .black.opacity(0.35), radius: 28, y: 18)
                 .mask(
@@ -52,6 +56,45 @@ struct WatchHero: View {
         .frame(maxWidth: .infinity)
         .frame(height: 210)
         .accessibilityHidden(true)
+    }
+
+    /// The watch's screen as it sits in the cutout (835x992 px): an ellipse
+    /// centered at (0.640, 0.4175) with semi-axes 279 and 303 px, tilted 14.4 degrees.
+    /// A progress ring is drawn on it while syncing.
+    private var syncFace: some View {
+        GeometryReader { geo in
+            let k = geo.size.height / 992
+            let screenWidth = 2 * 279 * k * 0.97
+            let screenHeight = 2 * 303 * k * 0.97
+            let ring = screenWidth * 0.075
+            let inset = screenWidth * 0.07
+            ZStack {
+                Ellipse().fill(.black)
+                Ellipse().stroke(Color.green.opacity(0.18), lineWidth: ring)
+                    .padding(inset)
+                Ellipse().trim(from: 0, to: max(0.02, min(progress ?? 0, 1)))
+                    .stroke(Color.green, style: StrokeStyle(lineWidth: ring, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .padding(inset)
+                    .shadow(color: .green.opacity(0.7), radius: 4)
+                VStack(spacing: 1) {
+                    Text("\(Int(((progress ?? 0) * 100).rounded()))%")
+                        .font(.system(size: screenWidth * 0.27, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                    Text("SYNCING")
+                        .font(.system(size: screenWidth * 0.085, weight: .semibold))
+                        .tracking(1.5)
+                        .foregroundStyle(.green)
+                }
+            }
+            .frame(width: screenWidth, height: screenHeight)
+            .rotationEffect(.degrees(-14.43))
+            .position(x: 0.640 * geo.size.width, y: 0.4175 * geo.size.height)
+            .opacity(progress == nil ? 0 : 1)
+            .animation(.smooth, value: progress == nil)
+        }
+        .allowsHitTesting(false)
     }
 }
 
