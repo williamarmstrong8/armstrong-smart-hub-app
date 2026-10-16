@@ -1,16 +1,28 @@
 # Armstrong watch faces (Connect IQ, Forerunner 965)
 
-Status: v1 "Armstrong Minimal", local data only. **Not compiled and not tested on a watch.**
-Written without the Connect IQ SDK, so expect a few compile fixes on first build.
+Two faces that share code in `shared/`:
 
-## Build (Mac)
-1. Install the Connect IQ SDK Manager from https://developer.garmin.com/connect-iq/sdk/ and download the latest SDK and the fr965 device.
-2. Install VS Code + the "Monkey C" extension. Command Palette > "Monkey C: Verify Installation" (creates the developer key).
-3. Open `watch/ArmstrongFace`. Run "Monkey C: Build Current Project" (target fr965) to try it in the simulator.
-4. "Monkey C: Build For Device" produces `ArmstrongFace.prg`.
+- **Armstrong Minimal** (`ArmstrongFace/`): date, big time, the workout week with the next split and streak, steps bar, heart rate and resting heart rate.
+- **Armstrong Data** (`ArmstrongData/`): the same, plus bezel gauges (left = steps toward the goal, right = body battery), stress, this week's intensity minutes and watch battery.
 
-## Sideload
-Newer Garmin watches use MTP, so Finder can't see them. Quit Garmin Express, install OpenMTP, plug in the watch, copy the `.prg` to `GARMIN/APPS`. Eject, then on the watch: long-press Up > Watch Face > pick "Armstrong Minimal".
+Everything comes from the watch itself (activity history, ActivityMonitor, SensorHistory), because the app doesn't relay web requests from the watch the way Garmin Connect does. The workout rules match the hub's glance feed: a day counts when any activity started on it, push / pull / legs follows the number of strength sessions in the watch's history, and five days without a workout means "Ease back in".
 
-## What v1 shows
-Time, date, 7 week circles (v1: filled = that day met the step goal; becomes workouts once the hub feed exists), steps + goal bar, current HR, resting HR. Always-on mode shows only the dim time, moved a few pixels each minute for burn-in.
+Always-on mode shows only the dim time, moved a few pixels each minute against burn-in.
+
+## Build and publish
+One-time setup:
+1. `brew install openjdk@17`
+2. Install the Connect IQ SDK Manager from https://developer.garmin.com/connect-iq/sdk/, sign in, download the latest SDK and the **Forerunner 965** device.
+
+Then:
+
+```bash
+watch/build.sh --publish
+```
+
+This compiles both faces into `watch/build/`, signs them with a developer key at `~/.garmin/developer_key.der` (created on the first run; keep it, since the watch ties an installed app to the key that signed it), and uploads them to the hub with the hub's `WATCH_TOKEN`. In the app, open Fitness, then the watch sheet, then Install to watch, and pick a face.
+
+Without `--publish` it only builds. To try a face in the simulator, open its folder in VS Code with the Monkey C extension and run "Monkey C: Build Current Project".
+
+## Sideload by cable instead
+Quit Garmin Express, install OpenMTP, plug in the watch, copy a `.prg` from `watch/build/` to `GARMIN/APPS`. Eject, then on the watch: long-press Up > Watch Face > pick it.
