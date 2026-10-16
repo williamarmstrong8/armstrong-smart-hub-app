@@ -580,6 +580,7 @@ struct WatchSheet: View {
                     }
                     .disabled(reparse == "Working…")
                     NavigationLink("Inspect files") { FitnessInspectView() }
+                    NavigationLink("Install to watch") { FitnessInstallView() }
                     LabeledContent("Files on this phone", value: "\(files.store.saved.count)")
                     LabeledContent("Waiting to send", value: "\(files.store.pendingUpload)")
                     if let last = files.lastSync {

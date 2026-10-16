@@ -56,7 +56,9 @@ enum Garmin {
     enum Message: UInt16 {
         case response = 5000
         case downloadRequest = 5002
+        case uploadRequest = 5003
         case fileTransferData = 5004
+        case createFile = 5005
         case deviceInformation = 5024
         case deviceSettings = 5026
         case systemEvent = 5030
