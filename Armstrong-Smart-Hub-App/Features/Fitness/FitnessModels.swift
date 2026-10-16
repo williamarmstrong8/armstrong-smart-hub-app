@@ -9,6 +9,10 @@ struct FitnessSnapshot: Decodable {
     var files: [FileCount]
     /// Overnight HRV, newest first. Absent until the hub has the HRV update.
     var hrv: [FitnessHrv]?
+    /// Missing from older hubs.
+    var metrics: FitnessMetrics?
+    /// Strain, recovery, sleep need, resilience, training analysis and vitals. Missing from older hubs.
+    var insights: FitnessInsights?
 
     struct FileCount: Decodable { var kind: String; var count: Int }
 }

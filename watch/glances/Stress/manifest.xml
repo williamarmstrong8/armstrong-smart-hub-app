@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application entry="StressApp" id="5914becd-c2a1-4081-af8c-d473cae3961b" launcherIcon="@Drawables.LauncherIcon" name="@Strings.AppName" type="widget" minApiLevel="4.2.0">
+        <iq:products>
+            <iq:product id="fr965"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="SensorHistory"/>
+            <iq:uses-permission id="UserProfile"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

@@ -3,6 +3,7 @@ import Toybox.Lang;
 
 // Drawing shared by the faces. Black background, thin lines, color only on
 // data, same palette as the app: green = progress, red = heart, indigo = resting.
+(:glance)
 module Draw {
 
     const GREEN  = 0x34C759;

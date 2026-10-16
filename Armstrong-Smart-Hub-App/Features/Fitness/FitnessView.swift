@@ -18,9 +18,14 @@ struct FitnessView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 40) {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 0) {
                         WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil).padding(.horizontal, -20).padding(.top, -12)
-                        if watch.savedWatchID != nil { watchBar }
+                        if watch.savedWatchID != nil {
+                            Text(watchTitle)
+                                .font(.title3.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .onTapGesture { showingWatch = true }
+                        }
                     }
                     if watch.savedWatchID == nil {
                         welcome
@@ -29,11 +34,36 @@ struct FitnessView: View {
                             ErrorBanner(message: error)
                         }
                         today
+                        if let insights = store.snapshot?.insights {
+                            RecoveryStrainSection(insights: insights)
+                        }
+                        if let metrics = store.snapshot?.metrics {
+                            ReadinessSection(readiness: metrics.readiness)
+                        }
                         heartRate
+                        if let insights = store.snapshot?.insights {
+                            BalanceSection(stress: insights.stress)
+                        } else if let metrics = store.snapshot?.metrics {
+                            EnergySection(battery: metrics.bodyBattery, stress: metrics.stress)
+                        }
                         sleep
+                        if let insights = store.snapshot?.insights {
+                            SleepCoachSection(sleep: insights.sleep)
+                        }
                         hrv
                         activities
+                        if let workout = store.snapshot?.insights?.training.lastWorkout {
+                            WorkoutEffectSection(workout: workout)
+                        }
+                        if let metrics = store.snapshot?.metrics {
+                            PerformanceSection(metrics: metrics)
+                        }
+                        if let insights = store.snapshot?.insights {
+                            TrainingInsightsSection(training: insights.training)
+                            HealthInsightsSection(age: insights.age, vitals: insights.vitals)
+                        }
                         trends
+                        syncStatus
                     }
                 }
                 .padding(.horizontal, 20)
@@ -61,8 +91,9 @@ struct FitnessView: View {
                 if phase == .active { Task { await autoSync() } }
             }
             .refreshable {
-                await store.load(api: session.api)
-                await autoSync(force: true)
+                // Return right away so the system spinner doesn't hold the page
+                // open; the watch hero shows the sync instead.
+                Task { await autoSync(force: true) }
             }
             .onChange(of: watch.files.lastSync) { Task { await store.load(api: session.api) } }
             .sheet(isPresented: $showingWatch) { WatchSheet() }
@@ -86,27 +117,38 @@ struct FitnessView: View {
         }
     }
 
-    /// The watch's name and status; sync progress shows on the watch face above.
-    private var watchBar: some View {
-        let files = watch.files
-        return HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(watch.identity?.model ?? watch.savedWatchName ?? "Watch").font(.subheadline.weight(.semibold))
-                Text(files.progress ?? watchStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer()
-        }
-        .contentShape(.rect)
-        .onTapGesture { showingWatch = true }
+    private var watchTitle: String {
+        let name = watch.identity?.model ?? watch.savedWatchName ?? "Forerunner 965"
+        return name.localizedCaseInsensitiveContains("forerunner") ? name : "Forerunner \(name)"
     }
 
+    /// Sync status, centered at the bottom of the page.
+    private var syncStatus: some View {
+        Text(watch.files.progress ?? watchStatus)
+            .font(.caption).foregroundStyle(.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
+            .onTapGesture { showingWatch = true }
+    }
+
+    /// A good sync stays fresh this long; opening the page or returning to the
+    /// app inside the window doesn't sync again. Pull-to-refresh always does.
+    private static let staleAfter: TimeInterval = 30 * 60
+    /// After a failed sync, wait this long before retrying on its own.
+    private static let retryAfter: TimeInterval = 60
+
     /// Reconnects if needed, waits briefly for the watch, then syncs. Runs on
-    /// open, when the app returns to the foreground, and on pull-to-refresh.
+    /// open and on return to the foreground only when the last sync is stale,
+    /// and always on pull-to-refresh.
     private func autoSync(force: Bool = false) async {
         guard watch.savedWatchID != nil else { return }
         let files = watch.files
         if !force, files.isSyncing { return }
-        if !force, let last = files.lastSync, Date.now.timeIntervalSince(last.finishedAt) < 60 { return }
+        if !force, let last = files.lastSync {
+            let age = Date.now.timeIntervalSince(last.finishedAt)
+            if age < (last.failed == nil ? Self.staleAfter : Self.retryAfter) { return }
+        }
         if watch.state != .connected, !watch.isBusy { watch.connectSaved() }
         var waited = 0.0
         while watch.state != .connected, waited < 20 {
@@ -203,35 +245,33 @@ struct FitnessView: View {
         let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
         let days = workoutDays
         let steps = max(watch.steps?.count ?? 0, store.today?.steps ?? 0)
-        let resting = watch.heartRate?.restingBPM ?? store.today?.restingHr ?? store.restingHr
+        let sleepScore = store.lastNight?.score
         let bpm = watch.heartRate?.bpm
         let goal = store.today?.stepGoal ?? watch.steps?.goal
         return VStack(alignment: .leading, spacing: 36) {
-            FloatingSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
-                VStack(alignment: .leading, spacing: 32) {
-                    nextWorkoutView
-                    HStack(spacing: 0) {
-                        ForEach(weekDays, id: \.self) { day in
-                            let worked = days.contains(day)
-                            let isToday = calendar.isDate(day, inSameDayAs: start)
-                            VStack(spacing: 10) {
-                                TablerIcon(name: worked ? "circle-check" : "circle", size: 44)
-                                    .foregroundStyle(worked ? Color.green : Color.primary.opacity(isToday ? 0.5 : 0.18))
-                                Text(day.formatted(.dateTime.weekday(.narrow)))
-                                    .font(.caption.weight(isToday ? .bold : .regular))
-                                    .foregroundStyle(isToday ? Color.primary : Color.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 32) {
+                nextWorkoutView
+                HStack(spacing: 0) {
+                    ForEach(weekDays, id: \.self) { day in
+                        let worked = days.contains(day)
+                        let isToday = calendar.isDate(day, inSameDayAs: start)
+                        VStack(spacing: 10) {
+                            TablerIcon(name: worked ? "circle-check" : "circle", size: 44)
+                                .foregroundStyle(worked ? Color.green : Color.primary.opacity(isToday ? 0.5 : 0.18))
+                            Text(day.formatted(.dateTime.weekday(.narrow)))
+                                .font(.caption.weight(isToday ? .bold : .regular))
+                                .foregroundStyle(isToday ? Color.primary : Color.secondary)
                         }
+                        .frame(maxWidth: .infinity)
                     }
-                    .animation(.smooth, value: days.count)
                 }
+                .animation(.smooth, value: days.count)
             }
             HStack(alignment: .top, spacing: 12) {
                 BigMetric(symbol: "walk", tint: .green, title: "Steps", value: steps.formatted(),
                           progress: goal.flatMap { $0 > 0 ? min(Double(steps) / Double($0), 1) : nil })
                 BigMetric(symbol: "heart", tint: .red, title: "Heart bpm", value: bpm.map { "\($0)" } ?? "–")
-                BigMetric(symbol: "bed", tint: .indigo, title: "Resting bpm", value: resting.map(String.init) ?? "–")
+                BigMetric(symbol: "bed", tint: .indigo, title: "Sleep score", value: sleepScore.map(String.init) ?? "–")
             }
         }
     }
@@ -386,15 +426,17 @@ struct FitnessView: View {
     // MARK: Trends
 
     private var trends: some View {
-        let days = store.days.filter { $0.steps != nil && $0.date != nil }.prefix(14)
+        let days = Array(store.days.filter { $0.steps != nil && $0.date != nil }.prefix(14))
+        let goal = store.today?.stepGoal ?? watch.steps?.goal
+        let average = days.isEmpty ? nil : days.reduce(0) { $0 + ($1.steps ?? 0) } / days.count
         return NavigationLink {
             TrendsView(store: store)
         } label: {
-            FloatingSection(title: "Steps", trailing: "Trends ›") {
+            FloatingSection(title: "Steps", trailing: average.map { "\($0.formatted()) avg" }) {
                 if days.isEmpty {
                     Text("Daily totals build up as you sync.").font(.subheadline).foregroundStyle(.secondary)
                 } else {
-                    StepsChart(days: Array(days), goal: store.today?.stepGoal ?? watch.steps?.goal).frame(height: 140)
+                    StepsChart(days: days, goal: goal).frame(height: 140)
                 }
             }
         }
@@ -504,17 +546,18 @@ struct StepsChart: View {
     var goal: Int?
 
     var body: some View {
-        Chart {
-            ForEach(days) { day in
-                BarMark(x: .value("Day", day.date ?? .now, unit: .day), y: .value("Steps", day.steps ?? 0))
-                    .foregroundStyle(LinearGradient(colors: [.green, .mint.opacity((day.steps ?? 0) >= (goal ?? .max) ? 0.9 : 0.35)],
-                                                    startPoint: .top, endPoint: .bottom))
-                    .cornerRadius(5)
-            }
-            if let goal, goal > 0 {
-                RuleMark(y: .value("Goal", goal)).foregroundStyle(.secondary).lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
-            }
+        let points = days.compactMap { day in day.date.map { ($0, day.steps ?? 0) } }
+        Chart(points, id: \.0) { point in
+            AreaMark(x: .value("Day", point.0, unit: .day), y: .value("Steps", point.1))
+                .interpolationMethod(.monotone)
+                .foregroundStyle(LinearGradient(colors: [.green.opacity(0.28), .green.opacity(0)], startPoint: .top, endPoint: .bottom))
+            LineMark(x: .value("Day", point.0, unit: .day), y: .value("Steps", point.1))
+                .interpolationMethod(.monotone)
+                .foregroundStyle(.green)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
         }
+        .chartYScale(domain: .automatic(includesZero: false))
+        .chartYAxis(.hidden)
         .chartXAxis { AxisMarks(values: .stride(by: .day, count: days.count > 10 ? 7 : 1)) { _ in AxisValueLabel(format: .dateTime.weekday(.narrow)) } }
     }
 }
@@ -587,6 +630,17 @@ struct WatchSheet: View {
                         LabeledContent("Last sync", value: last.failed ?? "\(last.downloaded) copied, \(last.uploaded) sent")
                         LabeledContent("On the watch", value: "\(last.listed) files")
                     }
+                    Button {
+                        Task { await watch.settings.push(api: session.api) }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(watch.settings.isPushing ? "Updating glances…" : "Send hub values to the glances")
+                            if let result = watch.settings.lastResult {
+                                Text(result).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(watch.state != .connected || watch.settings.isPushing || files.isSyncing)
                 } header: {
                     Text("History")
                 } footer: {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compiles every face for the Forerunner 965 and, with --publish, uploads the
+# Compiles every face and glance for the Forerunner 965 and, with --publish, uploads the
 # .prg files to the hub so the app's "Install to watch" screen lists them.
 #
 #   watch/build.sh             build into watch/build/
@@ -17,10 +17,16 @@ HUB_URL="${HUB_URL:-https://armstrong-smart-hub.vercel.app}"
 HUB_ENV_FILE="${HUB_ENV_FILE:-../../Armstrong-Smart-Hub/.env.local}"
 KEY="${GARMIN_DEV_KEY:-$HOME/.garmin/developer_key.der}"
 
-# id | project folder | name shown in the app
+# id | project folder | name shown in the app. Faces, then the glances for the swipe-up loop.
 FACES=(
   "armstrong-minimal|ArmstrongFace|Armstrong Minimal"
   "armstrong-data|ArmstrongData|Armstrong Data"
+  "glance-heart|glances/Heart|Glance: Heart"
+  "glance-energy|glances/Energy|Glance: Body Battery"
+  "glance-stress|glances/Stress|Glance: Stress"
+  "glance-night|glances/Night|Glance: Last Night"
+  "glance-training|glances/Training|Glance: Training"
+  "glance-today|glances/Today|Glance: Today"
 )
 
 # The SDK Manager records the active SDK in current-sdk.cfg.
@@ -77,6 +83,6 @@ for face in "${FACES[@]}"; do
   curl -sS --fail-with-body -X PUT \
     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/octet-stream" \
     --data-binary "@build/$id.prg" \
-    "$HUB_URL/api/watch/faces/$id?name=$(printf %s "$name" | sed 's/ /%20/g')"
+    "$HUB_URL/api/watch/faces/$id?name=$(printf %s "$name" | sed 's/ /%20/g; s/:/%3A/g')"
   echo
 done

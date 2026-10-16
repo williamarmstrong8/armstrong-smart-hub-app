@@ -41,16 +41,16 @@ struct WatchHero: View {
                 .frame(height: 190)
                 .overlay { syncFace }
                 .rotationEffect(.degrees(-6))
-                .mask(
-                    LinearGradient(stops: [.init(color: .clear, location: 0),
-                                           .init(color: .black, location: 0.12),
-                                           .init(color: .black, location: 0.82),
-                                           .init(color: .clear, location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
-                )
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 210)
+        .frame(height: 250)
+        .mask(
+            LinearGradient(stops: [.init(color: .clear, location: 0),
+                                   .init(color: .black, location: 0.1),
+                                   .init(color: .black, location: 0.9),
+                                   .init(color: .clear, location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+        )
         .accessibilityHidden(true)
     }
 
@@ -68,10 +68,11 @@ struct WatchHero: View {
                 Ellipse().fill(.black)
                 Ellipse().stroke(Color.green.opacity(0.18), lineWidth: ring)
                     .padding(inset)
-                Ellipse().trim(from: 0, to: max(0.02, min(progress ?? 0, 1)))
+                Ellipse().trim(from: 0, to: max(0.02, min(progress ?? 1, 1)))
                     .stroke(Color.green, style: StrokeStyle(lineWidth: ring, lineCap: .round))
                     .frame(width: screenHeight - 2 * inset, height: screenWidth - 2 * inset)
                     .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 1.4), value: progress)
             }
             .frame(width: screenWidth, height: screenHeight)
             .rotationEffect(.degrees(-14.43))
@@ -122,7 +123,6 @@ struct ActivityTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Capsule().fill(activity.color).frame(width: 28, height: 3)
             TablerIcon(name: activity.symbol, size: 40)
                 .foregroundStyle(.primary)
                 .frame(height: 48, alignment: .leading)

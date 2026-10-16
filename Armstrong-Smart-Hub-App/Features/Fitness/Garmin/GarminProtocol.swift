@@ -62,6 +62,8 @@ enum Garmin {
         case deviceInformation = 5024
         case deviceSettings = 5026
         case systemEvent = 5030
+        case supportedFileTypesRequest = 5031
+        case notificationSubscription = 5036
         case synchronization = 5037
         case protobufRequest = 5043
         case protobufResponse = 5044
@@ -250,6 +252,41 @@ struct GFDIMessage {
         payload.appendLE(Int32(timeZone.secondsFromGMT(for: now)))
         payload.appendLE(Int32(0)) // DST end
         payload.appendLE(Int32(0)) // DST start
+        return frame(Garmin.Message.response.rawValue, payload)
+    }
+
+    /// SUPPORTED_FILE_TYPES_REQUEST: asks which file types the watch serves. Read-only;
+    /// Gadgetbridge and the official app send it on every connect.
+    static func supportedFileTypesRequest() -> [UInt8] {
+        frame(Garmin.Message.supportedFileTypesRequest.rawValue)
+    }
+
+    /// The answer to SUPPORTED_FILE_TYPES_REQUEST as "data/sub name" strings, or nil if the
+    /// RESPONSE is about something else: status, count, then data type, sub-type and a
+    /// length-prefixed name per type (Gadgetbridge's SupportedFileTypesStatusMessage).
+    static func supportedFileTypes(_ payload: [UInt8]) -> [String]? {
+        guard payload.readLE(UInt16.self, at: 0) == Garmin.Message.supportedFileTypesRequest.rawValue,
+              payload.count >= 4, payload[2] == 0 else { return nil }
+        var types: [String] = []
+        var i = 4
+        for _ in 0..<Int(payload[3]) {
+            guard i + 3 <= payload.count else { break }
+            let size = Int(payload[i + 2])
+            guard i + 3 + size <= payload.count else { break }
+            let name = String(decoding: payload[(i + 3)..<(i + 3 + size)], as: UTF8.self)
+            types.append("\(payload[i])/\(payload[i + 1]) \(name)")
+            i += 3 + size
+        }
+        return types
+    }
+
+    /// Answers NOTIFICATION_SUBSCRIPTION (payload: enable, unknown) with notifications
+    /// disabled, since this app forwards none. A plain ACK leaves the watch asking again
+    /// about once a second for as long as the link is up.
+    static func notificationSubscriptionReply(_ request: [UInt8]) -> [UInt8] {
+        var payload: [UInt8] = []
+        payload.appendLE(Garmin.Message.notificationSubscription.rawValue)
+        payload += [0, 1, request.first == 1 ? 1 : 0, 0] // ACK, DISABLED, enable echoed, unknown
         return frame(Garmin.Message.response.rawValue, payload)
     }
 

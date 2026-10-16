@@ -1,0 +1,4 @@
+<resources>
+    <string id="AppName">Armstrong Training</string>
+    <string id="HubValue">Sent by the phone from the hub</string>
+</resources>

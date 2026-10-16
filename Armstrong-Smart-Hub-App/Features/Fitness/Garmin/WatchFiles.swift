@@ -76,6 +76,7 @@ final class WatchFiles {
             // Makes the watch flush pending data, as Gadgetbridge does before every sync.
             let directory = try await downloadLegacy(GarminFiles.directoryIndex, maxBytes: 256 * 1024)
             link.note("Legacy directory: \(GarminFiles.directoryFITCount(directory)) FIT files")
+            link.note("Legacy directory bytes: \(directory.prefix(512).map { String(format: "%02x", $0) }.joined())") // DIAGNOSTIC
             // The flush can make the watch announce new files; give it a moment.
             try? await Task.sleep(for: .seconds(2))
 
@@ -83,6 +84,7 @@ final class WatchFiles {
             fraction = 0.15
             listed = try await listFiles()
             store.saveListing(listed)
+            await probeListing() // DIAGNOSTIC: remove once health files arrive
 
             let wanted = listed
                 .filter { GarminFiles.healthKinds.contains($0.kind) && $0.size > 0 && $0.size <= maxFileBytes && !store.has($0) }
@@ -124,6 +126,10 @@ final class WatchFiles {
         }
         lastSync = Summary(listed: listed.count, byKind: Dictionary(grouping: listed, by: \.kind).mapValues(\.count),
                            downloaded: downloaded, uploaded: uploaded, failed: failure, finishedAt: .now)
+        // The hub has parsed what was just sent; put its sleep, HRV and training numbers on the glances.
+        progress = "Updating the glances"
+        fraction = 0.97
+        await link.settings.push(api: api)
     }
 
     // MARK: Hub
@@ -263,6 +269,7 @@ final class WatchFiles {
         for _ in 0..<30 {
             let reply = try await request(GarminFiles.fileListRequest(cursor: cursor, page: page, unsyncedOnly: unsyncedOnly), answer: 10)
             guard let list = GarminFiles.fileList(reply) else { throw .protocolError("file list didn't decode") }
+            link?.note("LIST \(unsyncedOnly ? "unsynced" : "all") page \(page.map(String.init) ?? "-") cursor \(cursor.map(String.init) ?? "-"): \(Self.describeResponse(reply))")
             if let status = list.status, status != 0 { throw .refused("file list status \(status)") }
             let fresh = list.files.filter { ids.insert($0.id).inserted }
             files += fresh
@@ -277,6 +284,91 @@ final class WatchFiles {
             }
         }
         return files
+    }
+
+    // MARK: Diagnostic probes (read-only list requests)
+
+    /// DIAGNOSTIC: run with launch argument -probeFiles; lists and probes, downloads nothing.
+    func probeOnly() async {
+        guard !isSyncing, link?.state == .connected else { return }
+        isSyncing = true
+        defer { isSyncing = false; reset() }
+        // -probeSend=6,8: system events to send first, then wait for the watch to react.
+        if let arg = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("-probeSend=") }) {
+            for raw in arg.dropFirst(11).split(separator: ",").compactMap({ UInt8($0) }) {
+                link?.send(GFDIMessage.frame(Garmin.Message.systemEvent.rawValue, [raw, 0]))
+                link?.note("PROBE sent system event \(raw)")
+            }
+            try? await Task.sleep(for: .seconds(20))
+        }
+        await probeHealthTypes("before flush")
+        do {
+            let directory = try await downloadLegacy(GarminFiles.directoryIndex, maxBytes: 256 * 1024)
+            link?.note("Legacy directory bytes: \(directory.prefix(512).map { String(format: "%02x", $0) }.joined())")
+            try? await Task.sleep(for: .seconds(2))
+            let listed = try await listFiles()
+            link?.note("PROBE listed \(listed.count): \(Self.describe(listed))")
+        } catch {
+            link?.note("PROBE list failed: \(error.localizedDescription)")
+        }
+        try? await Task.sleep(for: .seconds(10))
+        await probeHealthTypes("after flush+10s")
+        link?.note("PROBE done")
+    }
+
+    /// Asks for the file list in ways the normal sync doesn't, and logs the raw answers.
+    private func probeListing() async {
+        func type(_ fields: [(UInt64, Protobuf.Value)]) -> (UInt64, Protobuf.Value) { (6, .bytes(Protobuf.encode(fields))) }
+        let synced = Protobuf.encode([(1, .fixed64(GarminFiles.syncedFlag)), (2, .fixed64(GarminFiles.syncedFlag))])
+        let probes: [(String, [(UInt64, Protobuf.Value)])] = [
+            ("plain", []),
+            ("plain+meta", [(7, .varint(0))]),
+            ("excl-synced flags1 only", [(4, .bytes(synced)), (7, .varint(0))]),
+            ("type name SLEEP", [type([(2, .bytes(Array("SLEEP".utf8)))]), (7, .varint(0))]),
+            ("type name FIT_TYPE_49", [type([(2, .bytes(Array("FIT_TYPE_49".utf8)))]), (7, .varint(0))]),
+            ("type code0 FIT_TYPE_49", [type([(1, .varint(0)), (2, .bytes(Array("FIT_TYPE_49".utf8)))]), (7, .varint(0))]),
+            ("type name MONITOR", [type([(2, .bytes(Array("MONITOR".utf8)))]), (7, .varint(0))]),
+            ("type name FIT_TYPE_32", [type([(2, .bytes(Array("FIT_TYPE_32".utf8)))]), (7, .varint(0))]),
+            ("type name ACTIVITY", [type([(2, .bytes(Array("ACTIVITY".utf8)))]), (7, .varint(0))]),
+            ("max_count 500", [(3, .varint(500)), (7, .varint(0))]),
+        ]
+        for (label, request) in probes {
+            do {
+                let reply = try await self.request(GarminFiles.fileSync([(9, .bytes(Protobuf.encode(request)))]), answer: 10)
+                link?.note("PROBE \(label): \(Self.describeResponse(reply))")
+            } catch {
+                link?.note("PROBE \(label): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Lists only health types (code 0 + FIT_TYPE_n is the filter form the watch accepts).
+    private func probeHealthTypes(_ label: String) async {
+        for number in [32, 44, 49, 68, 70, 15, 28] {
+            let type = Protobuf.encode([(1, .varint(0)), (2, .bytes(Array("FIT_TYPE_\(number)".utf8)))])
+            do {
+                let reply = try await self.request(GarminFiles.fileSync([(9, .bytes(Protobuf.encode([(6, .bytes(type)), (7, .varint(0))])))]), answer: 10)
+                link?.note("PROBE \(label) type \(number): \(Self.describeResponse(reply))")
+            } catch {
+                link?.note("PROBE \(label) type \(number): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Status, cursor, page ids, extra fields and the raw (code, name, name id) of each type.
+    private static func describeResponse(_ sync: Protobuf.Fields) -> String {
+        guard let raw = sync.bytes(10), let fields = Protobuf.decode(raw) else { return "no FileListResponse, fields \(sync.values.keys.sorted())" }
+        var types: [String: Int] = [:]
+        var pages: [UInt64] = []
+        for entry in fields.all(4).compactMap(\.bytes) {
+            guard let file = Protobuf.decode(entry) else { continue }
+            let type = file.bytes(2).flatMap(Protobuf.decode) ?? Protobuf.Fields()
+            let name = type.bytes(2).map { String(decoding: $0, as: UTF8.self) } ?? "-"
+            types["\(type.int(1).map(String.init) ?? "-")/\(name)/\(type.int(3).map(String.init) ?? "-")", default: 0] += 1
+            if let page = file.int(5) { pages.append(page) }
+        }
+        let extra = fields.values.keys.filter { ![1, 2, 3, 4].contains($0) }.sorted().map { "f\($0)=\(fields.values[$0]!.map { $0.int.map(String.init) ?? "bytes" })" }
+        return "status \(fields.int(1).map(String.init) ?? "-") cursor \(fields.int(2).map(String.init) ?? "-") next \(fields.int(3).map(String.init) ?? "-") files \(fields.all(4).count) pages \(pages.min().map(String.init) ?? "-")…\(pages.max().map(String.init) ?? "-") \(extra) types \(types.sorted { $0.value > $1.value }.map { "\($0.key)×\($0.value)" }.joined(separator: " "))"
     }
 
     /// "activity 12, sleep 3, …", most first.
@@ -392,6 +484,11 @@ final class WatchFiles {
         if sync.has(5) { // TransferStatusRequest: answer as Gadgetbridge does
             link.send(GarminFiles.protobufRequest(.protobufResponse, requestID: chunk.requestID, body: GarminFiles.transferStatusResponse()))
         }
+        if sync.has(22) { // StartSyncNotification: the watch has new data for the phone
+            link.note("Watch asks for a sync")
+        }
+        let unhandled = sync.values.keys.filter { ![2, 5, 10, 12, 22].contains($0) }.sorted()
+        if !unhandled.isEmpty { link.note("Watch file sync message, fields \(unhandled)") }
         if sync.has(12) {
             let files = GarminFiles.newFiles(sync)
             announced += files

@@ -12,6 +12,7 @@ import Toybox.UserProfile;
 // Workout rules match the hub's glance feed (lib/watch-glance.ts): a day
 // counts when any activity started on it, and push / pull / legs follows the
 // number of strength sessions.
+(:glance)
 module HubData {
 
     const SPLIT = ["PUSH DAY", "PULL DAY", "LEG DAY"] as Array<String>;
@@ -120,6 +121,11 @@ module HubData {
     function restingHeartRate() as Number? {
         var profile = UserProfile.getProfile();
         return profile == null ? null : profile.restingHeartRate;
+    }
+
+    function averageRestingHeartRate() as Number? {
+        var profile = UserProfile.getProfile();
+        return (profile == null || !(profile has :averageRestingHeartRate)) ? null : profile.averageRestingHeartRate;
     }
 
     function bodyBattery() as Number? {

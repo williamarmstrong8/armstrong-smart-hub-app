@@ -27,7 +27,7 @@ struct FitnessInstallView: View {
                 if loading { ProgressView() }
                 if let loadError { Text(loadError).foregroundStyle(.secondary).font(.caption) }
                 if !loading, loadError == nil, faces.isEmpty {
-                    Text("No faces on the hub yet.").foregroundStyle(.secondary)
+                    Text("Nothing on the hub yet.").foregroundStyle(.secondary)
                 }
                 ForEach(faces) { face in
                     Button {

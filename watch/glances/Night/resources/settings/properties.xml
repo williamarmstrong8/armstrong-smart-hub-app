@@ -1,0 +1,16 @@
+<!-- Written by the phone after each sync (WatchSettings.swift, values from the hub's
+     /api/mobile/fitness/watch). Keep ids and types in step with lib/fitness/watch-settings.ts.
+     -1 or an empty string means the hub has no value. -->
+<properties>
+    <property id="at" type="number">-1</property>
+    <property id="sStart" type="number">-1</property>
+    <property id="sEnd" type="number">-1</property>
+    <property id="score" type="number">-1</property>
+    <property id="deep" type="number">-1</property>
+    <property id="light" type="number">-1</property>
+    <property id="rem" type="number">-1</property>
+    <property id="awake" type="number">-1</property>
+    <property id="hrv" type="number">-1</property>
+    <property id="hrvWk" type="number">-1</property>
+    <property id="hrvSt" type="string"></property>
+</properties>

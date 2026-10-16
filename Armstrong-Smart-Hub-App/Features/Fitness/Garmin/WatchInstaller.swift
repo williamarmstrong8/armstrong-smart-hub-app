@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Sends a Connect IQ app (a watch face, for now) to the watch over the same
+/// Sends a Connect IQ app (a watch face or a glance) to the watch over the same
 /// Bluetooth link the sync uses. WatchLink hands every inbound GFDI message to
 /// `handle` first, so only the replies to an install in flight are consumed.
 ///
@@ -75,7 +75,11 @@ final class WatchInstaller {
 
             link.send(GFDIMessage.systemEvent(.syncComplete))
             status = nil
-            lastResult = "Sent \(name) (\(data.count / 1024) KB). On the watch: hold Up, then Watch Face, and pick it."
+            // Hub glances are named "Glance: …"; everything else is a watch face.
+            let howTo = name.hasPrefix("Glance:")
+                ? "On the watch: swipe up to your glances, scroll to the bottom, Edit, then Add and pick it."
+                : "On the watch: hold Up, then Watch Face, and pick it."
+            lastResult = "Sent \(name) (\(data.count / 1024) KB). \(howTo)"
         } catch {
             status = nil
             lastResult = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

@@ -114,16 +114,16 @@ private struct EventCard: View {
     let zone: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(event.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-            Text(time).font(.caption.weight(.medium)).monospacedDigit().opacity(0.85)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(event.title).font(.headline).lineLimit(2)
+            Text(time).font(.subheadline.weight(.medium)).monospacedDigit().opacity(0.9)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(hex: event.color), in: .rect(cornerRadius: 12))
-        .contentShape(.rect(cornerRadius: 12))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .background(Color(hexForWhiteText: event.color), in: .rect(cornerRadius: 16))
+        .contentShape(.rect(cornerRadius: 16))
     }
 
     /// "6 PM" or "6:30 PM – 8 PM", like Google Calendar.

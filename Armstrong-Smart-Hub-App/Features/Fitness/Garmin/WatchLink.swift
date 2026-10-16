@@ -47,6 +47,8 @@ final class WatchLink: NSObject {
     let files = WatchFiles()
     /// Sends Connect IQ apps (watch faces) to the watch.
     let installer = WatchInstaller()
+    /// Writes hub-only values into the glances' Connect IQ settings.
+    let settings = WatchSettings()
 
     /// The paired watch, remembered so the app can reconnect without scanning.
     private(set) var savedWatchID: UUID? {
@@ -81,6 +83,7 @@ final class WatchLink: NSObject {
         super.init()
         files.link = self
         installer.link = self
+        settings.link = self
         savedWatchID = UserDefaults.standard.string(forKey: Self.savedKey).flatMap(UUID.init(uuidString:))
         savedWatchName = UserDefaults.standard.string(forKey: Self.savedNameKey)
         central = CBCentralManager(delegate: self, queue: .main)
@@ -342,11 +345,18 @@ final class WatchLink: NSObject {
             note("Bad GFDI frame (\(frame.count) bytes)")
             return
         }
-        note("← \(message.name) (\(message.payload.count) bytes)")
+        note("← \(message.name) (\(message.payload.count) bytes)\(message.type == 5037 || message.type == 5030 ? " " + message.payload.map { String(format: "%02x", $0) }.joined() : "")")
         if installer.handle(message) { return }
+        if settings.handle(message) { return }
         if files.handle(message) { return }
         switch Garmin.Message(rawValue: message.type) {
         case .response:
+            if let types = GFDIMessage.supportedFileTypes(message.payload) {
+                note("Watch serves \(types.count) file types: \(types.joined(separator: ", "))")
+            }
+            return
+        case .notificationSubscription:
+            send(GFDIMessage.notificationSubscriptionReply(message.payload))
             return
         case .protobufRequest, .protobufResponse:
             if let header = message.protobufHeader {
@@ -379,10 +389,18 @@ extension WatchLink {
     fileprivate func completeSetup() {
         guard !setupSent else { return }
         setupSent = true
-        for event in [Garmin.SystemEvent.syncReady, .pairComplete, .syncComplete, .setupWizardComplete] {
+        send(GFDIMessage.supportedFileTypesRequest())
+        let args = ProcessInfo.processInfo.arguments // DIAGNOSTIC
+        let events: [Garmin.SystemEvent] = args.contains("-noSyncComplete")
+            ? [.syncReady, .pairComplete, .setupWizardComplete]
+            : [.syncReady, .pairComplete, .syncComplete, .setupWizardComplete]
+        for event in events {
             send(GFDIMessage.systemEvent(event))
         }
         note("Told the watch setup is complete")
+        if ProcessInfo.processInfo.arguments.contains("-probeFiles") { // DIAGNOSTIC
+            Task { try? await Task.sleep(for: .seconds(4)); await files.probeOnly() }
+        }
     }
 }
 

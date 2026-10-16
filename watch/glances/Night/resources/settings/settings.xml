@@ -1,0 +1,14 @@
+<!-- Every pushed key needs a setting: the watch only accepts a settings write for an app that has settings. -->
+<settings>
+    <setting propertyKey="@Properties.at" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.sStart" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.sEnd" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.score" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.deep" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.light" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.rem" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.awake" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.hrv" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.hrvWk" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.hrvSt" title="@Strings.HubValue"><settingConfig type="alphaNumeric"/></setting>
+</settings>
