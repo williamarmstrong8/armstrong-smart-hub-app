@@ -45,6 +45,8 @@ final class WatchLink: NSObject {
     private(set) var log: [LogLine] = []
     /// History downloads over this link.
     let files = WatchFiles()
+    /// Sends Connect IQ apps (watch faces) to the watch.
+    let installer = WatchInstaller()
 
     /// The paired watch, remembered so the app can reconnect without scanning.
     private(set) var savedWatchID: UUID? {
@@ -78,6 +80,7 @@ final class WatchLink: NSObject {
     override init() {
         super.init()
         files.link = self
+        installer.link = self
         savedWatchID = UserDefaults.standard.string(forKey: Self.savedKey).flatMap(UUID.init(uuidString:))
         savedWatchName = UserDefaults.standard.string(forKey: Self.savedNameKey)
         central = CBCentralManager(delegate: self, queue: .main)
@@ -340,6 +343,7 @@ final class WatchLink: NSObject {
             return
         }
         note("← \(message.name) (\(message.payload.count) bytes)")
+        if installer.handle(message) { return }
         if files.handle(message) { return }
         switch Garmin.Message(rawValue: message.type) {
         case .response:
