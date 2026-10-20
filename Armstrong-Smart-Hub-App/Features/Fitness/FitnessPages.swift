@@ -71,6 +71,19 @@ enum FitData {
     }
 }
 
+/// Why the day-long charts stop where they do: the watch hands over each
+/// day's all-day file at midnight, so until then they show the day before.
+struct AllDayNote: View {
+    var store: FitnessStore
+
+    var body: some View {
+        if let through = (store.snapshot?.allDayThrough).flatMap(ISO.parse), Date.now.timeIntervalSince(through) > 2 * 3600 {
+            Takeaway(text: "Runs to \(through.formatted(.dateTime.weekday(.wide).hour().minute())). Your watch hands over each day's all-day heart rate, stress and Body Battery at midnight, so today's appears after tonight's sync.")
+                .font(.caption)
+        }
+    }
+}
+
 enum Bands {
     static func recovery(_ zone: String?) -> Color {
         switch zone { case "green": Fit.positive; case "yellow": Fit.fair; case "red": Fit.attention; default: Fit.muted }
@@ -608,6 +621,7 @@ struct HeartPage: View {
                 } else {
                     let window = FitData.window(points)
                     IntradayChart(points: points, tint: Fit.heart, from: window.0, to: window.1, style: .area, unit: " bpm")
+                    AllDayNote(store: store)
                 }
             }
             RestingSection(store: store)
@@ -644,6 +658,7 @@ struct EnergyPage: View {
                 FitSection(title: "Through the day") {
                     IntradayChart(points: points, tint: Fit.energy, from: window.0, to: window.1, style: .area, domain: 0...100)
                     Takeaway(text: "Sleep and calm stretches charge it; stress and exercise drain it.").font(.caption)
+                    AllDayNote(store: store)
                 }
             }
             stress
@@ -674,8 +689,8 @@ struct EnergyPage: View {
         if let day = store.snapshot?.insights?.stress {
             FitSection(title: "Balance", trailing: day.today.summary?.capitalized) {
                 VStack(spacing: 0) {
-                    DetailRow(label: "Stressed today", value: FitnessFormat.duration(Double(day.today.stressedMinutes * 60)))
-                    DetailRow(label: "Restored today", value: FitnessFormat.duration(Double(day.today.restoredMinutes * 60)))
+                    DetailRow(label: "Time stressed", value: FitnessFormat.duration(Double(day.today.stressedMinutes * 60)))
+                    DetailRow(label: "Time restored", value: FitnessFormat.duration(Double(day.today.restoredMinutes * 60)))
                     DetailRow(label: "Resilience", value: day.resilience.status == "ready" ? (day.resilience.level?.capitalized ?? "–")
                               : "Needs \(day.resilience.need ?? 5) days, has \(day.resilience.have ?? 0)", last: true)
                 }

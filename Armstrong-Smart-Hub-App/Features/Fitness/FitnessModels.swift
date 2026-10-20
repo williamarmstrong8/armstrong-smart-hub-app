@@ -15,6 +15,8 @@ struct FitnessSnapshot: Decodable {
     var insights: FitnessInsights?
     /// The watch's own readiness, Endurance Score, race predictions and more. Missing from older hubs.
     var watch: FitnessWatch?
+    /// When the newest all-day reading is from: the day-long charts end here. Missing from older hubs.
+    var allDayThrough: String?
 
     struct FileCount: Decodable { var kind: String; var count: Int }
 }
