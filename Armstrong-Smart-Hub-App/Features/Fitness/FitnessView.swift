@@ -1,8 +1,8 @@
 import Charts
 import SwiftUI
 
-/// The fitness console, in place of Garmin Connect: today, heart rate, sleep,
-/// activities and trends. Live numbers come straight from the watch over
+/// The fitness console, in place of Garmin Connect: an overview of dials and
+/// tiles, each opening its own page (FitnessPages.swift). Live numbers come straight from the watch over
 /// Bluetooth; history comes from the hub, which parses the files the watch
 /// hands over on each sync.
 struct FitnessView: View {
@@ -34,35 +34,10 @@ struct FitnessView: View {
                             ErrorBanner(message: error)
                         }
                         today
-                        if let insights = store.snapshot?.insights {
-                            RecoveryStrainSection(insights: insights)
-                        }
-                        if let metrics = store.snapshot?.metrics {
-                            ReadinessSection(readiness: metrics.readiness)
-                        }
-                        heartRate
-                        if let insights = store.snapshot?.insights {
-                            BalanceSection(stress: insights.stress)
-                        } else if let metrics = store.snapshot?.metrics {
-                            EnergySection(battery: metrics.bodyBattery, stress: metrics.stress)
-                        }
-                        sleep
-                        if let insights = store.snapshot?.insights {
-                            SleepCoachSection(sleep: insights.sleep)
-                        }
-                        hrv
-                        activities
-                        if let workout = store.snapshot?.insights?.training.lastWorkout {
-                            WorkoutEffectSection(workout: workout)
-                        }
-                        if let metrics = store.snapshot?.metrics {
-                            PerformanceSection(metrics: metrics)
-                        }
-                        if let insights = store.snapshot?.insights {
-                            TrainingInsightsSection(training: insights.training)
-                            HealthInsightsSection(age: insights.age, vitals: insights.vitals)
-                        }
-                        trends
+                        FitnessDials(insights: store.snapshot?.insights, lastNight: store.lastNight)
+                        FitnessTileGrid(store: store, liveBpm: watch.heartRate?.bpm,
+                                        steps: max(watch.steps?.count ?? 0, store.today?.steps ?? 0),
+                                        stepGoal: store.today?.stepGoal ?? watch.steps?.goal)
                         syncStatus
                     }
                 }
@@ -83,6 +58,7 @@ struct FitnessView: View {
                 }
             }
             .navigationDestination(for: FitnessActivity.self) { ActivityDetailView(activity: $0, store: store) }
+            .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
             .task {
                 await store.load(api: session.api)
                 await autoSync()
@@ -244,10 +220,6 @@ struct FitnessView: View {
         let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? start
         let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
         let days = workoutDays
-        let steps = max(watch.steps?.count ?? 0, store.today?.steps ?? 0)
-        let sleepScore = store.lastNight?.score
-        let bpm = watch.heartRate?.bpm
-        let goal = store.today?.stepGoal ?? watch.steps?.goal
         return VStack(alignment: .leading, spacing: 36) {
             VStack(alignment: .leading, spacing: 32) {
                 nextWorkoutView
@@ -267,181 +239,9 @@ struct FitnessView: View {
                 }
                 .animation(.smooth, value: days.count)
             }
-            HStack(alignment: .top, spacing: 12) {
-                BigMetric(symbol: "walk", tint: .green, title: "Steps", value: steps.formatted(),
-                          progress: goal.flatMap { $0 > 0 ? min(Double(steps) / Double($0), 1) : nil })
-                BigMetric(symbol: "heart", tint: .red, title: "Heart bpm", value: bpm.map { "\($0)" } ?? "–")
-                BigMetric(symbol: "bed", tint: .indigo, title: "Sleep score", value: sleepScore.map(String.init) ?? "–")
-            }
         }
     }
 
-    // MARK: Heart rate
-
-    private var heartRate: some View {
-        let points = (store.snapshot?.heartRate ?? []).compactMap { p in p.date.map { ($0, p.bpm) } }
-        return FloatingSection(title: "Heart rate", trailing: points.isEmpty ? nil : "\(points.map(\.1).min() ?? 0)–\(points.map(\.1).max() ?? 0) bpm today") {
-            if points.isEmpty {
-                Text("All-day heart rate appears once the watch hands over a monitoring file, usually after a day of wear.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            } else {
-                let low = points.map(\.1).min() ?? 0
-                Chart(points, id: \.0) { point in
-                    AreaMark(x: .value("Time", point.0), yStart: .value("Floor", max(low - 10, 0)), yEnd: .value("BPM", point.1))
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(LinearGradient(colors: [.red.opacity(0.28), .red.opacity(0)], startPoint: .top, endPoint: .bottom))
-                    LineMark(x: .value("Time", point.0), y: .value("BPM", point.1))
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(.red)
-                        .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
-                }
-                .chartYScale(domain: .automatic(includesZero: false))
-                .chartXAxis { AxisMarks(values: .stride(by: .hour, count: 6)) { _ in AxisValueLabel(format: .dateTime.hour()) } }
-                .chartYAxis(.hidden)
-                .frame(height: 140)
-            }
-        }
-    }
-
-    // MARK: Sleep
-
-    private var sleep: some View {
-        NavigationLink {
-            SleepView(nights: store.nights)
-        } label: {
-            FloatingSection(title: "Sleep", trailing: store.lastNight?.startDate.map { $0.formatted(.dateTime.weekday(.wide)) }) {
-                if let night = store.lastNight {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(FitnessFormat.duration(Double(night.asleepSeconds)))
-                            .font(.system(size: 40, weight: .heavy, design: .rounded))
-                        Spacer()
-                        if let score = night.score {
-                            VStack(spacing: 0) {
-                                Text("\(score)").font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.indigo)
-                                Text("score").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    StageBar(night: night).frame(height: 14)
-                    HStack(alignment: .top) {
-                        ForEach(SleepNight.Stage.allCases) { stage in
-                            VStack(spacing: 2) {
-                                Text(FitnessFormat.duration(Double(night.seconds(stage)))).font(.subheadline.weight(.bold)).monospacedDigit()
-                                Label(stage.name, systemImage: "circle.fill")
-                                    .labelStyle(TintedDot(color: stage.color))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-                } else {
-                    Text("Sleep shows up after a night with the watch on, once it hands over the sleep file.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(store.nights.isEmpty)
-    }
-
-    // MARK: HRV
-
-    @ViewBuilder private var hrv: some View {
-        let nights = (store.snapshot?.hrv ?? []).filter { $0.lastNightAverage != nil && $0.date != nil }
-        if let last = nights.first, let value = last.lastNightAverage {
-            FloatingSection(title: "HRV", trailing: last.status.map { $0.capitalized }) {
-                HStack(alignment: .firstTextBaseline) {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(Int(value.rounded()))")
-                            .font(.system(size: 40, weight: .heavy, design: .rounded))
-                            .foregroundStyle(.teal)
-                            .monospacedDigit()
-                        Text("ms").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if let weekly = last.weeklyAverage {
-                        VStack(alignment: .trailing, spacing: 0) {
-                            Text("\(Int(weekly.rounded()))").font(.system(size: 30, weight: .heavy, design: .rounded)).monospacedDigit()
-                            Text("7-day avg").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                Chart {
-                    if let low = last.baselineBalancedLower, let high = last.baselineBalancedUpper, let first = nights.last?.date {
-                        RectangleMark(xStart: .value("From", first), xEnd: .value("To", last.date ?? first),
-                                      yStart: .value("Low", low), yEnd: .value("High", high))
-                            .foregroundStyle(Color.teal.opacity(0.12))
-                    }
-                    ForEach(nights.reversed()) { night in
-                        if let date = night.date, let average = night.lastNightAverage {
-                            LineMark(x: .value("Night", date), y: .value("HRV", average))
-                                .interpolationMethod(.monotone)
-                                .foregroundStyle(.teal)
-                                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
-                            PointMark(x: .value("Night", date), y: .value("HRV", average))
-                                .foregroundStyle(.teal)
-                                .symbolSize(18)
-                        }
-                    }
-                }
-                .chartYScale(domain: .automatic(includesZero: false))
-                .chartYAxis(.hidden)
-                .frame(height: 110)
-            }
-        }
-    }
-
-    // MARK: Activities
-
-    private var activities: some View {
-        FloatingSection(title: "Activities", trailing: store.activities.isEmpty ? nil : "\(store.thisWeek.count) this week") {
-            if store.activities.isEmpty {
-                Text("Activities from the watch show here after a sync.").font(.subheadline).foregroundStyle(.secondary)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 26) {
-                        ForEach(store.activities.prefix(8)) { activity in
-                            NavigationLink(value: activity) { ActivityTile(activity: activity) }.buttonStyle(.plain)
-                        }
-                        if store.activities.count > 8 {
-                            NavigationLink {
-                                ActivitiesView(activities: store.activities)
-                            } label: {
-                                VStack(spacing: 8) {
-                                    TablerIcon(name: "arrow-right", size: 34).foregroundStyle(.primary)
-                                    Text("All \(store.activities.count)").font(.subheadline.weight(.semibold))
-                                }
-                                .frame(width: 80, height: 120)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                .scrollClipDisabled()
-            }
-        }
-    }
-
-    // MARK: Trends
-
-    private var trends: some View {
-        let days = Array(store.days.filter { $0.steps != nil && $0.date != nil }.prefix(14))
-        let goal = store.today?.stepGoal ?? watch.steps?.goal
-        let average = days.isEmpty ? nil : days.reduce(0) { $0 + ($1.steps ?? 0) } / days.count
-        return NavigationLink {
-            TrendsView(store: store)
-        } label: {
-            FloatingSection(title: "Steps", trailing: average.map { "\($0.formatted()) avg" }) {
-                if days.isEmpty {
-                    Text("Daily totals build up as you sync.").font(.subheadline).foregroundStyle(.secondary)
-                } else {
-                    StepsChart(days: days, goal: goal).frame(height: 140)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 // MARK: Pieces
