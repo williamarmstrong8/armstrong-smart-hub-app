@@ -35,6 +35,7 @@ struct RoutineEditor: View {
             List {
                 TextField("Routine title", text: $routine.name)
                     .font(.title2.weight(.semibold))
+                    .submitLabel(.done)
                     .workoutRow(top: 12, bottom: 4)
                 Rectangle().fill(Fit.hairline).frame(height: 1)
                     .workoutRow(top: 8, bottom: 8)
@@ -53,7 +54,11 @@ struct RoutineEditor: View {
                     block($item)
                 }
 
-                Button { picking = true } label: {
+                Button {
+                    // Otherwise iOS hands focus back to the last field when the picker closes.
+                    ActiveWorkoutView.hideKeyboard()
+                    picking = true
+                } label: {
                     Label("Add exercise", systemImage: "plus")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.white)
@@ -77,7 +82,7 @@ struct RoutineEditor: View {
                 }
             }
             .listStyle(.plain)
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.immediately)
             .navigationTitle(isNew ? "Create Routine" : "Edit Routine")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -88,13 +93,9 @@ struct RoutineEditor: View {
                         .tint(Fit.energy)
                         .disabled(!canSave)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { ActiveWorkoutView.hideKeyboard() }
-                }
             }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: store) }
-            .sheet(isPresented: $picking) {
+            .sheet(isPresented: $picking, onDismiss: ActiveWorkoutView.hideKeyboard) {
                 ExercisePicker(store: store) { picked in
                     items += picked.map { EditableItem(new: $0, unit: unit, store: store) }
                 }
