@@ -172,7 +172,8 @@ struct SleepNight: Decodable, Identifiable {
 
 enum FitnessFormat {
     static func duration(_ seconds: Double?) -> String {
-        guard let seconds, seconds > 0 else { return "–" }
+        guard let seconds else { return "–" }
+        guard seconds >= 60 else { return "0m" }
         let minutes = Int(seconds / 60)
         return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
     }

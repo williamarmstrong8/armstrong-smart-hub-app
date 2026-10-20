@@ -33,16 +33,21 @@ struct FitnessView: View {
                         if let error = store.error, !store.loaded {
                             ErrorBanner(message: error)
                         }
-                        ReadinessHero(store: store)
-                        today
-                        FitnessDials(store: store)
-                        FitnessTileGrid(store: store, liveBpm: watch.heartRate?.bpm,
-                                        steps: max(watch.steps?.count ?? 0, store.today?.steps ?? 0),
-                                        stepGoal: store.today?.stepGoal ?? watch.steps?.goal)
+                        VStack(spacing: 0) {
+                            dayHeader
+                            TodayScores(store: store).padding(.vertical, 20)
+                            today
+                            FitSection(title: "Body") {
+                                OverviewList(store: store, liveBpm: watch.heartRate?.bpm,
+                                             steps: max(watch.steps?.count ?? 0, store.today?.steps ?? 0),
+                                             stepGoal: store.today?.stepGoal ?? watch.steps?.goal)
+                            }
+                            RecentActivities(activities: store.activities)
+                        }
                         syncStatus
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, Fit.gutter)
                 .padding(.vertical, 16)
                 .padding(.bottom, 24)
                 .animation(.smooth, value: watch.state)
@@ -200,14 +205,22 @@ struct FitnessView: View {
         return ("barbell", name, detail)
     }
 
+    /// "Today" and the date, Oura's page title.
+    private var dayHeader: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Today").font(.system(size: 34, weight: .semibold))
+            Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())).font(.subheadline).foregroundStyle(Fit.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var nextWorkoutView: some View {
         let next = nextWorkout
-        return HStack(spacing: 16) {
-            TablerIcon(name: next.icon, size: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("NEXT WORKOUT").font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(.secondary)
-                Text(next.title).font(.system(size: 28, weight: .bold, design: .rounded))
-                Text(next.detail).font(.subheadline).foregroundStyle(.secondary)
+        return HStack(spacing: 14) {
+            TablerIcon(name: next.icon, size: 26).foregroundStyle(Fit.muted).frame(width: 32)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(next.title).font(.system(size: 22, weight: .regular))
+                Text(next.detail).font(.footnote).foregroundStyle(Fit.muted).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
@@ -215,152 +228,37 @@ struct FitnessView: View {
         .onTapGesture { pplOffset += 1 }
     }
 
+    /// Next workout, then this week as seven dots, one per day.
     private var today: some View {
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: .now)
         let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? start
         let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
         let days = workoutDays
-        return VStack(alignment: .leading, spacing: 36) {
-            VStack(alignment: .leading, spacing: 32) {
-                nextWorkoutView
-                HStack(spacing: 0) {
-                    ForEach(weekDays, id: \.self) { day in
-                        let worked = days.contains(day)
-                        let isToday = calendar.isDate(day, inSameDayAs: start)
-                        VStack(spacing: 10) {
-                            TablerIcon(name: worked ? "circle-check" : "circle", size: 44)
-                                .foregroundStyle(worked ? Color.green : Color.primary.opacity(isToday ? 0.5 : 0.18))
-                            Text(day.formatted(.dateTime.weekday(.narrow)))
-                                .font(.caption.weight(isToday ? .bold : .regular))
-                                .foregroundStyle(isToday ? Color.primary : Color.secondary)
+        let done = weekDays.filter { days.contains($0) }.count
+        return FitSection(title: "Next workout", trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days this week") {
+            nextWorkoutView
+            HStack(spacing: 0) {
+                ForEach(weekDays, id: \.self) { day in
+                    let worked = days.contains(day)
+                    let isToday = calendar.isDate(day, inSameDayAs: start)
+                    VStack(spacing: 8) {
+                        ZStack {
+                            Circle().stroke(isToday ? Color.primary : Fit.track, lineWidth: isToday ? 1.5 : 1)
+                            if worked { Circle().fill(Fit.positive).padding(5) }
                         }
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 26, height: 26)
+                        Text(day.formatted(.dateTime.weekday(.narrow)))
+                            .font(.caption.weight(isToday ? .semibold : .regular))
+                            .foregroundStyle(isToday ? Color.primary : Fit.muted)
                     }
-                }
-                .animation(.smooth, value: days.count)
-            }
-        }
-    }
-
-}
-
-// MARK: Pieces
-
-private struct Metric: View {
-    var symbol: String
-    var color: Color
-    var title: String
-    var value: String
-    var unit: String
-    var live = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            TablerIcon(name: symbol, size: 18).foregroundStyle(color)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title).font(.caption).foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(value).font(.headline).monospacedDigit().contentTransition(.numericText())
-                    Text(unit).font(.caption2).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
                 }
             }
+            .animation(.smooth, value: days.count)
         }
     }
-}
 
-struct Stat: View {
-    var label: String
-    var value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.headline).monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-struct TintedDot: LabelStyle {
-    var color: Color
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 4) {
-            configuration.icon.foregroundStyle(color).font(.system(size: 7))
-            configuration.title
-        }
-    }
-}
-
-/// The night's stages as one proportional bar.
-struct StageBar: View {
-    var night: SleepNight
-
-    var body: some View {
-        let total = Double(SleepNight.Stage.allCases.map { night.seconds($0) }.reduce(0, +))
-        GeometryReader { geometry in
-            HStack(spacing: 2) {
-                ForEach(SleepNight.Stage.allCases) { stage in
-                    let share = total > 0 ? Double(night.seconds(stage)) / total : 0
-                    if share > 0 {
-                        Rectangle().fill(stage.color).frame(width: max(2, geometry.size.width * share - 2))
-                    }
-                }
-            }
-        }
-        .clipShape(.capsule)
-    }
-}
-
-struct ActivityRow: View {
-    var activity: FitnessActivity
-
-    var body: some View {
-        HStack(spacing: 12) {
-            TablerIcon(name: activity.symbol, size: 26).foregroundStyle(.primary)
-                .frame(width: 40, height: 40)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(activity.title).font(.subheadline.weight(.semibold))
-                if let start = activity.start {
-                    Text(start, format: .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(activity.hasDistance ? FitnessFormat.distance(activity.distanceMeters) : FitnessFormat.duration(activity.duration))
-                    .font(.subheadline.weight(.semibold)).monospacedDigit()
-                HStack(spacing: 6) {
-                    if activity.hasDistance { Text(FitnessFormat.duration(activity.duration)) }
-                    if let hr = activity.avgHr { HStack(spacing: 3) { TablerIcon(name: "heart", size: 11); Text("\(hr)") } }
-                }
-                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            }
-            TablerIcon(name: "chevron-right", size: 14).foregroundStyle(.tertiary)
-        }
-        .contentShape(.rect)
-    }
-}
-
-struct StepsChart: View {
-    var days: [FitnessDay]
-    var goal: Int?
-
-    var body: some View {
-        let points = days.compactMap { day in day.date.map { ($0, day.steps ?? 0) } }
-        Chart(points, id: \.0) { point in
-            AreaMark(x: .value("Day", point.0, unit: .day), y: .value("Steps", point.1))
-                .interpolationMethod(.monotone)
-                .foregroundStyle(LinearGradient(colors: [.green.opacity(0.28), .green.opacity(0)], startPoint: .top, endPoint: .bottom))
-            LineMark(x: .value("Day", point.0, unit: .day), y: .value("Steps", point.1))
-                .interpolationMethod(.monotone)
-                .foregroundStyle(.green)
-                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
-        }
-        .chartYScale(domain: .automatic(includesZero: false))
-        .chartYAxis(.hidden)
-        .chartXAxis { AxisMarks(values: .stride(by: .day, count: days.count > 10 ? 7 : 1)) { _ in AxisValueLabel(format: .dateTime.weekday(.narrow)) } }
-    }
 }
 
 // MARK: Watch sheet

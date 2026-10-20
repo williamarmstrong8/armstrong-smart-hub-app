@@ -37,10 +37,12 @@ enum FitnessRenderDebug {
                 activities.append(detail.activity)
             }
         }
-        let overview = VStack(spacing: 36) {
-            ReadinessHero(store: store)
-            FitnessDials(store: store)
-            FitnessTileGrid(store: store, liveBpm: nil, steps: store.today?.steps ?? 0, stepGoal: store.today?.stepGoal)
+        let overview = VStack(spacing: 0) {
+            TodayScores(store: store)
+            FitSection(title: "Body") {
+                OverviewList(store: store, liveBpm: nil, steps: store.today?.steps ?? 0, stepGoal: store.today?.stepGoal)
+            }
+            RecentActivities(activities: store.activities)
         }.padding(20)
         for scheme in [ColorScheme.dark, .light] {
             save("overview", overview, scheme: scheme)
