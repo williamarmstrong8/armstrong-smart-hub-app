@@ -20,6 +20,9 @@ struct ActiveWorkoutView: View {
     @State private var confirmEmpty = false
     @State private var showingSettings = false
     @State private var openNotes: Set<DraftExercise.ID> = []
+    /// Exercises collapsed to one row each, to drag into a new order.
+    @State private var reordering = false
+    @State private var replacing: Replacing?
 
     /// The watch's reading, if it's recent enough to trust.
     private var liveBpm: Int? {
@@ -47,9 +50,15 @@ struct ActiveWorkoutView: View {
             RestPanel(store: store).ignoresSafeArea(.keyboard)
         }
         .animation(.snappy, value: store.restEndsAt != nil)
-        .sheet(isPresented: $picking) {
+        .sheet(isPresented: $picking, onDismiss: Self.hideKeyboard) {
             ExercisePicker(store: store) { store.addExercises($0) }
         }
+        .sheet(item: $replacing) { target in
+            ExercisePicker(store: store, replacing: true) { picked in
+                if let exercise = picked.first { store.replaceExercise(target.id, with: exercise) }
+            }
+        }
+        .presentationBackground(Fit.page)
         .sheet(isPresented: $showingSettings) {
             WorkoutSettingsSheet(store: store, defaultUnit: $defaultUnit)
         }
@@ -85,15 +94,9 @@ struct ActiveWorkoutView: View {
         ToolbarItem(placement: .topBarLeading) {
             Button { dismiss() } label: { Image(systemName: "chevron.down") }.accessibilityLabel("Minimize")
         }
-        ToolbarItem(placement: .topBarLeading) {
-            if let start = store.active?.startedAt {
-                TimelineView(.periodic(from: start, by: 1)) { context in
-                    Text(WorkoutFormat.elapsed(context.date.timeIntervalSince(start)))
-                        .font(.headline).monospacedDigit().foregroundStyle(Fit.energy)
-                }
-            }
+        ToolbarItem(placement: .principal) {
+            Text(store.active?.name ?? "Workout").font(.headline).lineLimit(1)
         }
-        .sharedBackgroundVisibility(.hidden)
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 if store.restEndsAt != nil {
@@ -110,15 +113,17 @@ struct ActiveWorkoutView: View {
             .accessibilityLabel("Rest timer")
         }
         ToolbarItem(placement: .confirmationAction) {
-            Button("Finish") {
-                if store.active?.completedSets.isEmpty ?? true { confirmEmpty = true } else { finish() }
+            if reordering {
+                Button("Done") { withAnimation(.snappy) { reordering = false } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Fit.energy)
+            } else {
+                Button("Finish") {
+                    if store.active?.completedSets.isEmpty ?? true { confirmEmpty = true } else { finish() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Fit.energy)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Fit.energy)
-        }
-        ToolbarItemGroup(placement: .keyboard) {
-            Spacer()
-            Button("Done") { Self.hideKeyboard() }
         }
     }
 
@@ -131,7 +136,41 @@ struct ActiveWorkoutView: View {
         dismiss()
     }
 
+    private func startReordering() {
+        Self.hideKeyboard()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.snappy) { reordering = true }
+    }
+
     private func list(_ workout: ActiveWorkout) -> some View {
+        Group {
+            if reordering { reorderList(workout) } else { fullList(workout) }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            RepsProgress(done: workout.repProgress.done, total: workout.repProgress.total)
+        }
+    }
+
+    /// One row per exercise, held and dragged into a new order.
+    private func reorderList(_ workout: ActiveWorkout) -> some View {
+        List {
+            Text("Hold and drag to reorder").font(.footnote).foregroundStyle(Fit.muted)
+                .workoutRow(top: 12, bottom: 4)
+                .moveDisabled(true)
+            ForEach(workout.exercises) { exercise in
+                ReorderRow(exerciseId: exercise.exerciseId, name: exercise.name, muscle: store.exercise(exercise.exerciseId)?.muscle)
+                    .listRowBackground(Fit.page)
+                    .deleteDisabled(true)
+            }
+            .onMove { store.moveExercises(from: $0, to: $1) }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Fit.page)
+        .environment(\.editMode, .constant(.active))
+    }
+
+    private func fullList(_ workout: ActiveWorkout) -> some View {
         List {
             WorkoutStats(workout: workout, liveBpm: liveBpm, maxHr: maxHr,
                          status: watch.savedWatchID == nil ? "No watch" : "Connecting…")
@@ -175,15 +214,18 @@ struct ActiveWorkoutView: View {
             .workoutRow(top: 6, bottom: 24)
         }
         .listStyle(.plain)
-        .scrollDismissesKeyboard(.interactively)
+        .scrollContentBackground(.hidden)
+        .background(Fit.page)
+        .scrollDismissesKeyboard(.immediately)
         .contentMargins(.bottom, store.restEndsAt == nil ? 0 : 210, for: .scrollContent)
     }
 
     @ViewBuilder
     private func exerciseBlock(_ exercise: DraftExercise, workout: ActiveWorkout) -> some View {
-        ExerciseHeader(store: store, exercise: exercise, isLast: exercise.id == workout.exercises.last?.id) {
-            path.append(ExerciseRoute(id: exercise.exerciseId, name: exercise.name, store: store))
-        }
+        ExerciseHeader(store: store, exercise: exercise, isLast: exercise.id == workout.exercises.last?.id,
+                       onOpen: { path.append(ExerciseRoute(id: exercise.exerciseId, name: exercise.name, store: store)) },
+                       onReplace: { Self.hideKeyboard(); replacing = Replacing(id: exercise.id) },
+                       onReorder: startReordering)
         .workoutRow(top: 18, bottom: 4)
 
         ExerciseOptions(store: store, exercise: exercise, noteOpen: Binding(
@@ -279,7 +321,6 @@ private struct WorkoutStats: View {
                     stat("Duration", WorkoutFormat.elapsed(context.date.timeIntervalSince(workout.startedAt)), tint: Fit.energy)
                 }
                 stat("Volume", WorkoutFormat.volume(workout.volumeKg, unit: workout.unit))
-                stat("Sets", "\(workout.completedSets.filter { $0.kind != .warmup }.count)")
             }
             Rectangle().fill(Fit.hairline).frame(height: 1)
             heart
@@ -296,7 +337,16 @@ private struct WorkoutStats: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var currentZone: Int? { liveBpm.flatMap { HeartZones.zone(Double($0), max: peak) } }
+    /// The live reading, else the workout's last one if it's under a minute old,
+    /// so the zone stays lit through a dropped reading.
+    private var zoneBpm: Double? {
+        if let liveBpm { return Double(liveBpm) }
+        guard let last = workout.heartRate.last, last.count == 2,
+              Date.now.timeIntervalSince(workout.startedAt.addingTimeInterval(last[0])) < 60 else { return nil }
+        return last[1]
+    }
+
+    private var currentZone: Int? { zoneBpm.flatMap { HeartZones.zone($0, max: peak) } }
 
     private var heart: some View {
         HStack(alignment: .center) {
@@ -319,9 +369,9 @@ private struct WorkoutStats: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 4) {
-                if let zone = currentZone, let bpm = liveBpm {
+                if let zone = currentZone, let bpm = zoneBpm {
                     Text("Zone \(zone + 1)").font(.title3.weight(.bold)).foregroundStyle(HeartZones.colors[zone])
-                    Text("\(HeartZones.names[zone]) · \(Int((Double(bpm) / peak * 100).rounded()))% max")
+                    Text("\(HeartZones.names[zone]) · \(Int((bpm / peak * 100).rounded()))% max")
                         .font(.caption).foregroundStyle(Fit.muted)
                 }
                 if let summary = summary {
@@ -338,24 +388,93 @@ private struct WorkoutStats: View {
         return "Avg \(Int((bpm.reduce(0, +) / Double(bpm.count)).rounded())) · Max \(Int(max))"
     }
 
+    /// Five zones; the one your heart rate is in now is boxed, lit and marked.
     private var zones: some View {
         let time = HeartZones.time(workout.heartRate, max: peak)
-        return HStack(spacing: 4) {
+        return HStack(spacing: 6) {
             ForEach(0..<5, id: \.self) { zone in
+                let on = currentZone == zone
+                let color = HeartZones.colors[zone]
                 VStack(spacing: 6) {
-                    Capsule()
-                        .fill(HeartZones.colors[zone].opacity(currentZone == zone ? 1 : 0.35))
-                        .frame(height: currentZone == zone ? 10 : 6)
-                    Text("Z\(zone + 1)").font(.caption2.weight(.semibold))
-                        .foregroundStyle(currentZone == zone ? HeartZones.colors[zone] : Fit.muted)
+                    Image(systemName: "arrowtriangle.down.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(color)
+                        .opacity(on ? 1 : 0)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(color.opacity(on ? 1 : 0.25))
+                        .frame(height: on ? 14 : 8)
+                    Text("Z\(zone + 1)").font(.caption.weight(on ? .bold : .medium))
+                        .foregroundStyle(on ? color : Fit.muted)
                     Text(time[zone] >= 1 ? WorkoutFormat.elapsed(time[zone]) : "–")
-                        .font(.caption2).foregroundStyle(Fit.muted).monospacedDigit()
+                        .font(.caption2).foregroundStyle(on ? Color.primary : Fit.muted).monospacedDigit()
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 4)
+                .background(on ? color.opacity(0.16) : .clear, in: .rect(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(on ? color : .clear, lineWidth: 1.5))
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
-        .frame(height: 50, alignment: .bottom)
         .animation(.snappy, value: currentZone)
+    }
+}
+
+/// The exercise being swapped out, for the Replace sheet.
+private struct Replacing: Identifiable {
+    let id: DraftExercise.ID
+}
+
+// MARK: Progress
+
+/// Under the header: reps checked off out of every rep planned in the workout.
+private struct RepsProgress: View {
+    var done: Int
+    var total: Int
+
+    private var fraction: Double { total > 0 ? min(1, Double(done) / Double(total)) : 0 }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Fit.track)
+                    Capsule().fill(Fit.energy).frame(width: geo.size.width * fraction)
+                }
+            }
+            .frame(height: 6)
+            HStack {
+                Text("\(done) of \(total) reps")
+                Spacer()
+                Text("\(Int((fraction * 100).rounded()))%")
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Fit.muted)
+            .monospacedDigit()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+        .background(Fit.page)
+        .animation(.snappy, value: done)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// An exercise collapsed to one row while reordering.
+struct ReorderRow: View {
+    var exerciseId: String
+    var name: String
+    var muscle: String?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ExerciseThumb(exerciseId: exerciseId, muscle: muscle, size: 40)
+            Text(name).font(.body.weight(.medium)).lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -366,6 +485,8 @@ private struct ExerciseHeader: View {
     var exercise: DraftExercise
     var isLast: Bool
     var onOpen: () -> Void
+    var onReplace: () -> Void
+    var onReorder: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -383,8 +504,11 @@ private struct ExerciseHeader: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.borderless)
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in onReorder() })
             Spacer(minLength: 8)
             Menu {
+                Button("Replace exercise", systemImage: "arrow.triangle.2.circlepath", action: onReplace)
+                Button("Reorder exercises", systemImage: "arrow.up.arrow.down", action: onReorder)
                 if exercise.superset != nil {
                     Button("Remove from superset", systemImage: "link") { store.updateExercise(exercise.id) { $0.superset = nil } }
                 } else if !isLast {

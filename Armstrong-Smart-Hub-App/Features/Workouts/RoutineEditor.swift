@@ -16,6 +16,9 @@ struct RoutineEditor: View {
     @State private var saving = false
     @State private var confirmDiscard = false
     @State private var error: String?
+    /// Exercises collapsed to one row each, to drag into a new order.
+    @State private var reordering = false
+    @State private var replacing: ReplaceTarget?
 
     init(store: WorkoutStore, routine: Routine? = nil) {
         self.store = store
@@ -32,72 +35,37 @@ struct RoutineEditor: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                TextField("Routine title", text: $routine.name)
-                    .font(.title2.weight(.semibold))
-                    .submitLabel(.done)
-                    .workoutRow(top: 12, bottom: 4)
-                Rectangle().fill(Fit.hairline).frame(height: 1)
-                    .workoutRow(top: 8, bottom: 8)
-
-                if items.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "dumbbell").font(.largeTitle).foregroundStyle(Fit.faint)
-                        Text("Get started by adding an exercise to your routine.")
-                            .font(.subheadline).foregroundStyle(Fit.muted).multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .workoutRow(top: 32, bottom: 24)
-                }
-
-                ForEach($items) { $item in
-                    block($item)
-                }
-
-                Button {
-                    // Otherwise iOS hands focus back to the last field when the picker closes.
-                    ActiveWorkoutView.hideKeyboard()
-                    picking = true
-                } label: {
-                    Label("Add exercise", systemImage: "plus")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(Fit.energy, in: .rect(cornerRadius: 12))
-                }
-                .buttonStyle(.borderless)
-                .workoutRow(top: 20, bottom: 8)
-
-                if let error {
-                    Text(error).font(.footnote).foregroundStyle(Fit.attention).workoutRow(top: 4, bottom: 4)
-                }
-
-                if !isNew {
-                    Button { confirmDiscard = true } label: {
-                        Text("Delete Routine").greyButton(Fit.attention)
-                    }
-                    .buttonStyle(.borderless)
-                    .workoutRow(top: 6, bottom: 24)
-                }
+            Group {
+                if reordering { reorderList } else { editList }
             }
-            .listStyle(.plain)
-            .scrollDismissesKeyboard(.immediately)
+            .background(Fit.page)
             .navigationTitle(isNew ? "Create Routine" : "Edit Routine")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await save() } }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Fit.energy)
-                        .disabled(!canSave)
+                    if reordering {
+                        Button("Done") { withAnimation(.snappy) { reordering = false } }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Fit.energy)
+                    } else {
+                        Button("Save") { Task { await save() } }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Fit.energy)
+                            .disabled(!canSave)
+                    }
                 }
             }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: store) }
             .sheet(isPresented: $picking, onDismiss: ActiveWorkoutView.hideKeyboard) {
                 ExercisePicker(store: store) { picked in
                     items += picked.map { EditableItem(new: $0, unit: unit, store: store) }
+                }
+            }
+            .sheet(item: $replacing, onDismiss: ActiveWorkoutView.hideKeyboard) { target in
+                ExercisePicker(store: store, replacing: true) { picked in
+                    guard let exercise = picked.first, let i = items.firstIndex(where: { $0.id == target.id }) else { return }
+                    items[i].replace(with: exercise, unit: unit, store: store)
                 }
             }
             .confirmationDialog("Delete this routine?", isPresented: $confirmDiscard, titleVisibility: .visible) {
@@ -109,18 +77,98 @@ struct RoutineEditor: View {
                 }
             }
         }
+        .presentationBackground(Fit.page)
+    }
+
+    private func startReordering() {
+        ActiveWorkoutView.hideKeyboard()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.snappy) { reordering = true }
+    }
+
+    /// One row per exercise, held and dragged into a new order.
+    private var reorderList: some View {
+        List {
+            Text("Hold and drag to reorder").font(.footnote).foregroundStyle(Fit.muted)
+                .workoutRow(top: 12, bottom: 4)
+                .moveDisabled(true)
+            ForEach(items) { item in
+                ReorderRow(exerciseId: item.exerciseId, name: item.name, muscle: item.muscle)
+                    .listRowBackground(Fit.page)
+                    .deleteDisabled(true)
+            }
+            .onMove { items.move(fromOffsets: $0, toOffset: $1) }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.editMode, .constant(.active))
+    }
+
+    private var editList: some View {
+        List {
+            TextField("Routine title", text: $routine.name)
+                .font(.title2.weight(.semibold))
+                .submitLabel(.done)
+                .workoutRow(top: 12, bottom: 4)
+            Rectangle().fill(Fit.hairline).frame(height: 1)
+                .workoutRow(top: 8, bottom: 8)
+
+            if items.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "dumbbell").font(.largeTitle).foregroundStyle(Fit.faint)
+                    Text("Get started by adding an exercise to your routine.")
+                        .font(.subheadline).foregroundStyle(Fit.muted).multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .workoutRow(top: 32, bottom: 24)
+            }
+
+            ForEach($items) { $item in
+                block($item)
+            }
+
+            Button {
+                // Otherwise iOS hands focus back to the last field when the picker closes.
+                ActiveWorkoutView.hideKeyboard()
+                picking = true
+            } label: {
+                Label("Add exercise", systemImage: "plus")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Fit.energy, in: .rect(cornerRadius: 12))
+            }
+            .buttonStyle(.borderless)
+            .workoutRow(top: 20, bottom: 8)
+
+            if let error {
+                Text(error).font(.footnote).foregroundStyle(Fit.attention).workoutRow(top: 4, bottom: 4)
+            }
+
+            if !isNew {
+                Button { confirmDiscard = true } label: {
+                    Text("Delete Routine").greyButton(Fit.attention)
+                }
+                .buttonStyle(.borderless)
+                .workoutRow(top: 6, bottom: 24)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.immediately)
     }
 
     @ViewBuilder
     private func block(_ item: Binding<EditableItem>) -> some View {
         let id = item.wrappedValue.id
-        RoutineExerciseHeader(store: store, item: item.wrappedValue,
-                              isFirst: id == items.first?.id, isLast: id == items.last?.id) { action in
-            guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        RoutineExerciseHeader(store: store, item: item.wrappedValue) { action in
             switch action {
-            case .up: items.swapAt(i, i - 1)
-            case .down: items.swapAt(i, i + 1)
-            case .remove: items.remove(at: i)
+            case .replace:
+                ActiveWorkoutView.hideKeyboard()
+                replacing = ReplaceTarget(id: id)
+            case .reorder: startReordering()
+            case .remove: items.removeAll { $0.id == id }
             }
         }
         .workoutRow(top: 18, bottom: 4)
@@ -238,6 +286,17 @@ private struct EditableItem: Identifiable {
         sets = (0..<3).map { _ in EditableSet(kind: set.kind, weightText: set.weightText, repsText: set.repsText) }
     }
 
+    /// Swaps in another exercise, keeping the number of sets, their types and the rest time.
+    mutating func replace(with exercise: Exercise, unit: WeightUnit, store: WorkoutStore) {
+        let fresh = EditableItem(new: exercise, unit: unit, store: store)
+        exerciseId = fresh.exerciseId
+        name = fresh.name
+        muscle = fresh.muscle
+        isDuration = fresh.isDuration
+        let template = fresh.sets[0]
+        sets = sets.map { EditableSet(kind: $0.kind, weightText: template.weightText, repsText: template.repsText) }
+    }
+
     /// A new set copies the last working set's numbers.
     mutating func addSet() {
         let template = sets.last { $0.kind != .warmup } ?? sets.last
@@ -263,14 +322,17 @@ private struct EditableSet: Identifiable {
 
 // MARK: Rows
 
-private enum MoveAction { case up, down, remove }
+private enum HeaderAction { case replace, reorder, remove }
+
+/// The exercise being swapped out, for the Replace sheet.
+private struct ReplaceTarget: Identifiable {
+    let id: UUID
+}
 
 private struct RoutineExerciseHeader: View {
     var store: WorkoutStore
     var item: EditableItem
-    var isFirst: Bool
-    var isLast: Bool
-    var onAction: (MoveAction) -> Void
+    var onAction: (HeaderAction) -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -283,10 +345,11 @@ private struct RoutineExerciseHeader: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.borderless)
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in onAction(.reorder) })
             Spacer(minLength: 8)
             Menu {
-                if !isFirst { Button("Move up", systemImage: "arrow.up") { onAction(.up) } }
-                if !isLast { Button("Move down", systemImage: "arrow.down") { onAction(.down) } }
+                Button("Replace exercise", systemImage: "arrow.triangle.2.circlepath") { onAction(.replace) }
+                Button("Reorder exercises", systemImage: "arrow.up.arrow.down") { onAction(.reorder) }
                 Button("Remove exercise", systemImage: "trash", role: .destructive) { onAction(.remove) }
             } label: {
                 Image(systemName: "ellipsis").font(.body.weight(.bold)).rotationEffect(.degrees(90))

@@ -214,6 +214,29 @@ final class WorkoutStore {
         updateExercise(exercise) { $0.sets.removeAll { $0.id == set } }
     }
 
+    func moveExercises(from source: IndexSet, to destination: Int) {
+        active?.exercises.move(fromOffsets: source, toOffset: destination)
+    }
+
+    /// Swaps an exercise for another, keeping its number of sets, their types and the rest time.
+    func replaceExercise(_ id: DraftExercise.ID, with picked: Exercise) {
+        guard var workout = active, let e = workout.exercises.firstIndex(where: { $0.id == id }) else { return }
+        if setTimer?.exercise == id { setTimer = nil }
+        let old = workout.exercises[e]
+        var exercise = DraftExercise(id: old.id, exerciseId: picked.id, name: picked.name, isDuration: picked.isDuration)
+        exercise.restSeconds = old.restSeconds
+        exercise.superset = old.superset
+        let previous = home?.previous[picked.id] ?? []
+        exercise.sets = old.sets.enumerated().map { i, oldSet in
+            var set = DraftSet(kind: oldSet.kind)
+            hint(&set, previous: previous[safe: i], target: nil, unit: workout.unit, duration: picked.isDuration)
+            return set
+        }
+        if exercise.sets.isEmpty { addSet(to: &exercise, unit: workout.unit) }
+        workout.exercises[e] = exercise
+        active = workout
+    }
+
     func removeExercise(_ id: DraftExercise.ID) {
         if setTimer?.exercise == id { setTimer = nil }
         active?.exercises.removeAll { $0.id == id }

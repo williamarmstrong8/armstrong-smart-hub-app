@@ -6,6 +6,8 @@ import SwiftUI
 struct ExercisePicker: View {
     @Environment(\.dismiss) private var dismiss
     var store: WorkoutStore
+    /// Picks one exercise to swap in: a tap picks it and closes.
+    var replacing = false
     var onPick: ([Exercise]) -> Void
     @State private var search = ""
     @State private var muscle: String?
@@ -66,11 +68,14 @@ struct ExercisePicker: View {
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.immediately)
                 .contentMargins(.bottom, picked.isEmpty ? 0 : 90, for: .scrollContent)
             }
             .overlay(alignment: .bottom) { addButton }
-            .navigationTitle("Add Exercise")
+            .background(Fit.page)
+            .presentationBackground(Fit.page)
+            .navigationTitle(replacing ? "Replace Exercise" : "Add Exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -135,7 +140,10 @@ struct ExercisePicker: View {
         let order = picked.firstIndex(of: exercise)
         return HStack(spacing: 14) {
             Button {
-                if let order { picked.remove(at: order) } else { picked.append(exercise) }
+                if replacing {
+                    onPick([exercise])
+                    dismiss()
+                } else if let order { picked.remove(at: order) } else { picked.append(exercise) }
             } label: {
                 HStack(spacing: 14) {
                     ExerciseThumb(exerciseId: exercise.id, muscle: exercise.muscle, size: 56)

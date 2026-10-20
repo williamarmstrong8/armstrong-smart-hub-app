@@ -20,7 +20,7 @@ struct WorkoutsSection: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(active.name).font(.system(size: 20))
                             TimelineView(.periodic(from: active.startedAt, by: 1)) { context in
-                                Text("In progress · \(WorkoutFormat.clock(context.date.timeIntervalSince(active.startedAt))) · \(active.completedSets.count) sets")
+                                Text("In progress · \(WorkoutFormat.clock(context.date.timeIntervalSince(active.startedAt))) · \(WorkoutFormat.volume(active.volumeKg, unit: active.unit))")
                                     .font(.footnote).foregroundStyle(Fit.muted).monospacedDigit()
                             }
                         }

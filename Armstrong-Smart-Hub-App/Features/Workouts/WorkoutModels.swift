@@ -188,6 +188,19 @@ struct ActiveWorkout: Codable, Identifiable {
     var endedAt: Date?
 
     var completedSets: [DraftSet] { exercises.flatMap { $0.sets.filter { $0.completedAt != nil } } }
+
+    /// Reps checked off and reps planned (typed, else the greyed-out target). Timed sets are left out.
+    var repProgress: (done: Int, total: Int) {
+        var done = 0, total = 0
+        for exercise in exercises where !exercise.isDuration {
+            for set in exercise.sets {
+                let reps = set.repCount ?? WorkoutFormat.number(set.repsHint).map { Int($0.rounded()) } ?? 0
+                total += reps
+                if set.completedAt != nil { done += reps }
+            }
+        }
+        return (done, total)
+    }
     var volumeKg: Double {
         exercises.reduce(0) { sum, exercise in
             sum + exercise.sets.reduce(0) { s, set in
