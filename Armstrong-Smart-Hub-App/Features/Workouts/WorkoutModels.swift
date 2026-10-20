@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 // MARK: Hub (lib/workouts on the hub)
 
@@ -75,6 +75,25 @@ struct WorkoutSummary: Decodable, Identifiable, Hashable {
     var duration: TimeInterval? {
         guard let a = ISO.parse(startedAt), let b = ISO.parse(endedAt) else { return nil }
         return b.timeIntervalSince(a)
+    }
+}
+
+/// GET /api/mobile/workouts/exercises?id=: every past session of one exercise, newest first.
+struct ExerciseHistory: Decodable {
+    var sessions: [Session]
+
+    struct Session: Decodable, Identifiable {
+        var workoutId: String
+        var workoutName: String
+        var startedAt: String
+        var sets: [WorkoutsHome.PreviousSet]
+        /// The workout being logged right now, which isn't on the hub yet.
+        var inProgress = false
+
+        var id: String { workoutId }
+        var start: Date? { ISO.parse(startedAt) }
+
+        enum CodingKeys: String, CodingKey { case workoutId, workoutName, startedAt, sets }
     }
 }
 
@@ -187,6 +206,8 @@ struct DraftExercise: Codable, Identifiable {
     var superset: Int?
     var restSeconds: Int?
     var sets: [DraftSet] = []
+    /// Optional so workouts saved before notes existed still load.
+    var notes: String?
 }
 
 struct DraftSet: Codable, Identifiable {
@@ -262,7 +283,13 @@ struct WorkoutUpload: Encodable {
         routineId = workout.routineId
         startedAt = iso.string(from: workout.startedAt)
         endedAt = iso.string(from: max(workout.endedAt ?? .now, workout.startedAt))
-        notes = workout.notes.isEmpty ? nil : workout.notes
+        // The hub keeps one note per workout, so each exercise's note goes in under its name.
+        let notes = [workout.notes] + workout.exercises.compactMap { exercise -> String? in
+            guard let note = exercise.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty else { return nil }
+            return "\(exercise.name): \(note)"
+        }
+        let joined = notes.filter { !$0.isEmpty }.joined(separator: "\n")
+        self.notes = joined.isEmpty ? nil : String(joined.prefix(4000))
         heartRate = workout.heartRate
         exercises = workout.exercises.compactMap { exercise in
             let sets = exercise.sets.filter { $0.completedAt != nil }
@@ -308,8 +335,62 @@ enum WorkoutFormat {
         return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
     }
 
+    /// "37s", "2min 3s", "1h 5min": the workout clock.
+    static func elapsed(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        if s < 60 { return "\(s)s" }
+        if s < 3600 { return "\(s / 60)min \(s % 60)s" }
+        return "\(s / 3600)h \(s / 60 % 60)min"
+    }
+
+    /// "OFF", "45s", "1min 30s": how Hevy writes a rest time.
+    static func rest(_ seconds: Int) -> String {
+        guard seconds > 0 else { return "OFF" }
+        let m = seconds / 60, s = seconds % 60
+        return m == 0 ? "\(s)s" : "\(m)min \(s)s"
+    }
+
+    /// "5:00" for a timed set's seconds, as typed or hinted.
+    static func timer(_ text: String) -> String {
+        guard let seconds = number(text) else { return "" }
+        return String(format: "%02d:%02d", Int(seconds) / 60, Int(seconds) % 60)
+    }
+
+    /// Typing into a timed set fills minutes and seconds from the right, like a
+    /// microwave: "5", "50", "500" read as 0:05, 0:50 and 5:00. Returns seconds.
+    static func seconds(fromTyped text: String) -> String {
+        let digits = String(text.filter(\.isNumber).suffix(4))
+        guard let value = Int(digits), value > 0 else { return "" }
+        return String(value / 100 * 60 + value % 100)
+    }
+
     static func estimatedOneRepMax(kg: Double?, reps: Int?) -> Double? {
         guard let kg, kg > 0, let reps, (1...12).contains(reps) else { return nil }
         return reps == 1 ? kg : kg * (1 + Double(reps) / 30)
+    }
+}
+
+/// Heart rate zones as shares of max heart rate, the way the watch counts them.
+enum HeartZones {
+    static let bounds = [0.5, 0.6, 0.7, 0.8, 0.9]
+    static let colors: [Color] = [Fit.faint, Fit.energy, Fit.positive, Fit.activity, Fit.attention]
+    static let names = ["Warm up", "Easy", "Aerobic", "Threshold", "Maximum"]
+
+    /// 0 to 4, or nil below zone 1.
+    static func zone(_ bpm: Double, max: Double) -> Int? {
+        let share = bpm / Swift.max(max, 1)
+        return bounds.lastIndex { share >= $0 }
+    }
+
+    /// Seconds in each zone from [seconds, bpm] readings; a gap over 15 s counts as 15 s.
+    static func time(_ points: [[Double]], max: Double) -> [TimeInterval] {
+        var totals = [TimeInterval](repeating: 0, count: 5)
+        let readings = points.filter { $0.count == 2 }
+        for (i, point) in readings.enumerated() {
+            guard let index = Self.zone(point[1], max: max) else { continue }
+            let next = i + 1 < readings.count ? readings[i + 1][0] : point[0] + 5
+            totals[index] += min(15, Swift.max(0, next - point[0]))
+        }
+        return totals
     }
 }

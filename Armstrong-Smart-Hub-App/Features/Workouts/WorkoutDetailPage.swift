@@ -91,7 +91,20 @@ struct WorkoutDetailPage: View {
             }
 
             ForEach(detail.exercises) { group in
-                FitSection(title: group.name, trailing: group.superset != nil ? "Superset" : nil) {
+                FitSection(title: nil) {
+                    NavigationLink(value: ExerciseRoute(id: group.exerciseId, name: group.name, store: store)) {
+                        HStack(spacing: 12) {
+                            ExerciseThumb(exerciseId: group.exerciseId, muscle: store.exercise(group.exerciseId)?.muscle, size: 44)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(group.name).font(.headline).foregroundStyle(Fit.energy).multilineTextAlignment(.leading)
+                                if group.superset != nil { Text("Superset").font(.caption).foregroundStyle(Fit.health) }
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Fit.faint)
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
                     VStack(spacing: 12) {
                         ForEach(Array(group.sets.enumerated()), id: \.offset) { index, set in
                             setRow(set, label: label(index, group.sets))

@@ -13,6 +13,7 @@ final class WorkoutStore {
     private(set) var pending: [ActiveWorkout] = []
     private(set) var isUploading = false
     private var details: [String: WorkoutDetail] = [:]
+    private var histories: [String: ExerciseHistory] = [:]
 
     var active: ActiveWorkout? {
         didSet { save(active, to: Self.activeURL) }
@@ -23,6 +24,15 @@ final class WorkoutStore {
     private(set) var restTotal: TimeInterval = 0
 
     static let defaultRest = 90
+
+    /// A timed set counting down: which set, when it ends and how long it was.
+    struct SetTimer: Equatable {
+        var exercise: DraftExercise.ID
+        var set: DraftSet.ID
+        var endsAt: Date
+        var total: TimeInterval
+    }
+    private(set) var setTimer: SetTimer?
 
     init() {
         active = Self.read(ActiveWorkout.self, from: Self.activeURL)
@@ -49,6 +59,31 @@ final class WorkoutStore {
         let detail: WorkoutDetail? = try? await api.get("/api/mobile/workouts/detail?id=\(id)")
         if let detail { details[id] = detail }
         return detail ?? details[id]
+    }
+
+    func cachedHistory(_ exerciseId: String) -> ExerciseHistory? { histories[exerciseId] }
+
+    /// The exercise's past sessions from the hub, with today's checked sets first when it's in the workout being logged.
+    func history(_ exerciseId: String, api: APIClient) async -> ExerciseHistory? {
+        let path = "/api/mobile/workouts/exercises?id=\(exerciseId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? exerciseId)"
+        if let fetched: ExerciseHistory = try? await api.get(path) { histories[exerciseId] = fetched }
+        return histories[exerciseId]
+    }
+
+    /// The checked sets of an exercise in the workout being logged, as a session.
+    func inProgressSession(_ exerciseId: String) -> ExerciseHistory.Session? {
+        guard let workout = active else { return nil }
+        let sets = workout.exercises.filter { $0.exerciseId == exerciseId }.flatMap { exercise in
+            exercise.sets.filter { $0.completedAt != nil }.map { set in
+                WorkoutsHome.PreviousSet(kind: set.kind.rawValue,
+                                         weightKg: exercise.isDuration ? nil : set.weight(workout.unit),
+                                         reps: exercise.isDuration ? nil : set.repCount,
+                                         durationSeconds: exercise.isDuration ? WorkoutFormat.number(set.repsText) : nil)
+            }
+        }
+        guard !sets.isEmpty else { return nil }
+        return ExerciseHistory.Session(workoutId: workout.id.uuidString, workoutName: workout.name,
+                                       startedAt: ISO8601DateFormatter().string(from: workout.startedAt), sets: sets, inProgress: true)
     }
 
     func delete(_ id: String, api: APIClient) async {
@@ -174,11 +209,30 @@ final class WorkoutStore {
     }
 
     func removeSet(_ exercise: DraftExercise.ID, _ set: DraftSet.ID) {
+        if setTimer?.set == set { setTimer = nil }
         updateExercise(exercise) { $0.sets.removeAll { $0.id == set } }
     }
 
     func removeExercise(_ id: DraftExercise.ID) {
+        if setTimer?.exercise == id { setTimer = nil }
         active?.exercises.removeAll { $0.id == id }
+    }
+
+    /// Switches the workout's unit, converting every typed and hinted weight.
+    func setUnit(_ unit: WeightUnit) {
+        guard var workout = active, workout.unit != unit else { return }
+        let old = workout.unit
+        func convert(_ text: String) -> String {
+            WorkoutFormat.number(text).map { unit.text(old.toKg($0)) } ?? text
+        }
+        for e in workout.exercises.indices where !workout.exercises[e].isDuration {
+            for s in workout.exercises[e].sets.indices {
+                workout.exercises[e].sets[s].weightText = convert(workout.exercises[e].sets[s].weightText)
+                workout.exercises[e].sets[s].weightHint = convert(workout.exercises[e].sets[s].weightHint)
+            }
+        }
+        workout.unit = unit
+        active = workout
     }
 
     /// Checks a set off (filling empty fields from their hints) with the
@@ -204,6 +258,7 @@ final class WorkoutStore {
             }
             startedRest = true
         }
+        if setTimer?.set == set { setTimer = nil }
         if startedRest {
             startRest(TimeInterval(e.restSeconds ?? Self.defaultRest))
             if let bpm = liveHr { record(bpm: bpm, at: .now) }
@@ -230,6 +285,26 @@ final class WorkoutStore {
         }
         workout.heartRate.append([seconds.rounded(), Double(bpm)])
         active = workout
+    }
+
+    // MARK: Timed sets
+
+    /// Counts a timed set down from what's typed (else its hint, else a minute); tapping again stops it.
+    func toggleSetTimer(_ exercise: DraftExercise.ID, _ set: DraftSet.ID) {
+        if setTimer?.set == set { setTimer = nil; return }
+        guard let entry = active?.exercises.first(where: { $0.id == exercise })?.sets.first(where: { $0.id == set }) else { return }
+        let seconds = WorkoutFormat.number(entry.repsText) ?? WorkoutFormat.number(entry.repsHint) ?? 60
+        guard seconds > 0 else { return }
+        skipRest()
+        setTimer = SetTimer(exercise: exercise, set: set, endsAt: .now.addingTimeInterval(seconds), total: seconds)
+    }
+
+    /// The timed set ran out: it's logged at full length and checked off.
+    func finishSetTimer(liveHr: Int?) {
+        guard let timer = setTimer else { return }
+        setTimer = nil
+        update(timer.exercise, timer.set) { $0.repsText = String(Int(timer.total.rounded())) }
+        toggle(timer.exercise, timer.set, liveHr: liveHr)
     }
 
     // MARK: Rest timer
@@ -282,6 +357,7 @@ final class WorkoutStore {
         guard var workout = active else { return }
         workout.endedAt = .now
         skipRest()
+        setTimer = nil
         active = nil
         guard !workout.completedSets.isEmpty else { return }
         pending.append(workout)
@@ -291,6 +367,7 @@ final class WorkoutStore {
 
     func discard() {
         skipRest()
+        setTimer = nil
         active = nil
     }
 

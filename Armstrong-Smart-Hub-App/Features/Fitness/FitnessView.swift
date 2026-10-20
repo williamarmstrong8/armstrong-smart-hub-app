@@ -71,7 +71,10 @@ struct FitnessView: View {
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: workouts) }
-            .fullScreenCover(isPresented: $logging) { ActiveWorkoutView(store: workouts) }
+            .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: workouts) }
+            .fullScreenCover(isPresented: $logging) {
+                ActiveWorkoutView(store: workouts, maxHr: store.snapshot?.metrics?.profile?.maxHr)
+            }
             // Live readings go into the workout in progress, whichever screen is showing.
             .onChange(of: watch.heartRateAt) { _, at in
                 if let at, let bpm = watch.heartRate?.bpm, workouts.active != nil { workouts.record(bpm: bpm, at: at) }
