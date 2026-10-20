@@ -135,7 +135,7 @@ struct ActiveWorkoutView: View {
         List {
             WorkoutStats(workout: workout, liveBpm: liveBpm, maxHr: maxHr,
                          status: watch.savedWatchID == nil ? "No watch" : "Connecting…")
-                .row(top: 8, bottom: 16)
+                .workoutRow(top: 8, bottom: 16)
 
             if workout.exercises.isEmpty {
                 VStack(spacing: 8) {
@@ -144,7 +144,7 @@ struct ActiveWorkoutView: View {
                     Text("Add an exercise to start your workout").font(.subheadline).foregroundStyle(Fit.muted)
                 }
                 .frame(maxWidth: .infinity)
-                .row(top: 24, bottom: 24)
+                .workoutRow(top: 24, bottom: 24)
             }
 
             ForEach(workout.exercises) { exercise in
@@ -160,7 +160,7 @@ struct ActiveWorkoutView: View {
                     .background(Fit.energy, in: .rect(cornerRadius: 12))
             }
             .buttonStyle(.borderless)
-            .row(top: 20, bottom: 6)
+            .workoutRow(top: 20, bottom: 6)
 
             HStack(spacing: 12) {
                 Button { showingSettings = true } label: {
@@ -172,7 +172,7 @@ struct ActiveWorkoutView: View {
                 }
                 .buttonStyle(.borderless)
             }
-            .row(top: 6, bottom: 24)
+            .workoutRow(top: 6, bottom: 24)
         }
         .listStyle(.plain)
         .scrollDismissesKeyboard(.interactively)
@@ -184,15 +184,15 @@ struct ActiveWorkoutView: View {
         ExerciseHeader(store: store, exercise: exercise, isLast: exercise.id == workout.exercises.last?.id) {
             path.append(ExerciseRoute(id: exercise.exerciseId, name: exercise.name, store: store))
         }
-        .row(top: 18, bottom: 4)
+        .workoutRow(top: 18, bottom: 4)
 
         ExerciseOptions(store: store, exercise: exercise, noteOpen: Binding(
             get: { openNotes.contains(exercise.id) || !(exercise.notes ?? "").isEmpty },
             set: { open in if open { openNotes.insert(exercise.id) } else { openNotes.remove(exercise.id) } }))
-            .row(top: 4, bottom: 8)
+            .workoutRow(top: 4, bottom: 8)
 
         ExerciseSetsHeader(isDuration: exercise.isDuration, unit: workout.unit)
-            .row(top: 4, bottom: 2)
+            .workoutRow(top: 4, bottom: 2)
 
         ForEach(Array(exercise.sets.enumerated()), id: \.element.id) { index, set in
             SetRow(store: store, exercise: exercise, entry: set, number: number(of: index, in: exercise.sets),
@@ -207,7 +207,7 @@ struct ActiveWorkoutView: View {
             Label("Add Set", systemImage: "plus").greyButton(.primary)
         }
         .buttonStyle(.borderless)
-        .row(top: 10, bottom: 8)
+        .workoutRow(top: 10, bottom: 8)
     }
 
     /// Warm-ups get "W"; working sets are numbered without them.
@@ -228,16 +228,17 @@ struct ActiveWorkoutView: View {
     }
 }
 
-private extension View {
-    /// A full-width row of the workout list: no separator, no highlight.
-    func row(top: CGFloat, bottom: CGFloat) -> some View {
+extension View {
+    /// A full-width row of a workout list: no separator, no highlight.
+    func workoutRow(top: CGFloat, bottom: CGFloat) -> some View {
         listRowInsets(EdgeInsets(top: top, leading: 16, bottom: bottom, trailing: 16))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
     }
 }
 
-private extension Text {
+extension Text {
+    /// A full-width grey button label, like Hevy's Add Set.
     func greyButton(_ tint: Color) -> some View {
         font(.body.weight(.medium))
             .foregroundStyle(tint)
@@ -247,7 +248,7 @@ private extension Text {
     }
 }
 
-private extension Label where Title == Text, Icon == Image {
+extension Label where Title == Text, Icon == Image {
     func greyButton(_ tint: Color) -> some View {
         font(.body.weight(.medium))
             .foregroundStyle(tint)
@@ -425,10 +426,10 @@ private struct ExerciseOptions: View {
                         ForEach([0, 30, 45, 60, 90, 120, 150, 180, 240, 300], id: \.self) { Text(WorkoutFormat.rest($0)).tag($0) }
                     }
                 } label: {
-                    pill("timer", "Rest: \(WorkoutFormat.rest(rest))")
+                    WorkoutPill(symbol: "timer", title: "Rest: \(WorkoutFormat.rest(rest))")
                 }
                 .buttonStyle(.borderless)
-                Button { noteOpen.toggle() } label: { pill("note.text.badge.plus", "Note") }
+                Button { noteOpen.toggle() } label: { WorkoutPill(symbol: "note.text.badge.plus", title: "Note") }
                     .buttonStyle(.borderless)
             }
             if noteOpen {
@@ -441,8 +442,14 @@ private struct ExerciseOptions: View {
             }
         }
     }
+}
 
-    private func pill(_ symbol: String, _ title: String) -> some View {
+/// A grey rounded pill with an icon, like Hevy's Rest and Note buttons.
+struct WorkoutPill: View {
+    var symbol: String
+    var title: String
+
+    var body: some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
             Text(title).monospacedDigit()
@@ -455,7 +462,8 @@ private struct ExerciseOptions: View {
     }
 }
 
-private enum Columns {
+/// Column widths of the set grid, shared by the workout and the routine editor.
+enum WorkoutColumns {
     static let set: CGFloat = 40
     static let weight: CGFloat = 70
     static let reps: CGFloat = 58
@@ -469,15 +477,15 @@ private struct ExerciseSetsHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text("SET").frame(width: Columns.set)
+            Text("SET").frame(width: WorkoutColumns.set)
             Text("PREVIOUS").frame(maxWidth: .infinity)
             if isDuration {
-                Text("TIME").frame(width: Columns.time + 40)
+                Text("TIME").frame(width: WorkoutColumns.time + 40)
             } else {
-                Text(unit == .lb ? "LBS" : "KG").frame(width: Columns.weight)
-                Text("REPS").frame(width: Columns.reps)
+                Text(unit == .lb ? "LBS" : "KG").frame(width: WorkoutColumns.weight)
+                Text("REPS").frame(width: WorkoutColumns.reps)
             }
-            Image(systemName: "checkmark").frame(width: Columns.check)
+            Image(systemName: "checkmark").frame(width: WorkoutColumns.check)
         }
         .font(.footnote.weight(.medium))
         .foregroundStyle(Fit.muted)
@@ -508,7 +516,7 @@ private struct SetRow: View {
                     Text(number)
                         .font(.body.weight(.semibold)).monospacedDigit()
                         .foregroundStyle(kindColor)
-                        .frame(width: Columns.set, height: 40)
+                        .frame(width: WorkoutColumns.set, height: 40)
                         .background(Fit.track.opacity(done ? 0.3 : 1), in: .rect(cornerRadius: 8))
                 }
                 .buttonStyle(.borderless)
@@ -520,8 +528,8 @@ private struct SetRow: View {
                 if exercise.isDuration {
                     timeField
                 } else {
-                    field(weightText, hint: entry.weightHint, width: Columns.weight, decimal: true)
-                    field(repsText, hint: entry.repsHint, width: Columns.reps, decimal: false)
+                    field(weightText, hint: entry.weightHint, width: WorkoutColumns.weight, decimal: true)
+                    field(repsText, hint: entry.repsHint, width: WorkoutColumns.reps, decimal: false)
                 }
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -531,7 +539,7 @@ private struct SetRow: View {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.bold))
                         .foregroundStyle(done ? Color.white : Fit.muted)
-                        .frame(width: Columns.check, height: 40)
+                        .frame(width: WorkoutColumns.check, height: 40)
                         .background(done ? Fit.positive : Fit.track, in: .rect(cornerRadius: 8))
                 }
                 .buttonStyle(.borderless)
@@ -547,7 +555,7 @@ private struct SetRow: View {
                     }
                 }
                 .font(.caption2.weight(.medium))
-                .padding(.leading, Columns.set + 8)
+                .padding(.leading, WorkoutColumns.set + 8)
             }
         }
         .animation(.snappy, value: done)
@@ -613,11 +621,11 @@ private struct SetRow: View {
                         .font(.body.weight(done ? .bold : .medium)).monospacedDigit()
                 }
             }
-            .frame(width: Columns.time, height: 40)
+            .frame(width: WorkoutColumns.time, height: 40)
             .background(done ? Color.clear : Fit.track.opacity(0.5), in: .rect(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(timing == nil ? Color.clear : Fit.energy, lineWidth: 1.5))
         }
-        .frame(width: Columns.time + 40, alignment: .trailing)
+        .frame(width: WorkoutColumns.time + 40, alignment: .trailing)
     }
 
     /// Tapping last time's numbers copies them into the fields.

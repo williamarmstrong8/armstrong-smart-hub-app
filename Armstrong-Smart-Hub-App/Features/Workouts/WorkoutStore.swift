@@ -185,7 +185,8 @@ final class WorkoutStore {
 
     private func hint(_ set: inout DraftSet, previous: WorkoutsHome.PreviousSet?, target: Routine.Target?, unit: WeightUnit, duration: Bool) {
         if duration {
-            set.repsHint = (previous?.durationSeconds).map { String(Int($0)) } ?? ""
+            // A routine keeps a timed set's target seconds in `reps`.
+            set.repsHint = (target?.reps.map(String.init) ?? (previous?.durationSeconds).map { String(Int($0)) }) ?? ""
             return
         }
         let weight = target?.weightKg ?? previous?.weightKg
