@@ -33,8 +33,9 @@ struct FitnessView: View {
                         if let error = store.error, !store.loaded {
                             ErrorBanner(message: error)
                         }
+                        ReadinessHero(store: store)
                         today
-                        FitnessDials(insights: store.snapshot?.insights, lastNight: store.lastNight)
+                        FitnessDials(store: store)
                         FitnessTileGrid(store: store, liveBpm: watch.heartRate?.bpm,
                                         steps: max(watch.steps?.count ?? 0, store.today?.steps ?? 0),
                                         stepGoal: store.today?.stepGoal ?? watch.steps?.goal)
@@ -57,7 +58,7 @@ struct FitnessView: View {
                     }
                 }
             }
-            .navigationDestination(for: FitnessActivity.self) { ActivityDetailView(activity: $0, store: store) }
+            .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
             .task {
                 await store.load(api: session.api)

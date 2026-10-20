@@ -6,10 +6,11 @@ import SwiftUI
 /// reuse the sections in FitnessMetricsViews and FitnessInsightsViews under
 /// a big visual at the top.
 enum FitnessPage: Hashable {
-    case recovery, strain, sleep, heart, energy, training, health
+    case readiness, recovery, strain, sleep, heart, energy, training, health
 
     var title: String {
         switch self {
+        case .readiness: "Readiness"
         case .recovery: "Recovery"
         case .strain: "Strain"
         case .sleep: "Sleep"
@@ -22,6 +23,7 @@ enum FitnessPage: Hashable {
 
     @MainActor @ViewBuilder func view(store: FitnessStore) -> some View {
         switch self {
+        case .readiness: ReadinessPage(store: store)
         case .recovery: RecoveryPage(store: store)
         case .strain: StrainPage(store: store)
         case .sleep: SleepPage(store: store)
@@ -202,38 +204,33 @@ enum Bands {
 
 // MARK: Overview
 
-/// The three big dials at the top of the overview: recovery, strain, sleep.
+/// The three dials under the readiness hero: energy, sleep, strain.
 struct FitnessDials: View {
-    var insights: FitnessInsights?
-    var lastNight: SleepNight?
+    var store: FitnessStore
 
     var body: some View {
+        let insights = store.snapshot?.insights
+        let watch = store.snapshot?.watch
         HStack(alignment: .top, spacing: 4) {
-            NavigationLink(value: FitnessPage.recovery) { recovery }.buttonStyle(.plain).frame(maxWidth: .infinity)
-            NavigationLink(value: FitnessPage.strain) {
-                let strain = insights?.strain?.today
-                GaugeRing(value: strain.map { String(format: "%.1f", $0) } ?? "–", fraction: (strain ?? 0) / 21, tint: .blue,
-                          label: "Strain", caption: insights?.strain?.level?.capitalized ?? "today", size: 100)
+            NavigationLink(value: FitnessPage.energy) {
+                let battery = store.snapshot?.metrics?.bodyBattery?.current ?? insights?.stress.bodyBattery?.current
+                GaugeRing(value: battery.map(String.init) ?? "–", fraction: Double(battery ?? 0) / 100, tint: .teal,
+                          label: "Energy", caption: insights?.stress.now.map { "Stress \($0)" } ?? "Body Battery", size: 96)
             }
             .buttonStyle(.plain).frame(maxWidth: .infinity)
             NavigationLink(value: FitnessPage.sleep) {
-                let performance = insights?.sleep.lastNight?.performance
-                GaugeRing(value: performance.map { "\($0)%" } ?? (lastNight?.score.map(String.init) ?? "–"),
-                          fraction: Double(performance ?? lastNight?.score ?? 0) / 100, tint: .indigo,
-                          label: "Sleep", caption: lastNight.map { FitnessFormat.duration(Double($0.asleepSeconds)) }, size: 100)
+                let night = store.lastNight
+                let score = watch?.sleep?.overall ?? night?.score
+                GaugeRing(value: score.map(String.init) ?? "–", fraction: Double(score ?? 0) / 100, tint: .indigo,
+                          label: "Sleep", caption: night.map { FitnessFormat.duration(Double($0.asleepSeconds)) }, size: 96)
             }
             .buttonStyle(.plain).frame(maxWidth: .infinity)
-        }
-    }
-
-    @ViewBuilder private var recovery: some View {
-        if let r = insights?.recovery, r.status == "ready", let score = r.score {
-            GaugeRing(value: "\(score)%", fraction: Double(score) / 100, tint: Bands.recovery(r.zone),
-                      label: "Recovery", caption: r.zone.map { "\($0.capitalized) zone" }, size: 100)
-        } else {
-            let have = insights?.recovery?.have ?? 0, need = insights?.recovery?.need ?? 4
-            GaugeRing(value: "\(have)/\(need)", fraction: Double(have) / Double(max(need, 1)), tint: .gray,
-                      label: "Recovery", caption: "Calibrating", size: 100)
+            NavigationLink(value: FitnessPage.strain) {
+                let strain = insights?.strain?.today
+                GaugeRing(value: strain.map { String(format: "%.1f", $0) } ?? "–", fraction: (strain ?? 0) / 21, tint: .blue,
+                          label: "Strain", caption: insights?.strain?.level?.capitalized ?? "today", size: 96)
+            }
+            .buttonStyle(.plain).frame(maxWidth: .infinity)
         }
     }
 }
@@ -248,6 +245,7 @@ struct FitnessTileGrid: View {
     var body: some View {
         let insights = store.snapshot?.insights
         let metrics = store.snapshot?.metrics
+        let watch = store.snapshot?.watch
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             NavigationLink(value: FitnessPage.heart) {
                 let points = (store.snapshot?.heartRate ?? []).map { Double($0.bpm) }
@@ -256,21 +254,35 @@ struct FitnessTileGrid: View {
                     Sparkline(values: points, tint: .red)
                 }
             }
-            NavigationLink(value: FitnessPage.energy) {
-                let battery = insights?.stress.bodyBattery
-                FitnessTile(icon: "battery-2", title: "Energy", value: (battery?.current ?? metrics?.bodyBattery?.current).map(String.init) ?? "–",
-                            unit: nil, caption: insights?.stress.now.map { "Stress \($0)" } ?? "Body Battery", tint: .teal) {
-                    Sparkline(values: (battery?.series.map { Double($0.value) } ?? metrics?.bodyBattery?.series.map { Double($0.value) } ?? []),
-                              tint: .teal, domain: 0...100)
+            NavigationLink(value: FitnessPage.training) {
+                let vo2 = metrics?.vo2max?.value ?? watch?.vo2max?.value
+                let history = watch?.vo2max?.history.map(\.value) ?? metrics?.vo2max?.runs.suffix(12).map(\.value) ?? []
+                FitnessTile(icon: "run", title: "VO2 max", value: vo2.map { String(format: "%.0f", $0) } ?? "–",
+                            unit: nil, caption: insights?.age?.cardioFitness.map { "\($0.level.capitalized)" } ?? metrics?.load.status, tint: .orange) {
+                    Sparkline(values: Array(history.suffix(12)), tint: .orange)
                 }
             }
             NavigationLink(value: FitnessPage.training) {
-                let runs = metrics?.vo2max?.runs.suffix(12).map(\.value) ?? []
-                FitnessTile(icon: "run", title: "Training", value: metrics?.vo2max.map { String(format: "%.0f", $0.value) } ?? "–",
-                            unit: "VO2", caption: metrics?.load.status ?? insights?.training.focus.status, tint: .orange) {
-                    Sparkline(values: Array(runs), tint: .orange)
+                let endurance = watch?.endurance
+                FitnessTile(icon: "mountain", title: "Endurance", value: endurance.map { $0.score.formatted() } ?? "–",
+                            unit: nil, caption: endurance?.level.capitalized ?? "Needs a few weeks", tint: .green) {
+                    Sparkline(values: endurance?.history.map(\.value) ?? [], tint: .green)
                 }
             }
+            NavigationLink(value: FitnessPage.training) {
+                let races = watch?.races
+                FitnessTile(icon: "clock-hour-4", title: "5K", value: races?.fiveK.map(WatchFormat.raceTime) ?? "–", unit: nil,
+                            caption: races?.half.map { "Half \(WatchFormat.raceTime($0))" } ?? "Race prediction", tint: .yellow) {
+                    Sparkline(values: races?.history.map { -$0.value } ?? [], tint: .yellow)
+                }
+            }
+            NavigationLink { ActivitiesView(activities: store.activities) } label: {
+                FitnessTile(icon: "activity", title: "Activities", value: "\(store.thisWeek.count)", unit: "this week",
+                            caption: store.activities.first.map { "Last: \($0.title)" }, tint: .pink) {
+                    Sparkline(values: weekMinutes(store.activities), tint: .pink, bars: true)
+                }
+            }
+            .disabled(store.activities.isEmpty)
             NavigationLink(value: FitnessPage.health) {
                 let hub = insights?.age?.hubAge
                 FitnessTile(icon: "target", title: "Health", value: hub.map { String(format: "%.0f", $0.age) } ?? "–",
@@ -282,17 +294,17 @@ struct FitnessTileGrid: View {
                     }
                 }
             }
-            NavigationLink { ActivitiesView(activities: store.activities) } label: {
-                FitnessTile(icon: "activity", title: "Activities", value: "\(store.thisWeek.count)", unit: "this week",
-                            caption: store.activities.first.map { "Last: \($0.title)" }, tint: .pink) {
-                    Sparkline(values: weekMinutes(store.activities), tint: .pink, bars: true)
-                }
-            }
-            .disabled(store.activities.isEmpty)
             NavigationLink { TrendsView(store: store) } label: {
                 FitnessTile(icon: "walk", title: "Steps", value: steps.formatted(), unit: nil,
-                            caption: stepGoal.map { "Goal \($0.formatted())" }, tint: .green) {
-                    Sparkline(values: store.days.prefix(7).reversed().map { Double($0.steps ?? 0) }, tint: .green, bars: true)
+                            caption: stepGoal.map { "Goal \($0.formatted())" }, tint: .mint) {
+                    Sparkline(values: store.days.prefix(7).reversed().map { Double($0.steps ?? 0) }, tint: .mint, bars: true)
+                }
+            }
+            NavigationLink(value: FitnessPage.recovery) {
+                let r = insights?.recovery
+                FitnessTile(icon: "lungs", title: "Recovery", value: r?.score.map { "\($0)%" } ?? "–", unit: nil,
+                            caption: r?.status == "ready" ? r?.zone.map { "\($0.capitalized) zone" } : "Calibrating", tint: Bands.recovery(r?.zone)) {
+                    Sparkline(values: (store.snapshot?.hrv ?? []).compactMap(\.lastNightAverage).reversed(), tint: .teal)
                 }
             }
         }
@@ -321,7 +333,7 @@ struct FitnessTileGrid: View {
 // MARK: Pages
 
 /// The scroll view every page shares: a hero visual, then sections.
-private struct PageScaffold<Content: View>: View {
+struct PageScaffold<Content: View>: View {
     var title: String
     @ViewBuilder var content: Content
 
@@ -466,13 +478,17 @@ struct SleepPage: View {
         let insights = store.snapshot?.insights
         PageScaffold(title: "Sleep") {
             if let night = store.lastNight {
-                let performance = insights?.sleep.lastNight?.performance
+                // Against the watch's sleep need when it gives one, else the hub's.
+                let needed = store.snapshot?.watch?.sleepNeed?.hours ?? insights?.sleep.lastNight?.needed
+                let performance = needed.map { min(100, Int((Double(night.asleepSeconds) / 3600 / $0 * 100).rounded())) } ?? insights?.sleep.lastNight?.performance
                 HStack(spacing: 24) {
                     GaugeRing(value: performance.map { "\($0)%" } ?? "–", fraction: Double(performance ?? 0) / 100, tint: .indigo,
-                              label: "Performance", caption: insights?.sleep.lastNight?.needed.map { "of \(String(format: "%.1f", $0))h needed" }, size: 130, lineWidth: 16)
-                    GaugeRing(value: night.score.map(String.init) ?? "–", fraction: Double(night.score ?? 0) / 100, tint: .purple,
+                              label: "Performance", caption: needed.map { "of \(WatchFormat.hours($0)) needed" }, size: 130, lineWidth: 16)
+                    let score = store.snapshot?.watch?.sleep?.overall ?? night.score
+                    GaugeRing(value: score.map(String.init) ?? "–", fraction: Double(score ?? 0) / 100, tint: .purple,
                               label: "Sleep score", caption: FitnessFormat.duration(Double(night.asleepSeconds)) + " asleep", size: 130, lineWidth: 16)
                 }
+                if night.watchScore != nil || store.snapshot?.watch?.sleep != nil { SourceBadge(watch: true) }
                 FloatingSection(title: "Last night", trailing: night.startDate.map { $0.formatted(.dateTime.weekday(.wide)) }) {
                     Hypnogram(night: night).frame(height: 150)
                     StageBar(night: night).frame(height: 12)
@@ -490,7 +506,8 @@ struct SleepPage: View {
             } else {
                 Placeholder(text: "Sleep shows up after a night with the watch on, once it hands over the sleep file.")
             }
-            if let sleep = insights?.sleep { SleepCoachSection(sleep: sleep) }
+            if let sleep = store.snapshot?.watch?.sleep { WatchSleepSection(sleep: sleep, need: store.snapshot?.watch?.sleepNeed) }
+            if let sleep = insights?.sleep { SleepCoachSection(sleep: sleep, watchNeed: store.snapshot?.watch?.sleepNeed != nil) }
             if store.nights.count > 1 {
                 NavigationLink { SleepView(nights: store.nights) } label: {
                     HStack {
@@ -584,18 +601,41 @@ struct TrainingPage: View {
     var body: some View {
         let insights = store.snapshot?.insights
         let metrics = store.snapshot?.metrics
+        let watch = store.snapshot?.watch
         PageScaffold(title: "Training") {
             if let vo2 = metrics?.vo2max {
                 let fitness = insights?.age?.cardioFitness
                 ArcGauge(value: Double(fitness?.percentile ?? 50), range: 0...100, bands: Bands.fitness,
                          display: String(format: "%.1f", vo2.value), unit: "VO2 max",
                          label: fitness.map { "\($0.level.capitalized) · \($0.percentile)th percentile" })
+                SourceBadge(watch: metrics?.fromWatch("vo2max") == true)
             } else {
                 Placeholder(text: "VO2 max comes from outdoor runs with steady pace and heart rate.")
             }
-            if let races = insights?.training.races { raceCards(races) }
+            if let endurance = watch?.endurance { EnduranceSection(endurance: endurance) }
+            if let races = watch?.races { WatchRacesSection(races: races) } else if let races = insights?.training.races { raceCards(races) }
+            if let focus = watch?.focus { LoadFocusSection(focus: focus) }
+            if let threshold = watch?.lactateThreshold { thresholdSection(threshold) }
             if let metrics { PerformanceSection(metrics: metrics) }
-            if let insights { TrainingInsightsSection(training: insights.training) }
+            if let insights { TrainingInsightsSection(training: insights.training, watchCovers: watch?.endurance != nil || watch?.races != nil) }
+        }
+    }
+
+    private func thresholdSection(_ threshold: FitnessWatch.Threshold) -> some View {
+        FloatingSection(title: "Lactate threshold", trailing: "From your watch") {
+            HStack(alignment: .firstTextBaseline, spacing: 24) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(Int(threshold.hr))").font(.system(size: 34, weight: .heavy, design: .rounded)).monospacedDigit().foregroundStyle(.orange)
+                    Text("bpm").font(.caption).foregroundStyle(.secondary)
+                }
+                if let pace = FitnessFormat.pace(threshold.speed) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pace).font(.system(size: 34, weight: .heavy, design: .rounded)).monospacedDigit()
+                        Text("pace").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Text("The hardest effort you can hold for about an hour. Tempo and threshold work sits just under it.").font(.caption).foregroundStyle(.secondary)
         }
     }
 

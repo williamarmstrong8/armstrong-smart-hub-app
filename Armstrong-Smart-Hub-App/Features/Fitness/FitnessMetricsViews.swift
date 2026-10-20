@@ -5,6 +5,8 @@ import SwiftUI
 /// Training Readiness, Body Battery, stress, VO2max, load and HRV status,
 /// worked out from the watch's raw data rather than Garmin's firmware.
 struct FitnessMetrics: Decodable {
+    /// Max and resting heart rate the models used. Missing from older hubs.
+    var profile: Profile?
     var readiness: Readiness
     var bodyBattery: BodyBattery?
     var stress: Stress?
@@ -12,10 +14,18 @@ struct FitnessMetrics: Decodable {
     var load: Load
     var hrv: Hrv
     var vitals: Vitals
+    /// "watch" or "hub" for readiness, recovery, vo2max, bodyBattery and stress. Missing from older hubs.
+    var sources: [String: String]?
+
+    func fromWatch(_ key: String) -> Bool { sources?[key] == "watch" }
+
+    struct Profile: Decodable { var maxHr: Int; var restingHr: Int }
 
     struct Readiness: Decodable {
         var score: Int?
         var level: String?
+        /// The hub's own score, when the watch's replaced it.
+        var hubScore: Int?
         var factors: [Factor]
 
         struct Factor: Decodable, Identifiable {
@@ -47,6 +57,7 @@ struct FitnessMetrics: Decodable {
         var value: Double
         var asOf: String
         var watch: Double?
+        var hub: Double?
         var runs: [Run]
         struct Run: Decodable { var at: String; var value: Double; var watch: Double? }
     }

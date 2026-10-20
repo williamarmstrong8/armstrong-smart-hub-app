@@ -13,6 +13,8 @@ struct FitnessSnapshot: Decodable {
     var metrics: FitnessMetrics?
     /// Strain, recovery, sleep need, resilience, training analysis and vitals. Missing from older hubs.
     var insights: FitnessInsights?
+    /// The watch's own readiness, Endurance Score, race predictions and more. Missing from older hubs.
+    var watch: FitnessWatch?
 
     struct FileCount: Decodable { var kind: String; var count: Int }
 }
@@ -70,6 +72,10 @@ struct FitnessActivity: Decodable, Identifiable, Hashable {
     var ascentMeters: Double?
     var avgSpeed: Double?
     var trainingEffect: Double?
+    /// The watch's own load and anaerobic Training Effect, and what it says the session trained.
+    var watchLoad: Double?
+    var anaerobicEffect: Double?
+    var primaryBenefit: String?
 
     var start: Date? { ISO.parse(startTime) }
     var duration: Double? { movingSeconds ?? elapsedSeconds }
@@ -82,15 +88,22 @@ struct FitnessActivity: Decodable, Identifiable, Hashable {
     var hasDistance: Bool { (distanceMeters ?? 0) > 50 }
 }
 
-/// GET /api/mobile/fitness/activity: one activity with its heart rate curve.
+/// GET /api/mobile/fitness/activity: one activity with its heart rate curve,
+/// laps, strength sets and the watch's verdicts.
 struct FitnessActivityDetail: Decodable {
     var heartRate: [[Double]]
     var activity: FitnessActivity
+    var extras: ActivityExtras?
+    /// The watch's recovery time after the session.
+    var recoveryHours: Double?
 
     init(from decoder: Decoder) throws {
         activity = try FitnessActivity(from: decoder)
-        struct Curve: Decodable { var heartRate: [[Double]] }
-        heartRate = try Curve(from: decoder).heartRate
+        struct Rest: Decodable { var heartRate: [[Double]]; var extras: ActivityExtras?; var recoveryHours: Double? }
+        let rest = try Rest(from: decoder)
+        heartRate = rest.heartRate
+        extras = rest.extras
+        recoveryHours = rest.recoveryHours
     }
 
     /// (seconds from start, bpm)
@@ -105,7 +118,10 @@ struct SleepNight: Decodable, Identifiable {
     var lightSeconds: Int?
     var remSeconds: Int?
     var awakeSeconds: Int?
+    /// The watch's sleep score when it gave one, else the hub's.
     var score: Int?
+    /// The watch's own, alone. Missing from older hubs.
+    var watchScore: Int?
     var levels: [[Double]]
 
     var startDate: Date? { ISO.parse(start) }

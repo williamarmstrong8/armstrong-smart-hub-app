@@ -21,6 +21,9 @@ final class FitnessStore {
         }
     }
 
+    /// An activity's detail if it has been loaded already.
+    func cachedDetail(_ id: String) -> FitnessActivityDetail? { details[id] }
+
     func detail(_ id: String, api: APIClient) async -> FitnessActivityDetail? {
         if let cached = details[id] { return cached }
         let detail: FitnessActivityDetail? = try? await api.get("/api/mobile/fitness/activity?id=\(id)")
@@ -48,5 +51,6 @@ final class FitnessStore {
 extension FitnessStore {
     /// TEMPORARY: lets FitnessRenderDebug load a snapshot from a file.
     func debugSet(_ snapshot: FitnessSnapshot) { self.snapshot = snapshot }
+    func debugSetDetail(_ detail: FitnessActivityDetail) { details[detail.activity.id] = detail }
 }
 #endif
