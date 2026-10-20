@@ -168,7 +168,7 @@ enum WatchFormat {
 
     static func weight(_ kg: Double) -> String {
         let metric = Locale.current.measurementSystem == .metric
-        return metric ? String(format: "%.1f kg", kg) : "\(Int((kg * 2.20462).rounded())) lb"
+        return metric ? (kg >= 1000 ? "\(Int(kg.rounded()).formatted()) kg" : String(format: "%.1f kg", kg)) : "\(Int((kg * 2.20462).rounded()).formatted()) lb"
     }
 
     /// Garmin's readiness colors.
