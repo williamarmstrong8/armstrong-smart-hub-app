@@ -263,6 +263,7 @@
 		000000000000000111000000 /* Debug configuration for PBXNativeTarget "Armstrong-Smart-Hub-App" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Armstrong-Smart-Hub-App/Armstrong-Smart-Hub-App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 73YJKR29VA;
@@ -273,7 +274,7 @@
 				INFOPLIST_FILE = "Armstrong-Smart-Hub-App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Armstrong-Smart-Hub";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connects to your Garmin watch to read heart rate, steps, activities and sleep, instead of Garmin Connect.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scans food barcodes and takes photos of meals and grocery receipts for your food journal.";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Reads your Brick tag to start and stop app blocking.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listens on the iPad for \"Hey Jarvis\" so you can control the hub by voice. Audio only leaves the iPad after the wake word.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -306,6 +307,7 @@
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "Armstrong-Smart-Hub-App" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Armstrong-Smart-Hub-App/Armstrong-Smart-Hub-App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 73YJKR29VA;
@@ -316,7 +318,7 @@
 				INFOPLIST_FILE = "Armstrong-Smart-Hub-App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Armstrong-Smart-Hub";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connects to your Garmin watch to read heart rate, steps, activities and sleep, instead of Garmin Connect.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scans food barcodes and takes photos of meals and grocery receipts for your food journal.";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Reads your Brick tag to start and stop app blocking.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listens on the iPad for \"Hey Jarvis\" so you can control the hub by voice. Audio only leaves the iPad after the wake word.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

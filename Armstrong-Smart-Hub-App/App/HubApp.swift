@@ -40,7 +40,7 @@ struct RootView: View {
 }
 
 enum HubTab: Hashable {
-    case home, finance, calendar, food, fitness
+    case home, finance, calendar, fitness, brick
 }
 
 /// The iPhone's tabs.
@@ -58,11 +58,11 @@ struct MainTabView: View {
             Tab("Calendar", systemImage: "calendar", value: .calendar) {
                 CalendarView()
             }
-            Tab("Food", systemImage: "fork.knife", value: .food) {
-                FoodView()
-            }
             Tab("Fitness", systemImage: "figure.run", value: .fitness) {
                 FitnessView()
+            }
+            Tab("Brick", systemImage: "iphone.slash", value: .brick) {
+                BrickView()
             }
         }
     }
