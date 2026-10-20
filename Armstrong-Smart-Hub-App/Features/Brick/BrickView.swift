@@ -22,6 +22,11 @@ struct BrickView: View {
                 .padding(.vertical, 12)
             }
             .navigationTitle("Brick")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { BrickStatsView(store: store) } label: { Image(systemName: "chart.bar") }
+                }
+            }
             .alert("Brick", isPresented: Binding(get: { store.message != nil },
                                                  set: { if !$0 { store.message = nil } })) {
                 Button("OK", role: .cancel) {}

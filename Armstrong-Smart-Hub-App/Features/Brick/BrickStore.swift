@@ -16,6 +16,16 @@ struct BrickProfile: Codable, Identifiable, Hashable {
     var timerMinutes: Int?
 }
 
+/// One finished (or running) blocking session, kept for the stats page.
+struct BrickSession: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var profileName: String
+    var start: Date
+    var end: Date?
+    /// True when the timer ended it, false when the tag or button did.
+    var byTimer = false
+}
+
 /// Tap-to-block, like Brick. The shield itself is enforced by iOS (Managed Settings);
 /// the tag is a plain NFC tag whose ID is the key. Nothing leaves the phone.
 @MainActor @Observable
@@ -26,6 +36,7 @@ final class BrickStore: NSObject {
     private(set) var blockingProfileID: UUID?
     private(set) var endsAt: Date?
     private(set) var authorized = false
+    private(set) var sessions: [BrickSession] = []
     var message: String?
 
     @ObservationIgnored private let settings = ManagedSettingsStore()
@@ -42,6 +53,10 @@ final class BrickStore: NSObject {
         }
         if profiles.isEmpty { profiles = [BrickProfile(name: "Focus")] }
         selectedID = profiles.first?.id
+        if let data = defaults.data(forKey: "brick.sessions"),
+           let saved = try? JSONDecoder().decode([BrickSession].self, from: data) {
+            sessions = saved
+        }
         tagID = defaults.string(forKey: "brick.tag")
         if let raw = defaults.string(forKey: "brick.active"), let id = UUID(uuidString: raw) {
             blockingProfileID = id
@@ -142,9 +157,20 @@ final class BrickStore: NSObject {
         endsAt = p.timerMinutes.map { Date().addingTimeInterval(Double($0) * 60) }
         defaults.set(p.id.uuidString, forKey: "brick.active")
         defaults.set(endsAt?.timeIntervalSince1970 ?? 0, forKey: "brick.endsAt")
+        sessions.append(BrickSession(profileName: p.name, start: Date()))
+        saveSessions()
     }
 
-    private func stop() {
+    private func saveSessions() {
+        if let data = try? JSONEncoder().encode(sessions) { defaults.set(data, forKey: "brick.sessions") }
+    }
+
+    private func stop(byTimer: Bool = false) {
+        if let i = sessions.lastIndex(where: { $0.end == nil }) {
+            sessions[i].end = byTimer ? (endsAt ?? Date()) : Date()
+            sessions[i].byTimer = byTimer
+            saveSessions()
+        }
         settings.clearAllSettings()
         blockingProfileID = nil
         endsAt = nil
@@ -154,7 +180,7 @@ final class BrickStore: NSObject {
 
     /// The timer is checked while the app runs and each time it opens.
     func checkTimer() {
-        if let endsAt, endsAt <= Date(), isBlocking { stop() }
+        if let endsAt, endsAt <= Date(), isBlocking { stop(byTimer: true) }
     }
 
     private func startTicker() {
