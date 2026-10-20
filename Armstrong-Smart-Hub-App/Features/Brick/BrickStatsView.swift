@@ -3,33 +3,34 @@ import SwiftUI
 #if os(iOS)
 import DeviceActivity
 
-/// Stats page. Top: Brick's own numbers (sessions, focus time, streak).
+/// Stats page in the Fitness style: PeriodPicker, StatStrip, DailyBarChart, DetailRows.
 /// Bottom: Apple's Screen Time report, drawn by the BrickReport extension
 /// (iOS does not let an app read usage numbers directly).
 struct BrickStatsView: View {
     let store: BrickStore
-    @State private var range = 7
+    @State private var days = 7
 
     private var cal: Calendar { .current }
-    private var since: Date { cal.date(byAdding: .day, value: -(range - 1), to: cal.startOfDay(for: Date())) ?? Date() }
+    private var since: Date { cal.date(byAdding: .day, value: -(days - 1), to: cal.startOfDay(for: Date())) ?? Date() }
     private var recent: [BrickSession] { store.sessions.filter { $0.start >= since } }
     private func length(_ s: BrickSession) -> TimeInterval { (s.end ?? Date()).timeIntervalSince(s.start) }
     private var total: TimeInterval { recent.reduce(0) { $0 + length($1) } }
 
     private var streak: Int {
-        let days = Set(store.sessions.map { cal.startOfDay(for: $0.start) })
+        let set = Set(store.sessions.map { cal.startOfDay(for: $0.start) })
         var d = cal.startOfDay(for: Date())
-        if !days.contains(d) { d = cal.date(byAdding: .day, value: -1, to: d) ?? d }
+        if !set.contains(d) { d = cal.date(byAdding: .day, value: -1, to: d) ?? d }
         var n = 0
-        while days.contains(d) { n += 1; d = cal.date(byAdding: .day, value: -1, to: d) ?? d }
+        while set.contains(d) { n += 1; d = cal.date(byAdding: .day, value: -1, to: d) ?? d }
         return n
     }
 
-    private var perDay: [(Date, TimeInterval)] {
-        (0..<range).reversed().map { i in
+    /// Focus minutes per day.
+    private var points: [DayValue] {
+        (0..<days).reversed().map { i in
             let day = cal.date(byAdding: .day, value: -i, to: cal.startOfDay(for: Date())) ?? Date()
             let t = store.sessions.filter { cal.isDate($0.start, inSameDayAs: day) }.reduce(0) { $0 + length($1) }
-            return (day, t)
+            return DayValue(date: day, value: (t / 60).rounded())
         }
     }
 
@@ -39,67 +40,40 @@ struct BrickStatsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                Picker("Range", selection: $range) {
-                    Text("7 days").tag(7)
-                    Text("30 days").tag(30)
-                }.pickerStyle(.segmented)
-
-                HStack(alignment: .top) {
-                    stat("Focus time", format(total))
-                    stat("Sessions", "\(recent.count)")
-                    stat("Streak", "\(streak)d")
+        FitPage(title: "Stats") {
+            VStack(spacing: 0) {
+                BigNumber(value: format(total), unit: nil, caption: "focus time, last \(days) days", tint: Fit.activity)
+                HStack { Spacer(); PeriodPicker(days: $days, options: [7, 30]); Spacer() }.padding(.bottom, 20)
+                FitSection {
+                    StatStrip(items: [("Sessions", "\(recent.count)"), ("Streak", "\(streak) d"),
+                                      ("Average", format(recent.isEmpty ? 0 : total / Double(recent.count)))])
                 }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Focus per day").font(.headline)
-                    let maxV = max(perDay.map(\.1).max() ?? 1, 1)
-                    HStack(alignment: .bottom, spacing: range == 7 ? 10 : 2) {
-                        ForEach(perDay, id: \.0) { d, t in
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.orange)
-                                .frame(height: max(3, 110 * t / maxV))
-                                .frame(maxWidth: .infinity)
+                .padding(.bottom, 24)
+                FitSection(title: "Focus per day", trailing: "minutes") {
+                    DailyBarChart(points: points, tint: Fit.activity,
+                                  format: { "\(Int($0.rounded())) min" })
+                }
+                .padding(.bottom, 24)
+                FitSection(title: "Recent sessions") {
+                    if store.sessions.isEmpty {
+                        Text("No sessions yet").font(Fit.label).foregroundStyle(Fit.muted)
+                    }
+                    VStack(spacing: 0) {
+                        let latest = Array(store.sessions.suffix(10).reversed())
+                        ForEach(Array(latest.enumerated()), id: \.element.id) { index, s in
+                            DetailRow(label: "\(s.profileName), \(s.start.formatted(date: .abbreviated, time: .shortened))",
+                                      value: s.end == nil ? "Running" : format(length(s)),
+                                      last: index == latest.count - 1)
                         }
                     }
-                    .frame(height: 110, alignment: .bottom)
                 }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Recent sessions").font(.headline)
-                    ForEach(store.sessions.suffix(10).reversed()) { s in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(s.profileName)
-                                Text(s.start.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.footnote).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(s.end == nil ? "running" : format(length(s)))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    if store.sessions.isEmpty { Text("No sessions yet").foregroundStyle(.secondary) }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Screen Time").font(.headline)
+                .padding(.bottom, 24)
+                FitSection(title: "Screen Time") {
                     DeviceActivityReport(DeviceActivityReport.Context("BrickScreenTime"), filter: filter)
                         .frame(minHeight: 420)
                 }
             }
-            .padding(20)
         }
-        .navigationTitle("Stats")
-    }
-
-    private func stat(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading) {
-            Text(value).font(.title.bold().monospacedDigit())
-            Text(title).font(.footnote).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func format(_ t: TimeInterval) -> String {

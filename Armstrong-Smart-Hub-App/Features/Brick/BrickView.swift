@@ -3,7 +3,7 @@ import SwiftUI
 #if os(iOS)
 import FamilyControls
 
-/// Brick tab: one big tap target, profiles below. Floating layout, no card backgrounds.
+/// Brick tab, built from the Fitness page parts: no cards, hairline sections, thin ring, light numbers.
 struct BrickView: View {
     @State private var store = BrickStore()
     @State private var picking: UUID?
@@ -12,19 +12,29 @@ struct BrickView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(spacing: 40) {
                     hero
-                    if !store.authorized { setupRow }
-                    profilesSection
-                    tagSection
+                    if !store.authorized {
+                        Button("Allow Screen Time access") { Task { await store.authorize() } }
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    VStack(spacing: 0) {
+                        profilesSection
+                        tagSection
+                    }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.horizontal, Fit.gutter)
+                .padding(.vertical, 16)
+                .padding(.bottom, 24)
             }
+            .background(Color(.systemBackground))
             .navigationTitle("Brick")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { AccountButton() }
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink { BrickStatsView(store: store) } label: { Image(systemName: "chart.bar") }
+                    NavigationLink { BrickStatsView(store: store) } label: { TablerIcon(name: "chart-bar", size: 22) }
+                        .accessibilityLabel("Stats")
                 }
             }
             .alert("Brick", isPresented: Binding(get: { store.message != nil },
@@ -48,77 +58,108 @@ struct BrickView: View {
             })
     }
 
+    private var accent: Color { store.isBlocking ? Fit.activity : Fit.muted }
+
+    /// Thin ring with a lock in it. Tapping it is the same as tapping the tag with the phone.
     private var hero: some View {
         VStack(spacing: 14) {
             Button { store.tapTag() } label: {
-                Image(systemName: store.isBlocking ? "lock.fill" : "lock.open")
-                    .font(.system(size: 64, weight: .light))
-                    .frame(width: 180, height: 180)
-                    .overlay(Circle().stroke(store.isBlocking ? Color.orange : Color.secondary.opacity(0.4), lineWidth: 3))
+                ZStack {
+                    Circle().stroke(Fit.track, lineWidth: 5)
+                    if store.isBlocking {
+                        Circle().stroke(Fit.activity, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    }
+                    TablerIcon(name: store.isBlocking ? "lock" : "lock-open", size: 56)
+                        .foregroundStyle(accent)
+                }
+                .frame(width: 180, height: 180)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(store.isBlocking ? Color.orange : Color.primary)
+            .accessibilityLabel(store.isBlocking ? "Unlock with tag" : "Start blocking with tag")
+            Text(store.isBlocking ? "Blocking" : "Unlocked").font(.title3.weight(.semibold))
             if store.isBlocking, let end = store.endsAt {
-                Text(end, style: .timer).font(.title2.monospacedDigit())
+                Text(end, style: .timer).font(Fit.number(34)).foregroundStyle(Fit.activity)
+            } else {
+                Text(store.isBlocking ? "Tap your tag to unlock" : "Tap your tag to start")
+                    .font(Fit.label).foregroundStyle(Fit.muted)
             }
             if store.isBlocking, store.blockingProfile?.strict == false {
-                Button("Unlock without tag") { store.unlockWithoutTag() }.font(.footnote)
+                Button("Unlock without tag") { store.unlockWithoutTag() }.font(Fit.label)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 8)
-    }
-
-    private var setupRow: some View {
-        Button("Allow Screen Time access") { Task { await store.authorize() } }
-            .buttonStyle(.borderedProminent)
     }
 
     private var profilesSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                Text("Profiles").font(.headline)
-                Spacer()
-                Button { store.addProfile() } label: { Image(systemName: "plus") }
-                    .disabled(store.isBlocking)
+        FitSection(title: "Profiles") {
+            VStack(spacing: 0) {
+                ForEach(Array(store.profiles.enumerated()), id: \.element.id) { index, p in
+                    profile(p, last: index == store.profiles.count - 1)
+                }
             }
-            ForEach(store.profiles) { p in profileRow(p) }
+            if !store.isBlocking {
+                Button { store.addProfile() } label: {
+                    HStack(spacing: 8) { TablerIcon(name: "plus", size: 18); Text("New profile").font(.subheadline) }
+                }
+                .buttonStyle(.plain)
+            }
         }
+        .padding(.bottom, 24)
     }
 
-    private func profileRow(_ p: BrickProfile) -> some View {
+    private func profile(_ p: BrickProfile, last: Bool) -> some View {
         let count = p.selection.applicationTokens.count + p.selection.categoryTokens.count + p.selection.webDomainTokens.count
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: store.selectedID == p.id ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(store.selectedID == p.id ? Color.green : Color.secondary)
-                    .onTapGesture { if !store.isBlocking { store.selectedID = p.id } }
-                TextField("Name", text: Binding(get: { p.name }, set: { var q = p; q.name = $0; store.update(q) }))
-                    .disabled(store.isBlocking)
-                Spacer()
-                Button("\(count) selected") { picking = p.id }
-                    .font(.footnote).disabled(store.isBlocking)
+        let chosen = store.selectedID == p.id
+        return VStack(spacing: 0) {
+            Button { if !store.isBlocking { store.selectedID = p.id } } label: {
+                HStack {
+                    TablerIcon(name: chosen ? "circle-check" : "circle", size: 20)
+                        .foregroundStyle(chosen ? Fit.positive : Fit.faint)
+                    TextField("Name", text: Binding(get: { p.name }, set: { var q = p; q.name = $0; store.update(q) }))
+                        .font(.subheadline.weight(.semibold)).disabled(store.isBlocking)
+                    Spacer()
+                }
+                .padding(.vertical, 11)
             }
-            Toggle("Strict (only the tag unlocks)", isOn: Binding(get: { p.strict }, set: { var q = p; q.strict = $0; store.update(q) }))
-                .font(.footnote).disabled(store.isBlocking)
-            Stepper(p.timerMinutes.map { "Auto-unlock after \($0) min" } ?? "No timer",
-                    onIncrement: { var q = p; q.timerMinutes = (p.timerMinutes ?? 0) + 15; store.update(q) },
-                    onDecrement: { var q = p; let m = (p.timerMinutes ?? 0) - 15; q.timerMinutes = m > 0 ? m : nil; store.update(q) })
-                .font(.footnote).disabled(store.isBlocking)
-            if store.profiles.count > 1 {
-                Button("Delete", role: .destructive) { store.delete(p) }.font(.footnote)
+            .buttonStyle(.plain)
+            if chosen {
+                Button { picking = p.id } label: {
+                    DetailRow(label: "Apps and sites", value: count == 0 ? "Choose" : "\(count) selected")
+                }
+                .buttonStyle(.plain).disabled(store.isBlocking)
+                HStack {
+                    Text("Strict, only the tag unlocks").font(.subheadline)
+                    Spacer()
+                    Toggle("", isOn: Binding(get: { p.strict }, set: { var q = p; q.strict = $0; store.update(q) }))
+                        .labelsHidden().disabled(store.isBlocking)
+                }
+                .padding(.vertical, 6)
+                Rectangle().fill(Fit.hairline).frame(height: 1)
+                Stepper(value: Binding(get: { p.timerMinutes ?? 0 }, set: { var q = p; q.timerMinutes = $0 > 0 ? $0 : nil; store.update(q) }),
+                        in: 0...480, step: 15) {
+                    HStack {
+                        Text("Auto-unlock").font(.subheadline)
+                        Spacer()
+                        Text(p.timerMinutes.map { "\($0) min" } ?? "Off").font(.subheadline).foregroundStyle(Fit.muted)
+                    }
+                }
+                .padding(.vertical, 6).disabled(store.isBlocking)
+                if store.profiles.count > 1 {
+                    Button("Delete profile", role: .destructive) { store.delete(p) }
+                        .font(Fit.label).padding(.vertical, 8).disabled(store.isBlocking)
+                }
             }
-            Divider()
+            if !last { Rectangle().fill(Fit.hairline).frame(height: 1) }
         }
     }
 
     private var tagSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Tag").font(.headline)
-            Text(store.tagID == nil ? "No tag registered" : "Registered: \(String(store.tagID!.prefix(8)))")
-                .font(.footnote).foregroundStyle(.secondary)
+        FitSection(title: "Tag") {
+            VStack(spacing: 0) {
+                DetailRow(label: "Registered tag", value: store.tagID.map { String($0.prefix(8)) } ?? "None", last: true)
+            }
             Button(store.tagID == nil ? "Register tag" : "Replace tag") { store.registerTag() }
-                .disabled(store.isBlocking)
+                .font(.subheadline.weight(.semibold)).disabled(store.isBlocking)
         }
     }
 }
