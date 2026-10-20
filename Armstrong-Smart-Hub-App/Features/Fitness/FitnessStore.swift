@@ -43,3 +43,10 @@ final class FitnessStore {
         return activities.filter { ($0.start ?? .distantPast) > cutoff }
     }
 }
+
+#if DEBUG
+extension FitnessStore {
+    /// TEMPORARY: lets FitnessRenderDebug load a snapshot from a file.
+    func debugSet(_ snapshot: FitnessSnapshot) { self.snapshot = snapshot }
+}
+#endif

@@ -29,6 +29,9 @@ struct FitnessInsights: Decodable {
         var need: Int?
         var score: Int?
         var zone: String?
+        /// What moved it: each input as standard deviations from your baseline (positive helps).
+        var parts: [Part]?
+        struct Part: Decodable, Identifiable { var key: String; var weight: Double; var z: Double; var id: String { key } }
     }
 
     struct Sleep: Decodable {

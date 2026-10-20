@@ -11,6 +11,9 @@ struct HubApp: App {
             RootView()
                 .environment(session)
                 .environment(watch)
+                #if DEBUG
+                .onAppear { FitnessRenderDebug.runIfAsked(watch: watch, session: session) }
+                #endif
         }
     }
 }
