@@ -598,7 +598,7 @@ struct IntradayChart: View {
         VStack(alignment: .leading, spacing: 10) {
             if let point = chosen ?? sorted.last {
                 Readout(value: format(point.value) + unit,
-                        caption: chosen == nil ? "Latest, \(point.date.formatted(date: .omitted, time: .shortened))" : point.date.formatted(date: .omitted, time: .shortened))
+                        caption: chosen == nil ? "Latest, \(moment(point.date))" : moment(point.date))
             }
             Chart {
                 ForEach(sorted) { point in
@@ -671,6 +671,12 @@ struct IntradayChart: View {
             tick += step
         }
         return out
+    }
+
+    /// "9:41 PM" today, else "Sun 9:41 PM", so a day-old reading doesn't pass for today's.
+    private func moment(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date) ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
     }
 
     private var tickFormat: Date.FormatStyle {
