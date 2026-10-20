@@ -282,9 +282,13 @@ struct RecoveryStrainSection: View {
 
 struct SleepCoachSection: View {
     var sleep: FitnessInsights.Sleep
+    /// When the watch gives its own sleep need, the hub's breakdown of it is left out.
+    var watchNeed = false
 
     var body: some View {
-        FloatingSection(title: "Sleep need", trailing: "\(InsightFormat.hours(sleep.need.hours)) tonight") {
+        FloatingSection(title: watchNeed ? "Sleep habits" : "Sleep need",
+                        trailing: watchNeed ? nil : "\(InsightFormat.hours(sleep.need.hours)) tonight") {
+            if !watchNeed {
             VStack(spacing: 10) {
                 LabeledContent("Your baseline", value: InsightFormat.hours(sleep.need.baseline))
                 if sleep.need.debt > 0 { LabeledContent("Sleep debt", value: "+\(InsightFormat.hours(sleep.need.debt))") }
@@ -292,12 +296,13 @@ struct SleepCoachSection: View {
                 if sleep.need.naps > 0 { LabeledContent("Naps", value: "−\(InsightFormat.hours(sleep.need.naps))") }
             }
             .font(.subheadline)
+            }
             if let night = sleep.lastNight {
-                Divider().opacity(0.4)
+                if !watchNeed { Divider().opacity(0.4) }
                 HStack(alignment: .firstTextBaseline) {
                     Text("Last night").font(.subheadline.weight(.semibold))
                     Spacer()
-                    Text("Sleep score \(night.apple.score)").font(.subheadline).foregroundStyle(.secondary)
+                    Text("Apple-style score \(night.apple.score)").font(.subheadline).foregroundStyle(.secondary)
                 }
                 VStack(spacing: 9) {
                     ScoreBar(label: "Duration", value: Double(night.apple.duration), max: 50, tint: .indigo,
@@ -414,9 +419,13 @@ struct WorkoutEffectSection: View {
 
 struct TrainingInsightsSection: View {
     var training: FitnessInsights.Training
+    /// When the watch gives its own load focus, Endurance Score, threshold and
+    /// race predictions, the hub's estimates of them are left out.
+    var watchCovers = false
 
     var body: some View {
-        FloatingSection(title: "Training analysis", trailing: training.focus.status) {
+        FloatingSection(title: "Training analysis", trailing: watchCovers ? nil : training.focus.status) {
+            if !watchCovers {
             focus
             HStack(alignment: .top, spacing: 12) {
                 BigMetric(symbol: "heart", tint: .red, title: "Threshold",
@@ -424,11 +433,12 @@ struct TrainingInsightsSection: View {
                 BigMetric(symbol: "run", tint: .green, title: "Endurance", value: training.endurance.map { "\($0.score)" } ?? "–")
                 BigMetric(symbol: "mountain", tint: .brown, title: "Hill score", value: training.hill.map { "\($0.score)" } ?? "–")
             }
+            }
             VStack(spacing: 10) {
-                if let threshold = training.lactateThreshold {
+                if !watchCovers, let threshold = training.lactateThreshold {
                     LabeledContent("Lactate threshold", value: thresholdText(threshold))
                 }
-                if let endurance = training.endurance { LabeledContent("Endurance level", value: endurance.tier) }
+                if !watchCovers, let endurance = training.endurance { LabeledContent("Endurance level", value: endurance.tier) }
                 if let condition = training.performanceCondition, let value = condition.value {
                     LabeledContent("Performance condition", value: "\(value > 0 ? "+" : "")\(value) on \(ISO.parse(condition.at)?.formatted(.dateTime.month(.abbreviated).day()) ?? "last run")")
                 }
@@ -437,7 +447,7 @@ struct TrainingInsightsSection: View {
                 }
             }
             .font(.subheadline)
-            if let races = training.races {
+            if !watchCovers, let races = training.races {
                 Divider().opacity(0.4)
                 Text("Race predictor").font(.subheadline.weight(.semibold))
                 HStack {

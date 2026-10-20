@@ -28,14 +28,27 @@ enum FitnessRenderDebug {
                 print("RENDER wrote", name)
             } else { print("RENDER failed", name) }
         }
+        // Activity details saved next to the snapshot as activity-*.json.
+        var activities: [FitnessActivity] = []
+        for file in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        where file.lastPathComponent.hasPrefix("activity-") && file.pathExtension == "json" {
+            if let data = try? Data(contentsOf: file), let detail = try? JSONDecoder().decode(FitnessActivityDetail.self, from: data) {
+                store.debugSetDetail(detail)
+                activities.append(detail.activity)
+            }
+        }
         let overview = VStack(spacing: 36) {
-            FitnessDials(insights: snapshot.insights, lastNight: store.lastNight)
+            ReadinessHero(store: store)
+            FitnessDials(store: store)
             FitnessTileGrid(store: store, liveBpm: nil, steps: store.today?.steps ?? 0, stepGoal: store.today?.stepGoal)
         }.padding(20)
         for scheme in [ColorScheme.dark, .light] {
             save("overview", overview, scheme: scheme)
-            for page in [FitnessPage.recovery, .strain, .sleep, .heart, .energy, .training, .health] {
+            for page in [FitnessPage.readiness, .recovery, .strain, .sleep, .heart, .energy, .training, .health] {
                 save("page-\(page)", page.view(store: store), scheme: scheme)
+            }
+            for activity in activities {
+                save("activity-\(activity.sport)", ActivityPage(activity: activity, store: store), scheme: scheme)
             }
         }
         exit(0)
