@@ -13,6 +13,9 @@ struct FitnessView: View {
     @State private var showingWatch = false
     @AppStorage("fitness.pplOffset") private var pplOffset = 0
     @State private var pairing = false
+    @State private var workouts = WorkoutStore()
+    @State private var logging = false
+    @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
 
     var body: some View {
         NavigationStack {
@@ -29,6 +32,7 @@ struct FitnessView: View {
                     }
                     if watch.savedWatchID == nil {
                         welcome
+                        workoutsSection
                     } else {
                         if let error = store.error, !store.loaded {
                             ErrorBanner(message: error)
@@ -37,6 +41,7 @@ struct FitnessView: View {
                             dayHeader
                             TodayScores(store: store).padding(.vertical, 20)
                             today
+                            workoutsSection
                             FitSection(title: "Body") {
                                 OverviewList(store: store, liveBpm: watch.heartRate?.bpm,
                                              steps: max(watch.steps?.count ?? 0, store.today?.steps ?? 0),
@@ -65,9 +70,17 @@ struct FitnessView: View {
             }
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
+            .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: workouts) }
+            .fullScreenCover(isPresented: $logging) { ActiveWorkoutView(store: workouts) }
+            // Live readings go into the workout in progress, whichever screen is showing.
+            .onChange(of: watch.heartRateAt) { _, at in
+                if let at, let bpm = watch.heartRate?.bpm, workouts.active != nil { workouts.record(bpm: bpm, at: at) }
+            }
             .task {
+                async let logged: Void = workouts.load(api: session.api)
                 await store.load(api: session.api)
                 await autoSync()
+                await logged
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await autoSync() } }
@@ -76,11 +89,21 @@ struct FitnessView: View {
                 // Return right away so the system spinner doesn't hold the page
                 // open; the watch hero shows the sync instead.
                 Task { await autoSync(force: true) }
+                Task { await workouts.load(api: session.api) }
             }
             .onChange(of: watch.files.lastSync) { Task { await store.load(api: session.api) } }
             .sheet(isPresented: $showingWatch) { WatchSheet() }
             .sheet(isPresented: $pairing) { PairWatchSheet() }
         }
+    }
+
+    // MARK: Workouts
+
+    private var workoutsSection: some View {
+        WorkoutsSection(store: workouts, onStart: { routine in
+            if workouts.active == nil { workouts.start(routine, unit: unit) }
+            logging = true
+        }, onResume: { logging = true })
     }
 
     // MARK: Watch

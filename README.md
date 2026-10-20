@@ -38,6 +38,17 @@ live heart rate and steps. It never archives, deletes or changes anything on the
   use is fine; distributing it (TestFlight to others, the App Store) would require releasing the app's source under
   the AGPL, which also conflicts with App Store terms. Review this before sharing builds.
 
+## Workouts
+
+The Fitness tab also logs strength workouts, Hevy style: routines, an exercise library (plus custom exercises), a set
+grid showing last session's numbers, warm-up/drop/failure sets, supersets, a rest timer and PRs. The workout in
+progress is saved on the phone as you go, and a finished one waits there until the hub (`/api/mobile/workouts`) takes it.
+
+Checking off a set stamps it with the time and the watch's live heart rate. The hub maps heart rate onto every set
+(average, peak, how far it fell a minute later, rest before the next set). It uses the watch's own activity file when
+one overlaps the workout, otherwise the live readings the phone recorded. For second-by-second data, start a Strength
+activity on the watch as well.
+
 ## Build
 
 Open `Armstrong-Smart-Hub-App.xcodeproj` in Xcode and run. ONNX Runtime comes in through Swift Package Manager.
