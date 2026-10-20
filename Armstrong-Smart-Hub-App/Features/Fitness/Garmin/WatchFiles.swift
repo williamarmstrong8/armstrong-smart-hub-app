@@ -87,7 +87,7 @@ final class WatchFiles {
             await probeListing() // DIAGNOSTIC: remove once health files arrive
 
             let wanted = listed
-                .filter { GarminFiles.healthKinds.contains($0.kind) && $0.size > 0 && $0.size <= maxFileBytes && !store.has($0) }
+                .filter { GarminFiles.healthKinds.contains($0.kind) && $0.size <= maxFileBytes && store.needsDownload($0) }
                 // Sleep, HRV and metrics first so the many monitoring files can't use up the
                 // per-sync limit; newest first within each kind.
                 .sorted {
@@ -99,10 +99,11 @@ final class WatchFiles {
                 progress = "Downloading \(file.kind.replacingOccurrences(of: "_", with: " ")) \(number + 1) of \(wanted.count)"
                 fraction = 0.2 + 0.65 * Double(number) / Double(max(wanted.count, 1))
                 do {
+                    let refresh = store.saved[file.id] != nil
                     let data = try await download(file)
                     try store.save(file, data: data)
                     downloaded += 1
-                    link.note("Saved \(file.kind) (\(data.count) bytes, FIT \(GarminFiles.isFIT(data) ? "valid" : "INVALID"))")
+                    link.note("Saved \(file.kind)\(refresh ? " again (it grew)" : "") (\(data.count) bytes, FIT \(GarminFiles.isFIT(data) ? "valid" : "INVALID"))")
                 } catch {
                     // One bad file shouldn't stop the rest; a lost connection does.
                     link.note("Skipped \(file.kind): \(error.localizedDescription)")
@@ -511,8 +512,10 @@ final class FitStore {
         var path: String
         var fitValid: Bool
         var savedAt: Date
-        /// When the hub stored it; nil until then.
+        /// When the hub stored it; nil until then (and again after a newer copy replaces it).
         var uploadedAt: Date?
+        /// The size the watch listed when this copy was taken, to spot a file that has grown.
+        var listedSize: Int?
         var parseError: String?
     }
 
@@ -540,6 +543,23 @@ final class FitStore {
 
     func has(_ file: GarminFiles.ListedFile) -> Bool { saved[file.id] != nil }
 
+    /// Kinds the watch keeps writing to through the day: today's all-day
+    /// monitoring file is listed before midnight and grows on every flush.
+    static let growingKinds: Set<String> = ["monitor", "monitor_a", "monitor_daily"]
+
+    /// New files, and any day file that has changed since the copy we have:
+    /// a different listed size, or (when the watch lists an open file without
+    /// a size) a copy over 15 minutes old from the last two days. Older files
+    /// are never pulled twice, so history isn't downloaded again.
+    func needsDownload(_ file: GarminFiles.ListedFile) -> Bool {
+        guard let copy = saved[file.id] else { return true }
+        guard Self.growingKinds.contains(file.kind) else { return false }
+        let recent = (file.date ?? copy.date).map { Date.now.timeIntervalSince($0) < 2 * 86400 } ?? true
+        guard recent else { return false }
+        if file.size > 0, let listed = copy.listedSize { return file.size != listed }
+        return Date.now.timeIntervalSince(copy.savedAt) > 15 * 60
+    }
+
     func url(_ item: Saved) -> URL { root.appending(path: item.path) }
 
     func save(_ file: GarminFiles.ListedFile, data: [UInt8]) throws(FileError) {
@@ -552,7 +572,7 @@ final class FitStore {
             throw .protocolError("couldn't save the file on the phone")
         }
         saved[file.id] = Saved(id: file.id, kind: file.kind, size: data.count, date: file.date, path: path,
-                               fitValid: GarminFiles.isFIT(data), savedAt: .now)
+                               fitValid: GarminFiles.isFIT(data), savedAt: .now, listedSize: file.size)
         write(saved, to: "saved.json")
     }
 
