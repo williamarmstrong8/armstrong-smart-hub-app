@@ -294,7 +294,7 @@ struct BrickTagPage: View {
                 .buttonStyle(.plain)
                 .disabled(store.isBlocking)
             }
-            BrickNote(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes the key: tap it to Brick, tap it again to unbrick. Replacing it makes the old one stop working.")
+            BrickNote(text: "Any NFC sticker works (NTAG213 and up). Registering reads it twice to make sure its ID stays the same. That ID becomes the key: tap it to Brick, tap it again to unbrick. Replacing it makes the old one stop working.")
         }
     }
 }
