@@ -70,7 +70,11 @@ final class BrickStore: NSObject {
     @ObservationIgnored private let settings = ManagedSettingsStore()
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private var session: NFCTagReaderSession?
-    @ObservationIgnored private var onTag: ((String) -> Void)?
+    /// Gets the tag's ID; returns an error to show on the scan sheet, or nil when it worked.
+    @ObservationIgnored private var onTag: ((String) -> String?)?
+    /// Registering reads the tag twice: the first ID, waiting for the second read to match.
+    @ObservationIgnored private var confirming = false
+    @ObservationIgnored private var firstRead: String?
     @ObservationIgnored private var ticker: Timer?
 
     override private init() {
@@ -187,12 +191,15 @@ final class BrickStore: NSObject {
     // MARK: Tag
 
     /// Tap a tag to make it the only key. Replaces any earlier tag.
+    /// It's read twice, because some tags (bank cards, phones) show a new random ID each time,
+    /// which would register fine and then never match again.
     func registerTag() {
         guard !isBlocking else { message = "Unbrick before changing the tag."; return }
-        scan("Hold your phone to the Brick tag to register it.") { [weak self] id in
+        scan("Hold your phone to the Brick tag to register it.", confirm: true) { [weak self] id in
             self?.tagID = id
             self?.defaults.set(id, forKey: "brick.tag")
-            self?.message = "Tag registered."
+            self?.message = "Tag registered. Tap to Brick to try it."
+            return nil
         }
     }
 
@@ -202,13 +209,15 @@ final class BrickStore: NSObject {
         guard tagID != nil else { message = "Register your Brick first."; return }
         let prompt = isBlocking ? "Tap your Brick to unbrick." : "Tap your Brick to start blocking."
         scan(prompt) { [weak self] id in
-            guard let self else { return }
-            guard id == self.tagID else { self.message = "That is not your registered Brick."; return }
+            guard let self else { return nil }
+            guard id == self.tagID else { return "That is not your registered Brick." }
             if self.isBlocking {
                 self.stop()
             } else if let p = self.selected {
+                guard p.blockedCount > 0 else { return "Pick apps to block in \(p.name) first." }
                 self.start(p)
             }
+            return nil
         }
     }
 
@@ -261,6 +270,15 @@ final class BrickStore: NSObject {
 
     /// Timers and schedules are checked while the app runs and each time it opens.
     func check() {
+        // Turning off the app's Screen Time access in Settings lifts every shield, so the session is over.
+        // Only an explicit denial counts: the status can read "not determined" for a moment at launch.
+        switch AuthorizationCenter.shared.authorizationStatus {
+        case .approved: authorized = true
+        case .denied:
+            authorized = false
+            if isBlocking { stop() }
+        default: break
+        }
         if let endsAt, endsAt <= Date(), isBlocking { stop(byTimer: true) }
         checkSchedules()
     }
@@ -295,12 +313,14 @@ final class BrickStore: NSObject {
 
     // MARK: NFC
 
-    private func scan(_ prompt: String, _ done: @escaping (String) -> Void) {
+    private func scan(_ prompt: String, confirm: Bool = false, _ done: @escaping (String) -> String?) {
         guard NFCTagReaderSession.readingAvailable else {
             message = "This device cannot read NFC tags."
             return
         }
         onTag = done
+        confirming = confirm
+        firstRead = nil
         let s = NFCTagReaderSession(pollingOption: .iso14443, delegate: self, queue: nil)
         s?.alertMessage = prompt
         s?.begin()
@@ -308,10 +328,28 @@ final class BrickStore: NSObject {
     }
 
     /// Hands the tag to whoever asked, once. Runs before the session is invalidated, so cleanup can't drop it.
-    private func deliver(_ id: String) {
+    private func deliver(_ id: String) -> String? {
         let cb = onTag
         onTag = nil
-        cb?(id)
+        return cb?(id)
+    }
+
+    /// What a read means for the open scan: ask for the second read, or finish.
+    private enum Read { case again, done(error: String?) }
+
+    private func read(_ id: String) -> Read {
+        guard confirming else { return .done(error: deliver(id)) }
+        guard let first = firstRead else {
+            firstRead = id
+            return .again
+        }
+        confirming = false
+        firstRead = nil
+        guard first == id else {
+            onTag = nil
+            return .done(error: "This tag shows a different ID each time, so it can't be your Brick. Use an NFC sticker (NTAG213 or similar).")
+        }
+        return .done(error: deliver(id))
     }
 }
 
@@ -319,11 +357,25 @@ extension BrickStore: NFCTagReaderSessionDelegate {
     nonisolated func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {}
 
     nonisolated func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
+        let code = (error as? NFCReaderError)?.code
+        let text = error.localizedDescription
         Task { @MainActor in
             // Only clear if this is still the current scan; an older session must not clear a newer one.
             guard self.session === session else { return }
+            // Still waiting for a tag: say why the scan ended, unless the person cancelled it.
+            if self.onTag != nil {
+                switch code {
+                case .readerSessionInvalidationErrorUserCanceled: break
+                case .readerSessionInvalidationErrorSessionTimeout:
+                    self.message = "The scan timed out. Hold the top of the phone flat against the tag."
+                default:
+                    self.message = "Couldn't scan: \(text)"
+                }
+            }
             self.session = nil
             self.onTag = nil
+            self.confirming = false
+            self.firstRead = nil
         }
     }
 
@@ -348,9 +400,16 @@ extension BrickStore: NFCTagReaderSessionDelegate {
                 return
             }
             Task { @MainActor in
-                self.deliver(id)
-                session.alertMessage = "Done."
-                session.invalidate()
+                switch self.read(id) {
+                case .again:
+                    session.alertMessage = "Got it. Lift the phone away, then tap the tag once more to confirm."
+                    session.restartPolling()
+                case .done(let error?):
+                    session.invalidate(errorMessage: error)
+                case .done(.none):
+                    session.alertMessage = "Done."
+                    session.invalidate()
+                }
             }
         }
     }
