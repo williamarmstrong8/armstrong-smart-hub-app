@@ -454,6 +454,11 @@ final class WatchLink: NSObject {
             send(GFDIMessage.ack(message.type))
             completeSetup()
             return
+        case .synchronization:
+            // The watch has new files for the phone: type (0 manual, 1 automatic), then a bitmask of what.
+            send(GFDIMessage.ack(message.type))
+            files.watchAskedForSync(manual: message.payload.first == 0)
+            return
         default:
             break
         }

@@ -43,7 +43,21 @@ struct FitnessDay: Decodable, Identifiable {
     var steps: Int?
     var stepGoal: Int?
     var restingHr: Int?
+    /// The watch's own day totals, from that day's all-day file (so nil for today until midnight, and on older hubs).
+    var distanceMeters: Double?
+    var activeKcal: Int?
+    var restingKcal: Int?
+    var activeSeconds: Double?
+    var floorsUp: Double?
+    var floorsDown: Double?
+    var moderateMinutes: Int?
+    var vigorousMinutes: Int?
     var id: String { day }
+    /// Garmin's intensity minutes: vigorous count double.
+    var intensityMinutes: Int? {
+        guard moderateMinutes != nil || vigorousMinutes != nil else { return nil }
+        return (moderateMinutes ?? 0) + 2 * (vigorousMinutes ?? 0)
+    }
     /// Local midnight of the day, for charts.
     var date: Date? {
         let parts = day.split(separator: "-").compactMap { Int($0) }

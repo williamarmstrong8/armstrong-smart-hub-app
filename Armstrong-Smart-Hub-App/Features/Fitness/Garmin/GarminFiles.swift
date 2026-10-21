@@ -9,9 +9,10 @@ import zlib
 // Daniele Gobbetti, José Rebelo, Thomas Kuehne and other Gadgetbridge
 // contributors), AGPL-3.0-or-later.
 //
-// Only the download half exists: nothing here can build SET_FILE_FLAG
-// (archive), FileSetFlags (mark synced), CREATE_FILE or UPLOAD_REQUEST, so this
-// code cannot archive, delete or write files on the watch.
+// Besides downloading, it can only mark a file synced (ModifyFlagsRequest), as
+// Garmin Connect and Gadgetbridge do once they have a file: nothing here builds
+// SET_FILE_FLAG (archive), DeleteItemRequest, CREATE_FILE or UPLOAD_REQUEST, so
+// this code cannot archive, delete or write files on the watch.
 //
 // Two flows:
 //   Legacy   DOWNLOAD_REQUEST(index) → RESPONSE(size) → FILE_TRANSFER_DATA
@@ -181,8 +182,8 @@ enum GarminFiles {
     /// FileListRequest (field 9), continuing from a cursor or a page, with timestamps.
     /// `unsyncedOnly` excludes files flagged as synced, as Gadgetbridge always does;
     /// without it the watch walks months of old files and may never reach the
-    /// recent monitoring and sleep files. This app never sets the flag, so it only
-    /// hides files Garmin Connect already took.
+    /// recent monitoring and sleep files. The app sets the flag once the hub has
+    /// a file, so this hides those and the files Garmin Connect took before.
     static func fileListRequest(cursor: UInt64? = nil, page: UInt64? = nil, unsyncedOnly: Bool = false) -> [UInt8] {
         var request: [(UInt64, Protobuf.Value)] = []
         if let cursor { request.append((1, .varint(cursor))) } else if let page { request.append((2, .varint(page))) }
@@ -192,6 +193,22 @@ enum GarminFiles {
         }
         request.append((7, .varint(0)))
         return fileSync([(9, .bytes(Protobuf.encode(request)))])
+    }
+
+    /// ModifyFlagsRequest (field 15): sets the synced flag on a listed file, as
+    /// Garmin Connect does once it has the file. The watch keeps all-day data in
+    /// one file per day until it's marked synced (Connect gets several a day);
+    /// nil if the entry carries no file id.
+    static func markSyncedRequest(_ entry: [UInt8]) -> [UInt8]? {
+        guard let id = Protobuf.decode(entry)?.bytes(1) else { return nil }
+        let flag = Protobuf.encode([(1, .fixed64(syncedFlag)), (2, .fixed64(syncedFlag))])
+        return fileSync([(15, .bytes(Protobuf.encode([(1, .bytes(id)), (2, .bytes(flag))])))])
+    }
+
+    /// ModifyFlagsResponse (field 16): 0 is success.
+    static func modifyFlagsStatus(_ sync: Protobuf.Fields) -> UInt64? {
+        guard let raw = sync.bytes(16) else { return nil }
+        return Protobuf.decode(raw)?.int(1) ?? 0
     }
 
     /// FileRequest (field 1) for a listed file, with the values Gadgetbridge sends.

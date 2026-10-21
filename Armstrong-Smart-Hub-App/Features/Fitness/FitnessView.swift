@@ -41,7 +41,6 @@ struct FitnessView: View {
                             dayHeader
                             MorningCheckin(store: checkins).padding(.top, 8)
                             TodayScores(store: store).padding(.vertical, 20)
-                            if checkins.entry(for: checkins.day) != nil { PastQuestion(store: checkins) }
                             today
                             workoutsSection
                             FitSection(title: "Body") {
@@ -72,7 +71,6 @@ struct FitnessView: View {
             }
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
-            .navigationDestination(for: CheckinRoute.self) { _ in CheckinDetailPage(store: checkins) }
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: workouts) }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: workouts) }
             // The workout screen opens from the tab bar (MainTabView), which needs this for zones.
