@@ -41,7 +41,7 @@ struct FitnessView: View {
                             dayHeader
                             MorningCheckin(store: checkins).padding(.top, 8)
                             TodayScores(store: store).padding(.vertical, 20)
-                            if checkins.entry(for: localDay()) != nil { PastQuestion(store: checkins) }
+                            if checkins.entry(for: checkins.day) != nil { PastQuestion(store: checkins) }
                             today
                             workoutsSection
                             FitSection(title: "Body") {
@@ -76,6 +76,11 @@ struct FitnessView: View {
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: workouts) }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: workouts) }
             // The workout screen opens from the tab bar (MainTabView), which needs this for zones.
+            // The check-in day turns over at waking, so it follows the newest sleep.
+            .onChange(of: store.lastNight?.endDate, initial: true) { _, end in
+                checkins.lastWake = end
+                if checkins.page != nil, checkins.page?.day != checkins.day { Task { await checkins.load(api: session.api) } }
+            }
             .onChange(of: store.snapshot?.metrics?.profile?.maxHr, initial: true) { _, max in
                 if let max { workouts.maxHr = max }
             }
@@ -90,7 +95,7 @@ struct FitnessView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await autoSync() } }
                 // A new day, or answers that waited for the hub.
-                if phase == .active, checkins.page?.day != localDay() || !checkins.pending.isEmpty {
+                if phase == .active, checkins.page?.day != checkins.day || !checkins.pending.isEmpty {
                     Task { await checkins.load(api: session.api) }
                 }
             }

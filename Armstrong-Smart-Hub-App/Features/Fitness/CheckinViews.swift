@@ -16,7 +16,7 @@ struct MorningCheckin: View {
     @State private var touched = false
     @State private var showingMore = false
 
-    private var day: String { localDay() }
+    private var day: String { store.day }
     private var saved: Checkin? { store.entry(for: day) }
     private var guess: DayGuess? { store.guess }
     private var guessedEnergy: Int? { guess.map { Int($0.energy.rounded()) } }

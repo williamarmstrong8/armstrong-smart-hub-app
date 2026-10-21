@@ -594,6 +594,7 @@ struct IntradayChart: View {
 
     var body: some View {
         let sorted = points.filter { $0.date >= from && $0.date <= to }.sorted { $0.date < $1.date }
+        let runs = Self.runs(sorted)
         let chosen = selected.flatMap { s in sorted.min { abs($0.date.timeIntervalSince(s)) < abs($1.date.timeIntervalSince(s)) } }
         let values = sorted.map(\.value)
         let low = values.min() ?? 0, high = values.max() ?? 1
@@ -603,21 +604,23 @@ struct IntradayChart: View {
                         caption: chosen == nil ? "Latest, \(moment(point.date))" : moment(point.date))
             }
             Chart {
-                ForEach(sorted) { point in
+                ForEach(Array(sorted.enumerated()), id: \.element.id) { index, point in
+                    let run = runs[index]
                     switch style {
                     case .bars:
                         BarMark(x: .value("Time", point.date, unit: .minute), y: .value("Value", point.value), width: .fixed(2))
                             .foregroundStyle((point.color ?? tint).opacity(chosen == nil || chosen == point ? 1 : 0.4))
                     case .area:
-                        AreaMark(x: .value("Time", point.date), yStart: .value("Floor", domain?.lowerBound ?? max(0, low - 5)), yEnd: .value("Value", point.value))
+                        AreaMark(x: .value("Time", point.date), yStart: .value("Floor", domain?.lowerBound ?? max(0, low - 5)), yEnd: .value("Value", point.value),
+                                 series: .value("Run", run))
                             .interpolationMethod(.monotone)
                             .foregroundStyle(LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
-                        LineMark(x: .value("Time", point.date), y: .value("Value", point.value))
+                        LineMark(x: .value("Time", point.date), y: .value("Value", point.value), series: .value("Run", run))
                             .interpolationMethod(.monotone)
                             .foregroundStyle(tint)
                             .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                     case .line:
-                        LineMark(x: .value("Time", point.date), y: .value("Value", point.value))
+                        LineMark(x: .value("Time", point.date), y: .value("Value", point.value), series: .value("Run", run))
                             .interpolationMethod(.monotone)
                             .foregroundStyle(tint)
                             .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
@@ -653,6 +656,17 @@ struct IntradayChart: View {
             .chartYScale(domain: domain ?? max(0, low - (high - low) * 0.15 - 2)...(high + (high - low) * 0.15 + 2))
             .frame(height: height)
             .padding(.bottom, 20)
+        }
+    }
+
+    /// Which unbroken stretch each point belongs to: a gap of 20 minutes or
+    /// more (watch off, or a stretch no one has yet) starts a new one, so the
+    /// line breaks there instead of drawing straight across it.
+    private static func runs(_ points: [TimeValue]) -> [Int] {
+        var run = 0
+        return points.indices.map { i in
+            if i > 0, points[i].date.timeIntervalSince(points[i - 1].date) >= 20 * 60 { run += 1 }
+            return run
         }
     }
 

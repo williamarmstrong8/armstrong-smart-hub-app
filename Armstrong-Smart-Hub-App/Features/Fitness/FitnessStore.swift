@@ -47,20 +47,22 @@ final class FitnessStore {
     /// A day-long chart reading.
     struct Reading { var date: Date; var value: Int }
 
-    /// The hub's readings, then the phone's from after the hub's last one, so
-    /// today shows before the watch's midnight file reaches the hub (or with no
-    /// hub at all). Stress and Body Battery go in 5-minute averages like the hub's.
+    /// The last 24 hours: the hub's readings, with the phone's filling every
+    /// 5 minutes the hub has nothing for. The hub can have tonight (streamed
+    /// live) but not yet the day before (that comes in the watch's midnight
+    /// file), so the phone fills gaps anywhere, not only after the hub's last
+    /// reading. Stress and Body Battery go in 5-minute averages like the hub's.
     func series(_ kind: LiveStore.Kind) -> [Reading] {
-        let hub = hubSeries(kind)
-        let after = hub.last?.date ?? .distantPast
-        let phone = live.series(kind, since: max(after.addingTimeInterval(1), .now.addingTimeInterval(-86400)))
+        let since = Date.now.addingTimeInterval(-86400)
+        let bucket = { (date: Date) in Int(date.timeIntervalSince1970 / 300) }
+        let hub = hubSeries(kind).filter { $0.date >= since }
+        let covered = Set(hub.map { bucket($0.date) })
+        let phone = live.series(kind, since: since).filter { !covered.contains(bucket($0.at)) }
         let local: [Reading] = kind == .heartRate
             ? phone.map { Reading(date: $0.at, value: $0.value) }
-            : Dictionary(grouping: phone) { floor($0.at.timeIntervalSince1970 / 300) * 300 }
-                .map { Reading(date: Date(timeIntervalSince1970: $0.key), value: $0.value.map(\.value).reduce(0, +) / $0.value.count) }
-                .filter { $0.date > after }
-                .sorted { $0.date < $1.date }
-        return hub + local
+            : Dictionary(grouping: phone) { bucket($0.at) }
+                .map { Reading(date: Date(timeIntervalSince1970: Double($0.key) * 300), value: $0.value.map(\.value).reduce(0, +) / $0.value.count) }
+        return (hub + local).sorted { $0.date < $1.date }
     }
 
     private func hubSeries(_ kind: LiveStore.Kind) -> [Reading] {
