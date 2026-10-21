@@ -84,6 +84,22 @@ final class APIClient: @unchecked Sendable {
     }
 
     func send<T: Decodable>(_ req: URLRequest) async throws -> T {
+        let data = try await self.data(req)
+        do {
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            if let err = try? Self.decoder.decode(ErrorBody.self, from: data), let message = err.error {
+                throw APIError(message: message)
+            }
+            #if DEBUG
+            print("Decode failed for \(req.url?.path ?? "?"):", error)
+            #endif
+            throw APIError(message: "The hub sent something unexpected.")
+        }
+    }
+
+    /// The response body, once the status and content type check out.
+    func data(_ req: URLRequest) async throws -> Data {
         let data: Data
         let response: URLResponse
         do {
@@ -119,17 +135,7 @@ final class APIClient: @unchecked Sendable {
             }
             throw APIError(message: "The hub returned \(http.statusCode).")
         }
-        do {
-            return try Self.decoder.decode(T.self, from: data)
-        } catch {
-            if let err = try? Self.decoder.decode(ErrorBody.self, from: data), let message = err.error {
-                throw APIError(message: message)
-            }
-            #if DEBUG
-            print("Decode failed for \(req.url?.path ?? "?"):", error)
-            #endif
-            throw APIError(message: "The hub sent something unexpected.")
-        }
+        return data
     }
 
     /// Streams a response line by line (the agent's server-sent events).

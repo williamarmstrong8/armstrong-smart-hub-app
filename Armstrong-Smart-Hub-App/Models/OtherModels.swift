@@ -60,7 +60,7 @@ struct Completion: Codable, Hashable, Sendable {
     let date: String
 }
 
-struct HabitsResponse: Decodable, Sendable {
+struct HabitsResponse: Codable, Sendable {
     let habits: [Habit]
     let completions: [Completion]
     let colors: [String]

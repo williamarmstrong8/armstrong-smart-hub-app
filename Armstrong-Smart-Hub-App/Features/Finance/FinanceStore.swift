@@ -7,6 +7,12 @@ final class FinanceStore {
     private(set) var response: FinanceResponse?
     private(set) var error: String?
     private(set) var syncing = false
+    /// Has heard from the hub since launch; until then `response` is the last copy on the phone.
+    private(set) var fetched = false
+
+    private static let cacheName = "finance"
+
+    init() { response = DiskCache.read(Self.cacheName) }
 
     var dashboard: Dashboard? { response?.dashboard }
     var currency: String { dashboard?.currency ?? "USD" }
@@ -20,9 +26,11 @@ final class FinanceStore {
 
     func load(api: APIClient) async {
         do {
-            let r: FinanceResponse = try await api.get("/api/mobile/finance")
-            response = r
+            let data = try await api.data(api.request("/api/mobile/finance"))
+            response = try APIClient.decoder.decode(FinanceResponse.self, from: data)
+            fetched = true
             error = nil
+            DiskCache.write(data, Self.cacheName)
         } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription

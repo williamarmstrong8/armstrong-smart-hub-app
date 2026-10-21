@@ -33,6 +33,11 @@ enum Garmin {
         case gfdi = 1
         case realtimeHeartRate = 6
         case realtimeSteps = 7
+        case realtimeStress = 13
+        case realtimeBodyBattery = 20
+
+        /// The live streams the link turns on, in this order.
+        static let live: [Service] = [.realtimeHeartRate, .realtimeSteps, .realtimeStress, .realtimeBodyBattery]
     }
 
     /// GFDI SYSTEM_EVENT types (Gadgetbridge's GarminSystemEventType, in order).
@@ -413,6 +418,22 @@ struct HeartRateReading: Equatable {
         guard payload.count >= 3 else { return nil }
         bpm = Int(payload[1])
         restingBPM = payload[2] > 0 ? Int(payload[2]) : nil
+    }
+}
+
+/// A 0-100 level from the live stress or Body Battery stream. The first byte
+/// is the level; Body Battery sends 0x7F while it doesn't know (Gadgetbridge's
+/// RealtimeBodyBatteryCallback). Gadgetbridge doesn't decode stress, so its
+/// layout is assumed to match: anything outside 0-100 (the FIT file's -1 off
+/// wrist, -2 too active) counts as no reading.
+struct LevelReading: Equatable {
+    var value: Int
+
+    init?(_ payload: [UInt8]) {
+        guard let first = payload.first else { return nil }
+        let raw = Int(Int8(bitPattern: first))
+        guard (0...100).contains(raw) else { return nil }
+        value = raw
     }
 }
 

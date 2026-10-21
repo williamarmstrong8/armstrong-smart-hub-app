@@ -11,9 +11,31 @@ final class HabitsStore {
     private(set) var saving: Set<Completion> = []
     private(set) var colors: [String] = []
     private(set) var historyDays = 365
+    /// Has habits to show: the hub's, or the last copy on the phone.
     private(set) var loaded = false
+    /// Has heard from the hub since launch.
+    private(set) var fetched = false
     private(set) var error: String?
     var today = localDay()
+
+    private static let cacheName = "habits"
+
+    init() {
+        if let cached = DiskCache.read(Self.cacheName, as: HabitsResponse.self) { apply(cached) }
+    }
+
+    private func apply(_ r: HabitsResponse) {
+        habits = r.habits
+        done = Set(r.completions)
+        colors = r.colors
+        historyDays = r.historyDays
+        loaded = true
+    }
+
+    /// Keeps the board as it stands now (ticks included) for the next launch.
+    private func persist() {
+        DiskCache.write(HabitsResponse(habits: habits, completions: Array(done), colors: colors, historyDays: historyDays), Self.cacheName)
+    }
 
     var doneToday: Int { habits.filter { isDone($0.id, today) }.count }
 
@@ -40,12 +62,10 @@ final class HabitsStore {
     func load(api: APIClient) async {
         do {
             let r: HabitsResponse = try await api.get("/api/mobile/habits")
-            habits = r.habits
-            done = Set(r.completions)
-            colors = r.colors
-            historyDays = r.historyDays
-            loaded = true
+            apply(r)
+            fetched = true
             error = nil
+            persist()
             today = localDay()
         } catch is CancellationError {
         } catch {
@@ -62,6 +82,7 @@ final class HabitsStore {
         defer { saving.remove(key) }
         do {
             let _: Empty? = try await api.run("setCompletion", [.string(habit.id), .string(date), .bool(next)])
+            persist()
         } catch {
             if next { done.remove(key) } else { done.insert(key) }
             toast.error(error)
@@ -70,9 +91,13 @@ final class HabitsStore {
 
     func saved(_ habit: Habit) {
         if let i = habits.firstIndex(where: { $0.id == habit.id }) { habits[i] = habit } else { habits.append(habit) }
+        persist()
     }
 
-    func archived(_ id: String) { habits.removeAll { $0.id == id } }
+    func archived(_ id: String) {
+        habits.removeAll { $0.id == id }
+        persist()
+    }
 
     func rollDay() { today = localDay() }
 }

@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+// For MutableCollection.move(fromOffsets:toOffset:).
+import SwiftUI
 import UserNotifications
 
 /// The workout logger. The workout in progress is written to disk on every
@@ -8,6 +10,10 @@ import UserNotifications
 @MainActor
 @Observable
 final class WorkoutStore {
+    /// One store for the app: the Fitness tab, the mini card above the tab bar
+    /// and the lock screen buttons all work on the same workout.
+    static let shared = WorkoutStore()
+
     private(set) var home: WorkoutsHome?
     private(set) var error: String?
     private(set) var pending: [ActiveWorkout] = []
@@ -16,11 +22,27 @@ final class WorkoutStore {
     private var histories: [String: ExerciseHistory] = [:]
 
     var active: ActiveWorkout? {
-        didSet { save(active, to: Self.activeURL) }
+        didSet {
+            save(active, to: Self.activeURL)
+            changed()
+        }
+    }
+
+    /// Whether the full-screen workout is showing (closed, it's the mini card).
+    var isPresented = false
+
+    /// The workout just finished, so the app can ask how it felt.
+    var justFinished: FinishedWorkout?
+
+    /// From the watch's profile, kept so heart rate zones work from any tab.
+    var maxHr: Int? = UserDefaults.standard.object(forKey: "workouts.maxHr") as? Int {
+        didSet { UserDefaults.standard.set(maxHr, forKey: "workouts.maxHr") }
     }
 
     /// When the rest timer ends, and how long it was set for.
-    private(set) var restEndsAt: Date?
+    private(set) var restEndsAt: Date? {
+        didSet { changed() }
+    }
     private(set) var restTotal: TimeInterval = 0
 
     static let defaultRest = 90
@@ -34,9 +56,16 @@ final class WorkoutStore {
     }
     private(set) var setTimer: SetTimer?
 
-    init() {
+    private init() {
         active = Self.read(ActiveWorkout.self, from: Self.activeURL)
         pending = Self.read([ActiveWorkout].self, from: Self.pendingURL) ?? []
+    }
+
+    /// Keeps the lock screen, Dynamic Island and home screen widget in step.
+    private func changed() {
+        #if os(iOS)
+        WorkoutActivityController.shared.sync(self)
+        #endif
     }
 
     // MARK: Hub
@@ -185,7 +214,8 @@ final class WorkoutStore {
 
     private func hint(_ set: inout DraftSet, previous: WorkoutsHome.PreviousSet?, target: Routine.Target?, unit: WeightUnit, duration: Bool) {
         if duration {
-            set.repsHint = (previous?.durationSeconds).map { String(Int($0)) } ?? ""
+            // A routine keeps a timed set's target seconds in `reps`.
+            set.repsHint = (target?.reps.map(String.init) ?? (previous?.durationSeconds).map { String(Int($0)) }) ?? ""
             return
         }
         let weight = target?.weightKg ?? previous?.weightKg
@@ -211,6 +241,29 @@ final class WorkoutStore {
     func removeSet(_ exercise: DraftExercise.ID, _ set: DraftSet.ID) {
         if setTimer?.set == set { setTimer = nil }
         updateExercise(exercise) { $0.sets.removeAll { $0.id == set } }
+    }
+
+    func moveExercises(from source: IndexSet, to destination: Int) {
+        active?.exercises.move(fromOffsets: source, toOffset: destination)
+    }
+
+    /// Swaps an exercise for another, keeping its number of sets, their types and the rest time.
+    func replaceExercise(_ id: DraftExercise.ID, with picked: Exercise) {
+        guard var workout = active, let e = workout.exercises.firstIndex(where: { $0.id == id }) else { return }
+        if setTimer?.exercise == id { setTimer = nil }
+        let old = workout.exercises[e]
+        var exercise = DraftExercise(id: old.id, exerciseId: picked.id, name: picked.name, isDuration: picked.isDuration)
+        exercise.restSeconds = old.restSeconds
+        exercise.superset = old.superset
+        let previous = home?.previous[picked.id] ?? []
+        exercise.sets = old.sets.enumerated().map { i, oldSet in
+            var set = DraftSet(kind: oldSet.kind)
+            hint(&set, previous: previous[safe: i], target: nil, unit: workout.unit, duration: picked.isDuration)
+            return set
+        }
+        if exercise.sets.isEmpty { addSet(to: &exercise, unit: workout.unit) }
+        workout.exercises[e] = exercise
+        active = workout
     }
 
     func removeExercise(_ id: DraftExercise.ID) {
@@ -363,6 +416,7 @@ final class WorkoutStore {
         pending.append(workout)
         save(pending, to: Self.pendingURL)
         await load(api: api)
+        justFinished = FinishedWorkout(id: workout.id.uuidString.lowercased(), name: workout.name)
     }
 
     func discard() {
@@ -414,4 +468,10 @@ final class WorkoutStore {
 
 extension Array {
     subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
+}
+
+/// A workout that just ended, for the "how did it feel?" sheet.
+struct FinishedWorkout: Identifiable {
+    var id: String
+    var name: String
 }

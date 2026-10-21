@@ -10,11 +10,11 @@ struct FitnessView: View {
     @Environment(WatchLink.self) private var watch
     @Environment(\.scenePhase) private var scenePhase
     @State private var store = FitnessStore()
+    @State private var checkins = CheckinStore.shared
     @State private var showingWatch = false
     @AppStorage("fitness.pplOffset") private var pplOffset = 0
     @State private var pairing = false
-    @State private var workouts = WorkoutStore()
-    @State private var logging = false
+    @State private var workouts = WorkoutStore.shared
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
 
     var body: some View {
@@ -39,7 +39,9 @@ struct FitnessView: View {
                         }
                         VStack(spacing: 0) {
                             dayHeader
+                            MorningCheckin(store: checkins).padding(.top, 8)
                             TodayScores(store: store).padding(.vertical, 20)
+                            if checkins.entry(for: localDay()) != nil { PastQuestion(store: checkins) }
                             today
                             workoutsSection
                             FitSection(title: "Body") {
@@ -70,23 +72,27 @@ struct FitnessView: View {
             }
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
+            .navigationDestination(for: CheckinRoute.self) { _ in CheckinDetailPage(store: checkins) }
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: workouts) }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: workouts) }
-            .fullScreenCover(isPresented: $logging) {
-                ActiveWorkoutView(store: workouts, maxHr: store.snapshot?.metrics?.profile?.maxHr)
-            }
-            // Live readings go into the workout in progress, whichever screen is showing.
-            .onChange(of: watch.heartRateAt) { _, at in
-                if let at, let bpm = watch.heartRate?.bpm, workouts.active != nil { workouts.record(bpm: bpm, at: at) }
+            // The workout screen opens from the tab bar (MainTabView), which needs this for zones.
+            .onChange(of: store.snapshot?.metrics?.profile?.maxHr, initial: true) { _, max in
+                if let max { workouts.maxHr = max }
             }
             .task {
                 async let logged: Void = workouts.load(api: session.api)
+                async let checkedIn: Void = checkins.load(api: session.api)
                 await store.load(api: session.api)
                 await autoSync()
                 await logged
+                await checkedIn
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await autoSync() } }
+                // A new day, or answers that waited for the hub.
+                if phase == .active, checkins.page?.day != localDay() || !checkins.pending.isEmpty {
+                    Task { await checkins.load(api: session.api) }
+                }
             }
             .refreshable {
                 // Return right away so the system spinner doesn't hold the page
@@ -94,7 +100,11 @@ struct FitnessView: View {
                 Task { await autoSync(force: true) }
                 Task { await workouts.load(api: session.api) }
             }
-            .onChange(of: watch.files.lastSync) { Task { await store.load(api: session.api) } }
+            .onChange(of: watch.files.lastSync) {
+                Task { await store.load(api: session.api) }
+                // Last night's sleep only reaches the hub on a sync, and the guess needs it.
+                Task { await checkins.load(api: session.api) }
+            }
             .sheet(isPresented: $showingWatch) { WatchSheet() }
             .sheet(isPresented: $pairing) { PairWatchSheet() }
         }
@@ -105,8 +115,8 @@ struct FitnessView: View {
     private var workoutsSection: some View {
         WorkoutsSection(store: workouts, onStart: { routine in
             if workouts.active == nil { workouts.start(routine, unit: unit) }
-            logging = true
-        }, onResume: { logging = true })
+            workouts.isPresented = true
+        }, onResume: { workouts.isPresented = true })
     }
 
     // MARK: Watch
@@ -169,6 +179,11 @@ struct FitnessView: View {
     }
 
     private var watchStatus: String {
+        // No hub: say so, rather than an error, since the page still works from the phone.
+        if store.isOffline {
+            let since = store.updatedAt.map { " from \($0.formatted(.relative(presentation: .named)))" } ?? ""
+            return "Offline · hub data\(since), today from the watch"
+        }
         if let last = watch.files.lastSync, let failed = last.failed { return failed }
         switch watch.state {
         case .connected:

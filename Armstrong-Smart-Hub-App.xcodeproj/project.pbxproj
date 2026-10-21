@@ -8,16 +8,50 @@
 
 /* Begin PBXBuildFile section */
 		0000000000000001500000A1 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = 0000000000000001700000A1 /* onnxruntime */; };
+		0000000000000002500000A1 /* WorkoutWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000220 /* WorkoutWidgets.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0000000000000002700000A1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000200000000;
+			remoteInfo = WorkoutWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		000000000000000150000000 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				0000000000000002500000A1 /* WorkoutWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Armstrong-Smart-Hub-App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Armstrong-Smart-Hub-App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000220 /* WorkoutWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WorkoutWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* Armstrong-Smart-Hub-App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Armstrong-Smart-Hub-App";
+			sourceTree = "<group>";
+		};
+		000000000000000000000030 /* WorkoutActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WorkoutActivity;
+			sourceTree = "<group>";
+		};
+		000000000000000000000040 /* WorkoutWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WorkoutWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -29,6 +63,11 @@
 				0000000000000001500000A1 /* onnxruntime in Frameworks */,
 			);
 		};
+		000000000000000230000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -36,6 +75,8 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000010 /* Armstrong-Smart-Hub-App */,
+				000000000000000000000030 /* WorkoutActivity */,
+				000000000000000000000040 /* WorkoutWidgets */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -44,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000120 /* Armstrong-Smart-Hub-App.app */,
+				000000000000000000000220 /* WorkoutWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -58,11 +100,16 @@
 				000000000000000120000000 /* Sources */,
 				000000000000000130000000 /* Frameworks */,
 				000000000000000140000000 /* Resources */,
+				000000000000000150000000 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
+			dependencies = (
+				0000000000000002600000A1 /* PBXTargetDependency */,
+			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* Armstrong-Smart-Hub-App */,
+				000000000000000000000030 /* WorkoutActivity */,
 			);
 			name = "Armstrong-Smart-Hub-App";
 			packageProductDependencies = (
@@ -71,6 +118,25 @@
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Armstrong-Smart-Hub-App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		000000000000000200000000 /* WorkoutWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000210000000 /* Build configuration list for PBXNativeTarget "WorkoutWidgets" */;
+			buildPhases = (
+				000000000000000220000000 /* Sources */,
+				000000000000000230000000 /* Frameworks */,
+				000000000000000240000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				000000000000000000000030 /* WorkoutActivity */,
+				000000000000000000000040 /* WorkoutWidgets */,
+			);
+			name = WorkoutWidgets;
+			productName = WorkoutWidgets;
+			productReference = 000000000000000000000220 /* WorkoutWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -83,6 +149,9 @@
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					000000000000000100000000 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					000000000000000200000000 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -105,12 +174,18 @@
 			projectRoot = "";
 			targets = (
 				000000000000000100000000 /* Armstrong-Smart-Hub-App */,
+				000000000000000200000000 /* WorkoutWidgets */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		000000000000000140000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		000000000000000240000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -123,7 +198,21 @@
 			files = (
 			);
 		};
+		000000000000000220000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0000000000000002600000A1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = 000000000000000200000000 /* WorkoutWidgets */;
+			targetProxy = 0000000000000002700000A1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		000000000000000011000000 /* Debug configuration for PBXProject "Armstrong-Smart-Hub-App" */ = {
@@ -263,6 +352,7 @@
 		000000000000000111000000 /* Debug configuration for PBXNativeTarget "Armstrong-Smart-Hub-App" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Armstrong-Smart-Hub-App/Armstrong-Smart-Hub-App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 73YJKR29VA;
@@ -272,8 +362,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Armstrong-Smart-Hub-App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Armstrong-Smart-Hub";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Reads your Brick tag to start and stop app blocking.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connects to your Garmin watch to read heart rate, steps, activities and sleep, instead of Garmin Connect.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scans food barcodes and takes photos of meals and grocery receipts for your food journal.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listens on the iPad for \"Hey Jarvis\" so you can control the hub by voice. Audio only leaves the iPad after the wake word.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -288,7 +378,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "devplaceholder.$(PROJECT_UNIQUE_VALUE:identifier).$(PRODUCT_NAME:rfc1034identifier)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.paularmstrong.ArmstrongSmartHubApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -306,6 +396,7 @@
 		000000000000000112000000 /* Release configuration for PBXNativeTarget "Armstrong-Smart-Hub-App" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Armstrong-Smart-Hub-App/Armstrong-Smart-Hub-App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 73YJKR29VA;
@@ -315,8 +406,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Armstrong-Smart-Hub-App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Armstrong-Smart-Hub";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Reads your Brick tag to start and stop app blocking.";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connects to your Garmin watch to read heart rate, steps, activities and sleep, instead of Garmin Connect.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Scans food barcodes and takes photos of meals and grocery receipts for your food journal.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Listens on the iPad for \"Hey Jarvis\" so you can control the hub by voice. Audio only leaves the iPad after the wake word.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -331,7 +422,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "devplaceholder.$(PROJECT_UNIQUE_VALUE:identifier).$(PRODUCT_NAME:rfc1034identifier)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.paularmstrong.ArmstrongSmartHubApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -343,6 +434,66 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
+			};
+			name = Release;
+		};
+		000000000000000211000000 /* Debug configuration for PBXNativeTarget "WorkoutWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = WorkoutWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 73YJKR29VA;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "WorkoutWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Workout;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paularmstrong.ArmstrongSmartHubApp.WorkoutWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		000000000000000212000000 /* Release configuration for PBXNativeTarget "WorkoutWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = WorkoutWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 73YJKR29VA;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "WorkoutWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Workout;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paularmstrong.ArmstrongSmartHubApp.WorkoutWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -362,6 +513,14 @@
 			buildConfigurations = (
 				000000000000000111000000 /* Debug configuration for PBXNativeTarget "Armstrong-Smart-Hub-App" */,
 				000000000000000112000000 /* Release configuration for PBXNativeTarget "Armstrong-Smart-Hub-App" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		000000000000000210000000 /* Build configuration list for PBXNativeTarget "WorkoutWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000211000000 /* Debug configuration for PBXNativeTarget "WorkoutWidgets" */,
+				000000000000000212000000 /* Release configuration for PBXNativeTarget "WorkoutWidgets" */,
 			);
 			defaultConfigurationName = Release;
 		};

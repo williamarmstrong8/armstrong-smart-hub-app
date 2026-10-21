@@ -32,7 +32,7 @@ struct FinanceView: View {
                     }
                 }
             }
-            .task { if store.response == nil { await store.load(api: session.api) } }
+            .task { if !store.fetched { await store.load(api: session.api) } }
             .refreshable { await store.load(api: session.api) }
             .sheet(item: $retagging) { t in
                 CategoryPicker(transaction: t, options: store.categoryOptions) { category in

@@ -19,6 +19,8 @@ enum Fit {
         })
     }
 
+    /// Full-screen workout pages: white, or true black in dark mode (sheets are grey otherwise).
+    static let page = adaptive(0xFFFFFF, 0x000000)
     static let hairline = adaptive(0xEBEBEB, 0x242424)
     static let track = adaptive(0xEBEBEB, 0x262626)
     static let muted = adaptive(0x666666, 0xA1A1A1)

@@ -4,5 +4,13 @@
 <dict>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>Rings your wake-up alarm, even when the app is closed or the iPad is on silent.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 </dict>
 </plist>

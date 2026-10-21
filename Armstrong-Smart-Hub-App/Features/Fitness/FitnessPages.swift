@@ -72,13 +72,14 @@ enum FitData {
 }
 
 /// Why the day-long charts stop where they do: the watch hands over each
-/// day's all-day file at midnight, so until then they show the day before.
+/// day's all-day file at midnight, and between times the hub only has what the
+/// phone streamed live while it was connected.
 struct AllDayNote: View {
     var store: FitnessStore
 
     var body: some View {
-        if let through = (store.snapshot?.allDayThrough).flatMap(ISO.parse), Date.now.timeIntervalSince(through) > 2 * 3600 {
-            Takeaway(text: "Runs to \(through.formatted(.dateTime.weekday(.wide).hour().minute())). Your watch hands over each day's all-day heart rate, stress and Body Battery at midnight, so today's appears after tonight's sync.")
+        if let through = store.allDayThrough, Date.now.timeIntervalSince(through) > 2 * 3600 {
+            Takeaway(text: "Runs to \(through.formatted(.dateTime.weekday(.wide).hour().minute())). Today fills in live while the watch is connected to this phone; the rest arrives with the watch's all-day file at midnight.")
                 .font(.caption)
         }
     }
@@ -107,7 +108,7 @@ struct TodayScores: View {
         let metrics = store.snapshot?.metrics
         let readiness = watch?.readiness?.score ?? metrics?.readiness.score
         let sleep = watch?.sleep?.overall ?? store.lastNight?.score
-        let energy = metrics?.bodyBattery?.current ?? store.snapshot?.insights?.stress.bodyBattery?.current
+        let energy = store.currentBodyBattery ?? metrics?.bodyBattery?.current ?? store.snapshot?.insights?.stress.bodyBattery?.current
         HStack(alignment: .top, spacing: 0) {
             ring(.readiness, readiness, Fit.readiness, "Readiness")
             ring(.sleep, sleep, Fit.sleep, "Sleep")
@@ -157,20 +158,21 @@ struct OverviewList: View {
 
     private var heart: some View {
         row(.heart) {
-            OverviewRow(title: "Heart rate", value: (liveBpm ?? store.snapshot?.heartRate.last?.bpm).map(String.init) ?? "–", unit: "bpm",
+            let series = store.series(.heartRate)
+            OverviewRow(title: "Heart rate", value: (liveBpm ?? series.last?.value).map(String.init) ?? "–", unit: "bpm",
                         caption: store.restingHr.map { "Resting \($0)" }, tint: Fit.heart) {
-                MiniTrend(values: thin((store.snapshot?.heartRate ?? []).map { Double($0.bpm) }, to: 40), tint: Fit.heart)
+                MiniTrend(values: thin(series.map { Double($0.value) }, to: 40), tint: Fit.heart)
             }
         }
     }
 
     private var stress: some View {
         let metrics = store.snapshot?.metrics
-        let value = store.snapshot?.insights?.stress.now ?? metrics?.stress?.average
+        let value = store.currentStress ?? store.snapshot?.insights?.stress.now ?? metrics?.stress?.average
         return row(.energy) {
             OverviewRow(title: "Stress", value: value.map(String.init) ?? "–", unit: nil,
                         caption: value.map(stressWord), tint: value.map { MetricColor.stress($0) } ?? Fit.muted) {
-                MiniTrend(values: thin((metrics?.stress?.series ?? []).compactMap { $0.value.map(Double.init) }, to: 24), tint: Fit.fair, bars: true)
+                MiniTrend(values: thin(store.series(.stress).map { Double($0.value) }, to: 24), tint: Fit.fair, bars: true)
             }
         }
     }
@@ -606,8 +608,9 @@ struct HeartPage: View {
     @Environment(WatchLink.self) private var watch
 
     var body: some View {
-        let points = (store.snapshot?.heartRate ?? []).compactMap { p in p.date.map { TimeValue(date: $0, value: Double(p.bpm)) } }
-        let now = watch.heartRate?.bpm ?? store.snapshot?.heartRate.last?.bpm
+        let readings = store.series(.heartRate)
+        let points = readings.map { TimeValue(date: $0.date, value: Double($0.value)) }
+        let now = watch.heartRate?.bpm ?? readings.last?.value
         FitPage(title: "Heart") {
             BigNumber(value: now.map(String.init) ?? "–", unit: "bpm",
                       caption: watch.heartRate == nil ? "Latest reading" : "Now, live from the watch", tint: Fit.heart)
@@ -638,17 +641,15 @@ struct EnergyPage: View {
     var body: some View {
         let insights = store.snapshot?.insights
         let metrics = store.snapshot?.metrics
-        let current = metrics?.bodyBattery?.current ?? insights?.stress.bodyBattery?.current
+        let live = store.currentBodyBattery
+        let current = live ?? metrics?.bodyBattery?.current ?? insights?.stress.bodyBattery?.current
         FitPage(title: "Energy & stress") {
-            // The watch's own series when it has one (longer, and the real model); the hub's otherwise.
-            let watchSeries = (insights?.stress.bodyBattery?.series ?? []).compactMap { p in ISO.parse(p.at).map { TimeValue(date: $0, value: Double(p.value)) } }
-            let hubSeries = (metrics?.bodyBattery?.series ?? []).compactMap { p in ISO.parse(p.at).map { TimeValue(date: $0, value: Double(p.value)) } }
-            let fromWatch = watchSeries.count >= hubSeries.count && !watchSeries.isEmpty
-            let points = fromWatch ? watchSeries : hubSeries
+            // Hub readings (the watch's own series when it has one), then the phone's live ones.
+            let points = store.series(.bodyBattery).map { TimeValue(date: $0.date, value: Double($0.value)) }
             let window = FitData.window(points)
             let day = points.filter { $0.date >= window.0 }
             ScoreHeader(score: current, tint: Fit.energy, status: current.map(batteryWord) ?? "No data", subtitle: "Body Battery",
-                        source: current == nil ? nil : fromWatch || metrics?.fromWatch("bodyBattery") == true)
+                        source: current == nil ? nil : live != nil || store.bodyBatteryFromWatch || metrics?.fromWatch("bodyBattery") == true)
             if !day.isEmpty {
                 let changes = zip(day.dropFirst(), day).map { $0.value - $1.value }
                 StatStrip(items: [("Charged", "+\(Int(changes.filter { $0 > 0 }.reduce(0, +)))"),
@@ -667,12 +668,9 @@ struct EnergyPage: View {
     }
 
     @ViewBuilder private var stress: some View {
-        if let stress = store.snapshot?.metrics?.stress {
-            FitSection(title: "Stress", trailing: stress.average.map { "Average \($0)" }) {
-                let points = stress.series.compactMap { p -> TimeValue? in
-                    guard let date = ISO.parse(p.at), let value = p.value else { return nil }
-                    return TimeValue(date: date, value: Double(max(value, 2)), color: MetricColor.stress(value))
-                }
+        let points = store.series(.stress).map { TimeValue(date: $0.date, value: Double(max($0.value, 2)), color: MetricColor.stress($0.value)) }
+        if !points.isEmpty {
+            FitSection(title: "Stress", trailing: store.snapshot?.metrics?.stress?.average.map { "Average \($0)" }) {
                 let window = FitData.window(points)
                 IntradayChart(points: points, tint: Fit.fair, from: window.0, to: window.1, style: .bars, domain: 0...100, height: 120)
                 HStack(spacing: 14) {

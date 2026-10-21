@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// Copies FIT files from the watch to the phone: activities, all-day
 /// monitoring and sleep. Read-only towards the watch: it lists and downloads,
@@ -177,14 +178,42 @@ final class WatchFiles {
         return count
     }
 
-    /// Today's live step count, so the hub has today before a monitoring file does.
-    private func postLive(api: APIClient) async {
-        guard let link, link.steps != nil || link.heartRate?.restingBPM != nil else { return }
-        struct Live: Encodable { var day: String; var steps: Int?; var goal: Int?; var restingHr: Int? }
-        let day = localDay()
-        let body = Live(day: day, steps: link.steps?.count, goal: link.steps.flatMap { $0.goal > 0 ? $0.goal : nil },
-                        restingHr: link.heartRate?.restingBPM)
-        let _: Empty? = try? await api.post("/api/mobile/fitness/live", body: body)
+    /// Today's live steps, plus every heart rate, stress and Body Battery
+    /// reading the phone has that the hub doesn't, in batches. Readings are only
+    /// marked sent once the hub says it has them; with no hub in reach they stay
+    /// on the phone for next time.
+    func postLive(api: APIClient) async {
+        guard let link else { return }
+        // Packets from the watch wake the app for seconds; ask iOS for long enough to finish.
+        let task = UIApplication.shared.beginBackgroundTask(withName: "Send live readings")
+        defer { if task != .invalid { UIApplication.shared.endBackgroundTask(task) } }
+        struct Live: Encodable {
+            var day: String; var steps: Int?; var goal: Int?; var restingHr: Int?; var samples: [Sample]
+        }
+        struct Sample: Encodable { var kind: String; var at: String; var value: Int }
+        var first = true
+        while true {
+            let batch = link.live.pending(limit: 2000)
+            // The first post goes even without readings when there are steps to report.
+            let hasDay = first && (link.steps != nil || link.heartRate?.restingBPM != nil)
+            guard !batch.isEmpty || hasDay else { return }
+            let body = Live(day: localDay(), steps: first ? link.steps?.count : nil,
+                            goal: first ? link.steps.flatMap { $0.goal > 0 ? $0.goal : nil } : nil,
+                            restingHr: first ? link.heartRate?.restingBPM : nil,
+                            samples: batch.map { Sample(kind: $0.kind.rawValue, at: $0.at.formatted(.iso8601), value: $0.value) })
+            do {
+                // A 400 decodes too, so only the hub's "ok" counts as having them.
+                struct Reply: Decodable { var ok: Bool?; var error: String? }
+                let reply: Reply = try await api.post("/api/mobile/fitness/live", body: body)
+                guard reply.ok == true else { throw APIError(message: reply.error ?? "The hub didn't take them.") }
+            } catch {
+                link.note("Live readings wait on the phone: \(error.localizedDescription)")
+                return
+            }
+            link.live.markSent(batch)
+            first = false
+            if batch.count < 2000 { return }
+        }
     }
 
     /// Download order: the data that was missing from the app comes before bulk monitoring.

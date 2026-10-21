@@ -117,6 +117,7 @@ struct ActivityPage: View {
             header
             StatStrip(items: stats).padding(.bottom, 8)
             if detail?.extras != nil || activity.trainingEffect != nil { verdict }
+            SessionFeedbackSection(kind: "activity", id: activity.id)
             heartRate
             if let sets = detail?.extras?.sets.filter({ ($0.reps ?? 0) > 0 }), !sets.isEmpty { setsSection(sets) }
             if let laps = detail?.extras?.laps, laps.count > 1 { lapsSection(laps) }
