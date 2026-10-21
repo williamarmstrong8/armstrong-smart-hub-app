@@ -18,7 +18,7 @@ struct DashboardTab: View {
     @State private var home = HomeStore()
     @State private var finance = FinanceStore()
     @State private var habits = HabitsStore()
-    @State private var calendar: CalendarResponse?
+    @State private var calendar: CalendarResponse? = DiskCache.read(calendarCacheName)
     @State private var wake = WakeAlarm()
     @State private var voice = VoiceAgent()
 
@@ -51,9 +51,13 @@ struct DashboardTab: View {
         habits.rollDay()
         async let f: Void = finance.load(api: session.api)
         async let h: Void = habits.load(api: session.api)
-        async let c: CalendarResponse? = try? session.api.get("/api/mobile/calendar")
+        let api = session.api
+        async let c: Data? = try? api.data(api.request("/api/mobile/calendar"))
         _ = await (f, h)
-        if let cal = await c { calendar = cal }
+        if let raw = await c, let cal = try? APIClient.decoder.decode(CalendarResponse.self, from: raw) {
+            calendar = cal
+            DiskCache.write(raw, calendarCacheName)
+        }
     }
 }
 

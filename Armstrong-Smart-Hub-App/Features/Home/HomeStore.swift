@@ -7,14 +7,22 @@ import Observation
 @MainActor
 @Observable
 final class HomeStore {
-    private(set) var state: HomeState?
+    /// Every change is remembered (here and on disk), so lamps and automations
+    /// open in their last known state and the next poll corrects them.
+    private(set) var state: HomeState? {
+        didSet {
+            guard let state else { return }
+            Self.lastKnown = state
+            DiskCache.write(state, "home")
+        }
+    }
     private(set) var loadError: String?
     private(set) var pending: Set<String> = []
 
     private var overrides: [String: (patch: (inout HAEntity) -> Void, check: (HAEntity) -> Bool, until: Date)] = [:]
     private static let overrideSeconds: TimeInterval = 10
     /// Shared between Home and Display so either paints instantly.
-    private static var lastKnown: HomeState?
+    private static var lastKnown: HomeState? = DiskCache.read("home")
 
     init() { state = Self.lastKnown }
 
@@ -54,7 +62,6 @@ final class HomeStore {
             merged.requests = next.requests ?? state?.requests
             merged.automations = next.automations ?? state?.automations
             state = merged
-            Self.lastKnown = merged
             loadError = nil
         } catch is CancellationError {
         } catch {
@@ -85,7 +92,6 @@ final class HomeStore {
         change(&list[i])
         s.entities = list
         state = s
-        Self.lastKnown = s
     }
 
     private func revert(_ original: HAEntity) {

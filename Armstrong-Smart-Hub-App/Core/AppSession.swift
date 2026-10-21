@@ -87,6 +87,7 @@ final class AppSession {
 
     func signOutLocally() {
         Keychain.delete("token")
+        DiskCache.clear()
         token = nil
         api = APIClient(baseURL: serverURL ?? URL(string: "https://localhost")!, token: nil)
     }

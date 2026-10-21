@@ -6,8 +6,8 @@ import Observation
 ///
 /// Connects, lets iOS handle bonding (the system pairing prompt appears when
 /// the watch's characteristic is first subscribed to), opens the GFDI channel
-/// (CLOSE_ALL, then a handle per service) and streams live heart rate and
-/// steps. It never archives, deletes or changes anything on the watch.
+/// (CLOSE_ALL, then a handle per service) and streams live heart rate,
+/// steps, stress and Body Battery. It never archives, deletes or changes anything on the watch.
 @MainActor
 @Observable
 final class WatchLink: NSObject {
@@ -41,6 +41,19 @@ final class WatchLink: NSObject {
     private(set) var heartRateAt: Date?
     private(set) var steps: StepsReading?
     private(set) var stepsAt: Date?
+    /// Live stress and Body Battery (0-100), as Garmin Connect shows them between syncs.
+    private(set) var stress: Int?
+    private(set) var stressAt: Date?
+    private(set) var bodyBattery: Int?
+    private(set) var bodyBatteryAt: Date?
+    /// Every live reading, kept on the phone until the hub has it (and two days for the charts).
+    let live = LiveStore.shared
+    /// Set by the app once signed in, so readings go to the hub without the Fitness tab open.
+    var api: APIClient?
+    private var lastLivePost = Date.distantPast
+    private static let livePostEvery: TimeInterval = 5 * 60
+    /// DIAGNOSTIC: raw payloads logged per live service, so the stress layout can be checked.
+    private var rawLogged: [UInt16: Int] = [:]
     /// Protocol events for the diagnostics list: message names and sizes, never contents.
     private(set) var log: [LogLine] = []
     /// History downloads over this link.
@@ -60,6 +73,10 @@ final class WatchLink: NSObject {
 
     private static let savedKey = "fitness.watch.id"
     private static let savedNameKey = "fitness.watch.name"
+    /// Set when the user forgets the watch here, so launch doesn't pick it straight back up.
+    private static let forgottenKey = "fitness.watch.forgotten"
+    /// Lets iOS relaunch the app in the background for the watch after it was suspended or closed.
+    private static let restoreID = "fitness.watch.central"
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
@@ -86,7 +103,7 @@ final class WatchLink: NSObject {
         settings.link = self
         savedWatchID = UserDefaults.standard.string(forKey: Self.savedKey).flatMap(UUID.init(uuidString:))
         savedWatchName = UserDefaults.standard.string(forKey: Self.savedNameKey)
-        central = CBCentralManager(delegate: self, queue: .main)
+        central = CBCentralManager(delegate: self, queue: .main, options: [CBCentralManagerOptionRestoreIdentifierKey: Self.restoreID])
     }
 
     var isBusy: Bool {
@@ -107,6 +124,29 @@ final class WatchLink: NSObject {
         // Not filtered by service: the 965 does not always advertise it, and
         // only shows up at all while its Pair Phone screen is open.
         central.scanForPeripherals(withServices: nil)
+        // A watch already bonded and connected to iOS doesn't advertise, so list it too.
+        for known in systemConnectedWatches() {
+            discovered[known.identifier] = known
+            candidates.append(Candidate(id: known.identifier, name: known.name ?? "Garmin watch", rssi: 0))
+        }
+    }
+
+    /// Garmin watches iOS itself is connected to (bonded in Settings → Bluetooth).
+    /// Peripheral IDs are per app, so after a reinstall or a new bundle ID this
+    /// is how the app finds the watch again without re-pairing.
+    private func systemConnectedWatches() -> [CBPeripheral] {
+        central.retrieveConnectedPeripherals(withServices: [CBUUID(string: Garmin.advertisedService)])
+    }
+
+    /// Connects to the watch iOS is already connected to, if there is one.
+    @discardableResult
+    private func adoptSystemWatch() -> Bool {
+        let watches = systemConnectedWatches()
+        guard let watch = watches.first(where: { $0.name != nil && $0.name == savedWatchName }) ?? watches.first else { return false }
+        note("Found \(watch.name ?? "the watch") connected to iOS")
+        if savedWatchName == nil { savedWatchName = watch.name }
+        connect(watch)
+        return true
     }
 
     func stopScan() {
@@ -117,6 +157,7 @@ final class WatchLink: NSObject {
     /// Connects to a watch the user picked from the scan.
     func pair(_ candidate: Candidate) {
         guard let peripheral = discovered[candidate.id] else { return }
+        UserDefaults.standard.removeObject(forKey: Self.forgottenKey)
         central.stopScan()
         savedWatchName = candidate.name
         connect(peripheral)
@@ -128,7 +169,7 @@ final class WatchLink: NSObject {
         guard central.state == .poweredOn, let id = savedWatchID else { return }
         if let known = central.retrievePeripherals(withIdentifiers: [id]).first {
             connect(known)
-        } else {
+        } else if !adoptSystemWatch() {
             fail("This phone no longer knows the watch. Pair it again.")
         }
     }
@@ -137,7 +178,7 @@ final class WatchLink: NSObject {
         wantsConnection = false
         handshakeTask?.cancel()
         if let peripheral {
-            for service in [Garmin.Service.realtimeHeartRate, .realtimeSteps] {
+            for service in Garmin.Service.live {
                 if let handle = handles[service.rawValue] { write([handle, 0x00]) }
             }
             central.cancelPeripheralConnection(peripheral)
@@ -152,9 +193,12 @@ final class WatchLink: NSObject {
         disconnect()
         savedWatchID = nil
         savedWatchName = nil
+        UserDefaults.standard.set(true, forKey: Self.forgottenKey)
         identity = nil
         heartRate = nil
         steps = nil
+        stress = nil
+        bodyBattery = nil
     }
 
     // MARK: Connection
@@ -172,6 +216,7 @@ final class WatchLink: NSObject {
     private func reset() {
         handles = [:]
         setupSent = false
+        rawLogged = [:]
         assembler.reset()
         outbox = []
         rx = nil
@@ -211,7 +256,7 @@ final class WatchLink: NSObject {
         try? handle.write(contentsOf: line)
     }
 
-    /// CLOSE_ALL, the GFDI handle, then the live heart rate and steps services.
+    /// CLOSE_ALL, the GFDI handle, then the live services.
     private func handshake() {
         handshakeTask?.cancel()
         handshakeTask = Task {
@@ -231,7 +276,7 @@ final class WatchLink: NSObject {
                 try? await Task.sleep(for: .seconds(5))
                 if state == .connected { completeSetup() }
             }
-            for service in [Garmin.Service.realtimeHeartRate, .realtimeSteps] {
+            for service in Garmin.Service.live {
                 guard !Task.isCancelled else { return }
                 if let handle = await register(service.rawValue) {
                     write([handle, 0x01])
@@ -328,6 +373,21 @@ final class WatchLink: NSObject {
                 if let reading = HeartRateReading(payload) {
                     heartRate = reading
                     heartRateAt = .now
+                    if reading.bpm > 0 { keep(.heartRate, reading.bpm) }
+                }
+            case Garmin.Service.realtimeStress.rawValue:
+                logRaw(.realtimeStress, payload)
+                if let reading = LevelReading(payload) {
+                    stress = reading.value
+                    stressAt = .now
+                    keep(.stress, reading.value)
+                }
+            case Garmin.Service.realtimeBodyBattery.rawValue:
+                logRaw(.realtimeBodyBattery, payload)
+                if let reading = LevelReading(payload) {
+                    bodyBattery = reading.value
+                    bodyBatteryAt = .now
+                    keep(.bodyBattery, reading.value)
                 }
             case Garmin.Service.realtimeSteps.rawValue:
                 if let reading = StepsReading(payload) {
@@ -338,6 +398,25 @@ final class WatchLink: NSObject {
                 break
             }
         }
+    }
+
+    private func logRaw(_ service: Garmin.Service, _ payload: [UInt8]) {
+        guard rawLogged[service.rawValue, default: 0] < 5 else { return }
+        rawLogged[service.rawValue, default: 0] += 1
+        note("Live \(service): \(payload.map { String(format: "%02x", $0) }.joined())")
+    }
+
+    // MARK: Live readings
+
+    /// Stores the reading on the phone, and every few minutes sends what the hub
+    /// doesn't have yet. This runs in the background too (the watch's packets
+    /// wake the app), so the hub keeps up without the app open; with no hub in
+    /// reach the readings just wait on the phone.
+    private func keep(_ kind: LiveStore.Kind, _ value: Int) {
+        live.record(kind, value)
+        guard let api, Date.now.timeIntervalSince(lastLivePost) > Self.livePostEvery, !files.isSyncing else { return }
+        lastLivePost = .now
+        Task { await files.postLive(api: api) }
     }
 
     private func receivedGFDI(_ frame: [UInt8]) {
@@ -413,7 +492,13 @@ extension WatchLink: CBCentralManagerDelegate, CBPeripheralDelegate {
             switch value {
             case .poweredOn:
                 if case .bluetoothOff = state { state = .idle }
-                if savedWatchID != nil, peripheral == nil { connectSaved() }
+                if peripheral == nil {
+                    if savedWatchID != nil {
+                        connectSaved()
+                    } else if !UserDefaults.standard.bool(forKey: Self.forgottenKey) {
+                        adoptSystemWatch()
+                    }
+                }
             case .unauthorized:
                 state = .bluetoothOff("Allow Bluetooth for this app in Settings.")
             case .poweredOff:
@@ -422,6 +507,28 @@ extension WatchLink: CBCentralManagerDelegate, CBPeripheralDelegate {
                 state = .bluetoothOff("This device has no Bluetooth LE.")
             default:
                 break
+            }
+        }
+    }
+
+    /// iOS relaunched the app in the background for the watch: pick the link back up.
+    nonisolated func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        let restored = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
+        MainActor.assumeIsolated {
+            guard let watch = restored.first(where: { $0.identifier == savedWatchID }) ?? restored.first else { return }
+            note("Restored by iOS (\(watch.state == .connected ? "connected" : "waiting for the watch"))")
+            reset()
+            wantsConnection = true
+            peripheral = watch
+            watch.delegate = self
+            if watch.state == .connected {
+                // The app's handles died with the old process; set the channel up again.
+                state = .connecting
+                maxWrite = watch.maximumWriteValueLength(for: .withoutResponse)
+                watch.discoverServices(nil)
+            } else {
+                state = .connecting
+                central.connect(watch)
             }
         }
     }
@@ -464,8 +571,10 @@ extension WatchLink: CBCentralManagerDelegate, CBPeripheralDelegate {
             handshakeTask?.cancel()
             reset()
             guard wantsConnection else { return }
-            wantsConnection = false
-            fail(message.map { "Connection lost: \($0)" } ?? "The watch disconnected.")
+            note(message.map { "Connection lost: \($0)" } ?? "The watch disconnected.")
+            // Ask again straight away: iOS keeps the request open (in the background too)
+            // and reconnects when the watch is back in range, as Garmin Connect does.
+            connect(peripheral)
         }
     }
 

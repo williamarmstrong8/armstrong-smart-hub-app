@@ -86,6 +86,8 @@ struct WorkoutDetailPage: View {
             }
             .padding(.top, 12)
 
+            SessionFeedbackSection(kind: "workout", id: detail.id)
+
             if let notes = detail.notes, !notes.isEmpty {
                 FitSection(title: "Notes") { Takeaway(text: notes) }
             }

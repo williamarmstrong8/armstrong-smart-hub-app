@@ -16,34 +16,27 @@ struct WorkoutsSection: View {
             if let active = store.active {
                 Button(action: onResume) {
                     HStack(spacing: 14) {
-                        Image(systemName: "figure.strengthtraining.traditional").font(.title2).foregroundStyle(Fit.positive).frame(width: 32)
+                        Image(systemName: "figure.strengthtraining.traditional").font(.title2).foregroundStyle(Fit.energy).frame(width: 32)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(active.name).font(.system(size: 20))
                             TimelineView(.periodic(from: active.startedAt, by: 1)) { context in
-                                Text("In progress · \(WorkoutFormat.clock(context.date.timeIntervalSince(active.startedAt))) · \(active.completedSets.count) sets")
+                                Text("In progress · \(WorkoutFormat.clock(context.date.timeIntervalSince(active.startedAt))) · \(WorkoutFormat.volume(active.volumeKg, unit: active.unit))")
                                     .font(.footnote).foregroundStyle(Fit.muted).monospacedDigit()
                             }
                         }
                         Spacer()
-                        Text("Resume").font(.subheadline.weight(.semibold)).foregroundStyle(Fit.positive)
+                        Text("Resume").font(.subheadline.weight(.semibold)).foregroundStyle(Fit.energy)
                     }
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
             } else {
                 Button { onStart(nil) } label: {
-                    Label("Start empty workout", systemImage: "plus").font(.body.weight(.semibold)).frame(maxWidth: .infinity)
+                    Label("Start Empty Workout", systemImage: "plus").greyButton(.primary)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Fit.positive)
-                if !store.routines.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(store.routines) { routine in
-                                Button { onStart(routine) } label: { RoutineChip(routine: routine) }.buttonStyle(.plain)
-                            }
-                        }
-                    }
+                .buttonStyle(.plain)
+                ForEach(store.routines.prefix(3)) { routine in
+                    RoutineCard(store: store, routine: routine, canStart: true, onStart: { onStart(routine) })
                 }
             }
             if let error = store.error, store.home == nil || !store.pending.isEmpty {
@@ -55,7 +48,8 @@ struct WorkoutsSection: View {
                     Rectangle().fill(Fit.hairline).frame(height: 1)
                 }
                 NavigationLink { WorkoutsPage(store: store, onStart: onStart) } label: {
-                    LinkRow(title: "Routines and history", subtitle: store.workouts.isEmpty ? "Build a routine to start from" : nil)
+                    LinkRow(title: store.routines.count > 3 ? "All \(store.routines.count) routines and history" : "Routines and history",
+                            subtitle: store.routines.isEmpty ? "Build a routine to start from" : nil)
                 }
                 .buttonStyle(.plain)
             }
@@ -63,17 +57,59 @@ struct WorkoutsSection: View {
     }
 }
 
-private struct RoutineChip: View {
+/// A routine as Hevy shows it: name and menu, its exercises, and Start Routine.
+/// Tapping the card opens the editor.
+struct RoutineCard: View {
+    @Environment(AppSession.self) private var session
+    var store: WorkoutStore
     var routine: Routine
+    var canStart: Bool
+    var onStart: () -> Void
+    @State private var editing = false
+    @State private var confirmDelete = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(routine.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-            Text(routine.exercises.map(\.name).joined(separator: ", ")).font(.caption).foregroundStyle(Fit.muted).lineLimit(2)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(routine.name).font(.headline).lineLimit(1)
+                Spacer(minLength: 8)
+                Menu {
+                    Button("Edit Routine", systemImage: "pencil") { editing = true }
+                    Button("Delete Routine", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                } label: {
+                    Image(systemName: "ellipsis").font(.body.weight(.bold))
+                        .frame(width: 32, height: 24).contentShape(.rect)
+                }
+                .foregroundStyle(.primary)
+            }
+            Text(summary).font(.subheadline).foregroundStyle(Fit.muted).lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onStart) {
+                Text("Start Routine")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 42)
+                    .background(canStart ? Fit.energy : Fit.faint, in: .rect(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canStart)
         }
-        .frame(width: 160, height: 64, alignment: .topLeading)
-        .padding(12)
-        .background(Fit.track.opacity(0.6), in: .rect(cornerRadius: 12))
+        .padding(14)
+        .background(Fit.track.opacity(0.5), in: .rect(cornerRadius: 14))
+        .contentShape(.rect)
+        .onTapGesture { editing = true }
+        .sheet(isPresented: $editing) { RoutineEditor(store: store, routine: routine) }
+        .confirmationDialog("Delete \(routine.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete routine", role: .destructive) { Task { await store.deleteRoutine(routine.id, api: session.api) } }
+        }
+    }
+
+    /// "Bench Press, Squat, Row · 9 sets".
+    private var summary: String {
+        let names = routine.exercises.map(\.name).joined(separator: ", ")
+        let sets = routine.exercises.reduce(0) { $0 + $1.sets.count }
+        return names.isEmpty ? "No exercises" : "\(names) · \(sets) sets"
     }
 }
 
@@ -109,61 +145,72 @@ struct WorkoutRow: View {
     }
 }
 
-/// Every routine (start, edit, delete) and every logged workout.
+/// Every routine (start, edit, delete) and every logged workout, on the
+/// Fitness tab's plain page.
 struct WorkoutsPage: View {
     @Environment(AppSession.self) private var session
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
     var store: WorkoutStore
     var onStart: (Routine?) -> Void
-    @State private var editing: Routine?
     @State private var creating = false
 
     var body: some View {
-        List {
-            Section {
-                ForEach(store.routines) { routine in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(routine.name).font(.body.weight(.medium))
-                            Text(routine.exercises.map(\.name).joined(separator: ", ")).font(.caption).foregroundStyle(Fit.muted).lineLimit(2)
+        ScrollView {
+            VStack(spacing: 0) {
+                FitSection(title: "Quick Start", divider: false) {
+                    Button { onStart(nil) } label: {
+                        Label(store.active == nil ? "Start Empty Workout" : "Resume Workout",
+                              systemImage: store.active == nil ? "plus" : "play.fill").greyButton(.primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                FitSection(title: "Routines", trailing: store.routines.isEmpty ? nil : "\(store.routines.count)") {
+                    Button { creating = true } label: {
+                        Label("New Routine", systemImage: "doc.badge.plus").greyButton(.primary)
+                    }
+                    .buttonStyle(.plain)
+                    if store.routines.isEmpty {
+                        Takeaway(text: "A routine is a list of exercises with their sets, so you can start the same workout again in one tap.")
+                    }
+                    ForEach(store.routines) { routine in
+                        RoutineCard(store: store, routine: routine, canStart: store.active == nil, onStart: { onStart(routine) })
+                    }
+                }
+
+                FitSection(title: "History", trailing: store.workouts.isEmpty ? nil : "\(store.workouts.count) workouts") {
+                    if store.workouts.isEmpty {
+                        Takeaway(text: "Finished workouts show here.")
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(store.workouts) { workout in
+                                NavigationLink(value: WorkoutRoute(id: workout.id)) { WorkoutRow(workout: workout) }.buttonStyle(.plain)
+                                if workout.id != store.workouts.last?.id { Rectangle().fill(Fit.hairline).frame(height: 1) }
+                            }
                         }
+                    }
+                }
+
+                FitSection(title: "Settings") {
+                    HStack {
+                        Text("Weight unit").font(.subheadline)
                         Spacer()
-                        Button("Start") { onStart(routine) }
-                            .buttonStyle(.bordered).tint(Fit.positive)
-                            .disabled(store.active != nil)
+                        Picker("Weight unit", selection: $unit) {
+                            ForEach(WeightUnit.allCases) { Text($0 == .lb ? "lbs" : "kg").tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .fixedSize()
                     }
-                    .contentShape(.rect)
-                    .onTapGesture { editing = routine }
-                    .swipeActions {
-                        Button("Delete", role: .destructive) { Task { await store.deleteRoutine(routine.id, api: session.api) } }
-                    }
-                }
-                Button { creating = true } label: { Label("New routine", systemImage: "plus") }
-            } header: {
-                Text("Routines")
-            }
-
-            Section("History") {
-                if store.workouts.isEmpty {
-                    Text("Finished workouts show here.").foregroundStyle(.secondary)
-                }
-                ForEach(store.workouts) { workout in
-                    NavigationLink(value: WorkoutRoute(id: workout.id)) { WorkoutRow(workout: workout) }
+                    Takeaway(text: "Weights are stored in kilograms on the hub and shown in this unit.")
                 }
             }
-
-            Section {
-                Picker("Weight unit", selection: $unit) {
-                    ForEach(WeightUnit.allCases) { Text($0.rawValue).tag($0) }
-                }
-            } footer: {
-                Text("Weights are stored in kilograms on the hub and shown in this unit.")
-            }
+            .padding(.horizontal, Fit.gutter)
+            .padding(.bottom, 40)
         }
+        .background(Color(.systemBackground))
         .navigationTitle("Workouts")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await store.load(api: session.api) }
-        .sheet(item: $editing) { RoutineEditor(store: store, routine: $0) }
         .sheet(isPresented: $creating) { RoutineEditor(store: store) }
     }
 }

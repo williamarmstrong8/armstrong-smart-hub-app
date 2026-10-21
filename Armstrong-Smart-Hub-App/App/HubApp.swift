@@ -5,6 +5,15 @@ struct HubApp: App {
     @State private var session = AppSession()
     /// One Bluetooth link to the watch for the app's lifetime.
     @State private var watch = WatchLink()
+    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        // Lock screen and widget buttons run here, even when they wake the app in the background.
+        WorkoutActions.handler = { WorkoutStore.shared.handle($0) }
+        #if os(iOS)
+        WorkoutActivityController.shared.sync(WorkoutStore.shared)
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +23,11 @@ struct HubApp: App {
                 #if DEBUG
                 .onAppear { FitnessRenderDebug.runIfAsked(watch: watch, session: session) }
                 #endif
+                // Brick timers and schedules, whichever tab is open.
+                .onChange(of: scenePhase, initial: true) { _, p in if p == .active { BrickStore.shared.check() } }
+                // Live watch readings go to the hub from here, whichever tab is open (or none).
+                .onChange(of: session.isSignedIn, initial: true) { _, signedIn in watch.api = signedIn ? session.api : nil }
+                .onChange(of: scenePhase) { _, p in if p == .background { watch.live.save() } }
         }
     }
 }
@@ -22,9 +36,16 @@ struct HubApp: App {
 struct RootView: View {
     @Environment(AppSession.self) private var session
 
+    #if DEBUG
+    /// BRICK_PREVIEW=1 opens straight on the Brick tab with sample data, for screenshots.
+    private var brickPreview: Bool { ProcessInfo.processInfo.environment["BRICK_PREVIEW"] != nil }
+    #else
+    private let brickPreview = false
+    #endif
+
     var body: some View {
         Group {
-            if session.isSignedIn {
+            if session.isSignedIn || brickPreview {
                 // The iPad is an always-on panel: just the dashboard, no tabs.
                 if UIDevice.current.userInterfaceIdiom == .pad {
                     DashboardTab()
@@ -45,7 +66,17 @@ enum HubTab: Hashable {
 
 /// The iPhone's tabs.
 struct MainTabView: View {
-    @State private var tab: HubTab = .home
+    @Environment(WatchLink.self) private var watch
+    @State private var workouts = WorkoutStore.shared
+    @State private var tab: HubTab = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["BRICK_PREVIEW"] != nil {
+            BrickStore.shared.debugSeed()
+            return .brick
+        }
+        #endif
+        return .home
+    }()
 
     var body: some View {
         TabView(selection: $tab) {
@@ -64,6 +95,28 @@ struct MainTabView: View {
             Tab("Brick", systemImage: "iphone.slash", value: .brick) {
                 BrickView()
             }
+        }
+        // The workout in progress, closed: a card above the tab bar that opens it again.
+        .tabViewBottomAccessory(isEnabled: workouts.active != nil) {
+            MiniWorkoutBar(store: workouts)
+        }
+        .fullScreenCover(isPresented: $workouts.isPresented) {
+            ActiveWorkoutView(store: workouts, maxHr: workouts.maxHr)
+        }
+        // A finished workout asks how it felt.
+        .sheet(item: $workouts.justFinished) { finished in
+            SessionFeedbackSheet(kind: "workout", id: finished.id, title: finished.name)
+        }
+        // Live readings go into the workout in progress, whichever screen is showing.
+        .onChange(of: watch.heartRateAt) { _, at in
+            if let at, let bpm = watch.heartRate?.bpm, workouts.active != nil { workouts.record(bpm: bpm, at: at) }
+        }
+        // The rest runs out with the workout closed too.
+        .task(id: workouts.restEndsAt) {
+            guard let end = workouts.restEndsAt else { return }
+            try? await Task.sleep(for: .seconds(max(0, end.timeIntervalSinceNow)))
+            guard !Task.isCancelled, workouts.restEndsAt == end else { return }
+            workouts.skipRest()
         }
     }
 }

@@ -55,7 +55,7 @@ struct HomeView: View {
                 habits.rollDay()
                 await store.poll(api: session.api)
             }
-            .task { if !habits.loaded { await habits.load(api: session.api) } }
+            .task { if !habits.fetched { await habits.load(api: session.api) } }
             .sheet(item: $light) { e in
                 LightSheet(entityID: e.id, store: store, toast: toast)
                     .presentationDetents([.medium, .large])

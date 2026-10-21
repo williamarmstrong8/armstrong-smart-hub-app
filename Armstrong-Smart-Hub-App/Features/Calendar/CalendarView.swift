@@ -4,7 +4,9 @@ import SwiftUI
 struct CalendarView: View {
     @Environment(AppSession.self) private var session
     @Environment(\.openURL) private var openURL
-    @State private var data: CalendarResponse?
+    /// The last agenda on the phone shows until the hub answers.
+    @State private var data: CalendarResponse? = DiskCache.read(calendarCacheName)
+    @State private var fetched = false
     @State private var error: String?
 
     var body: some View {
@@ -28,7 +30,7 @@ struct CalendarView: View {
                     }
                 }
             }
-            .task { if data == nil { await load() } }
+            .task { if !fetched { await load() } }
             .refreshable { await load(refresh: true) }
         }
     }
@@ -78,14 +80,20 @@ struct CalendarView: View {
 
     private func load(refresh: Bool = false) async {
         do {
-            data = try await session.api.get("/api/mobile/calendar\(refresh ? "?refresh=1" : "")")
+            let api = session.api
+            let raw = try await api.data(api.request("/api/mobile/calendar\(refresh ? "?refresh=1" : "")"))
+            data = try APIClient.decoder.decode(CalendarResponse.self, from: raw)
+            fetched = true
             error = nil
+            DiskCache.write(raw, calendarCacheName)
         } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription
         }
     }
 }
+
+let calendarCacheName = "calendar"
 
 /// Google's day marker: weekday over the date, filled blue for today.
 private struct DateMarker: View {
