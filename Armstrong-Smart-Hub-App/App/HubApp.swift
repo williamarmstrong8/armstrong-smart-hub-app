@@ -10,6 +10,8 @@ struct HubApp: App {
     init() {
         // Lock screen and widget buttons run here, even when they wake the app in the background.
         WorkoutActions.handler = { WorkoutStore.shared.handle($0) }
+        // Check-in notifications answer themselves from the lock screen.
+        CheckinReminders.shared.start()
         #if os(iOS)
         WorkoutActivityController.shared.sync(WorkoutStore.shared)
         #endif
@@ -26,7 +28,14 @@ struct HubApp: App {
                 // Brick timers and schedules, whichever tab is open.
                 .onChange(of: scenePhase, initial: true) { _, p in if p == .active { BrickStore.shared.check() } }
                 // Live watch readings go to the hub from here, whichever tab is open (or none).
-                .onChange(of: session.isSignedIn, initial: true) { _, signedIn in watch.api = signedIn ? session.api : nil }
+                .onChange(of: session.isSignedIn, initial: true) { _, signedIn in
+                    watch.api = signedIn ? session.api : nil
+                    CheckinReminders.shared.api = signedIn ? session.api : nil
+                    // The 8 am and 6 pm check-ins, from the last page the phone has.
+                    if signedIn { Task { await CheckinReminders.shared.schedule(CheckinStore.shared) } }
+                }
+                // A sync after waking brings last night's sleep: guess again so 8 am can say what it thinks.
+                .onChange(of: watch.files.lastSync) { if session.isSignedIn { Task { await CheckinStore.shared.load(api: session.api) } } }
                 .onChange(of: scenePhase) { _, p in if p == .background { watch.live.save() } }
         }
     }

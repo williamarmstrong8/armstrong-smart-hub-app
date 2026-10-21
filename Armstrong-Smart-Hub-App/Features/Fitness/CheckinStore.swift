@@ -205,6 +205,8 @@ final class CheckinStore {
             error = nil
             try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: Self.cacheURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            // Today's notifications can now carry the guess, or drop a morning already answered.
+            await CheckinReminders.shared.schedule(self)
         } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription
@@ -216,11 +218,21 @@ final class CheckinStore {
         pending.removeAll { if case let .checkin(c, _) = $0 { c.day == checkin.day } else { false } }
         enqueue(.checkin(checkin, guess: echo))
         await flush(api: api)
+        await CheckinReminders.shared.schedule(self)
     }
 
     func answer(_ stretch: PastStretch, yes: Bool, api: APIClient) async {
         enqueue(.stretch(state: stretch.state, from: stretch.from, to: stretch.to, yes: yes))
         await flush(api: api)
+    }
+
+    /// Sick or not for a day, keeping the rest of that day's check-in.
+    func answer(day: String, sick: Bool, api: APIClient) async {
+        let saved = entry(for: day)
+        var tags = Set(saved?.tags ?? []), rejected = Set(saved?.rejected ?? [])
+        if sick { tags.insert("sick"); rejected.remove("sick") } else { rejected.insert("sick"); tags.remove("sick") }
+        await save(Checkin(day: day, energy: saved?.energy, mood: saved?.mood, soreness: saved?.soreness,
+                           tags: tags.sorted(), rejected: rejected.sorted(), note: saved?.note), api: api)
     }
 
     /// "Don't remember": the hub keeps it so the question doesn't come back.

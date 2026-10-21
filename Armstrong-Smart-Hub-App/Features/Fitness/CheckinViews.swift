@@ -2,9 +2,10 @@ import SwiftUI
 
 // MARK: Morning check-in
 
-/// One question a morning: sick or not. The hub's guess is the suggested
-/// answer (outlined) and one tap saves it. Under it, once answered, at most
-/// one past day to confirm, and a way to log sick days the hub missed.
+/// One question a morning: sick or not. The hub's guess is said first and
+/// its answer is the filled button; the other is right beside it, so a wrong
+/// guess is one tap to correct. Once answered: one line, a past day to
+/// confirm if there is one, and a way to log sick days the hub missed.
 /// Every answer is a label the hub learns from (checkin-engine.ts).
 struct MorningCheckin: View {
     @Environment(AppSession.self) private var session
@@ -18,41 +19,82 @@ struct MorningCheckin: View {
 
     var body: some View {
         FitSection {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
                 if let sick = store.entry(for: day).flatMap(Self.sick), !changing {
-                    HStack {
-                        Text(sick ? "Sick today" : "Feeling fine").font(.subheadline)
-                        Spacer()
-                        Button("Change") { changing = true }.font(.footnote).foregroundStyle(Fit.muted)
+                    answered(sick)
+                    if let stretch = store.suggestions.first {
+                        divider
+                        past(stretch)
                     }
-                    if let stretch = store.suggestions.first { past(stretch) }
                 } else {
-                    HStack(spacing: 8) {
-                        Text(guessedSick ? "Feeling sick?" : "Feeling fine?").font(.subheadline)
-                        Spacer(minLength: 8)
-                        ChoicePill(title: "Fine", suggested: !guessedSick) { answer(false) }
-                        ChoicePill(title: "Sick", suggested: guessedSick) { answer(true) }
-                    }
+                    asking
                 }
-                Button("Log sick days") { logging = true }
-                    .font(.footnote).foregroundStyle(Fit.muted)
+                divider
+                Button { logging = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus").font(.caption.weight(.semibold))
+                        Text("Log sick days")
+                    }
+                    .font(.footnote).foregroundStyle(BrickLook.soft)
+                }
+                .buttonStyle(.plain)
             }
+            .animation(.smooth, value: changing)
         }
         .sheet(isPresented: $logging) { SickDaysSheet(store: store) }
     }
 
-    /// "Were you sick around July 15–17?", small, with yes, no and skip.
-    private func past(_ stretch: PastStretch) -> some View {
-        HStack(spacing: 8) {
-            Text("Sick around \(Self.range(stretch))?").font(.footnote).foregroundStyle(Fit.muted)
-            Spacer(minLength: 8)
-            ChoicePill(title: "Yes", small: true) { Task { await store.answer(stretch, yes: true, api: session.api) } }
-            ChoicePill(title: "No", small: true) { Task { await store.answer(stretch, yes: false, api: session.api) } }
-            Button { Task { await store.skip(stretch, api: session.api) } } label: {
-                Image(systemName: "xmark").font(.caption.weight(.semibold)).foregroundStyle(Fit.faint).frame(width: 28, height: 28)
+    private var divider: some View {
+        Rectangle().fill(BrickLook.line).frame(height: 1).padding(.vertical, 16)
+    }
+
+    /// "Looks like you might be sick", then the two answers, the guessed one filled.
+    private var asking: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                BrickCaps(text: store.guess == nil ? "Check in" : "Our guess").foregroundStyle(BrickLook.soft)
+                Text(store.guess == nil ? "How are you today?" : guessedSick ? "Looks like you might be sick" : "Looks like a normal day")
+                    .font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Don't remember")
+            HStack(spacing: 10) {
+                CheckinButton(title: "I'm fine", filled: store.guess != nil && !guessedSick) { answer(false) }
+                CheckinButton(title: "I'm sick", filled: guessedSick) { answer(true) }
+            }
+            if changing {
+                Button("Cancel") { changing = false }.font(.footnote).foregroundStyle(BrickLook.soft).buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func answered(_ sick: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: sick ? "thermometer.medium" : "checkmark")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(sick ? Fit.attention : Fit.positive)
+                .frame(width: 34, height: 34)
+                .background(BrickLook.pill, in: .circle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(sick ? "Sick today" : "Feeling fine").font(.body).foregroundStyle(BrickLook.ink)
+                BrickCaps(text: "Checked in").foregroundStyle(BrickLook.soft)
+            }
+            Spacer(minLength: 8)
+            Button("Change") { changing = true }
+                .font(.footnote.weight(.medium)).foregroundStyle(BrickLook.ink)
+                .padding(.horizontal, 14).frame(height: 32)
+                .background(BrickLook.pill, in: .capsule)
+                .buttonStyle(.plain)
+        }
+    }
+
+    /// "Were you sick around July 15–17?" with yes, no and not sure.
+    private func past(_ stretch: PastStretch) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Were you sick around \(Self.range(stretch))?").font(.subheadline).foregroundStyle(BrickLook.ink)
+            HStack(spacing: 8) {
+                CheckinButton(title: "Yes", small: true) { Task { await store.answer(stretch, yes: true, api: session.api) } }
+                CheckinButton(title: "No", small: true) { Task { await store.answer(stretch, yes: false, api: session.api) } }
+                CheckinButton(title: "Not sure", small: true) { Task { await store.skip(stretch, api: session.api) } }
+            }
         }
         .transition(.opacity)
     }
@@ -62,24 +104,18 @@ struct MorningCheckin: View {
         c.tags.contains("sick") ? true : c.rejected.contains("sick") ? false : nil
     }
 
-    /// Keeps the day's other answers and only flips sick.
     private func answer(_ sick: Bool) {
-        let saved = store.entry(for: day)
-        var tags = Set(saved?.tags ?? []), rejected = Set(saved?.rejected ?? [])
-        if sick { tags.insert("sick"); rejected.remove("sick") } else { rejected.insert("sick"); tags.remove("sick") }
-        let checkin = Checkin(day: day, energy: saved?.energy, mood: saved?.mood, soreness: saved?.soreness,
-                              tags: tags.sorted(), rejected: rejected.sorted(), note: saved?.note)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         changing = false
-        Task { await store.save(checkin, api: session.api) }
+        Task { await store.answer(day: day, sick: sick, api: session.api) }
     }
 
     static func range(_ s: PastStretch) -> String {
         guard let from = date(s.from), let to = date(s.to) else { return s.from }
-        let f = from.formatted(.dateTime.month(.abbreviated).day())
+        let f = from.formatted(.dateTime.month(.wide).day())
         if s.from == s.to { return f }
         let sameMonth = Calendar.current.isDate(from, equalTo: to, toGranularity: .month)
-        return "\(f)–\(sameMonth ? to.formatted(.dateTime.day()) : to.formatted(.dateTime.month(.abbreviated).day()))"
+        return "\(f)–\(sameMonth ? to.formatted(.dateTime.day()) : to.formatted(.dateTime.month(.wide).day()))"
     }
 
     static func date(_ day: String) -> Date? {
@@ -90,23 +126,23 @@ struct MorningCheckin: View {
     }
 }
 
-/// A capsule answer. `suggested` is the hub's guess: outlined, not filled, so
-/// it reads as a suggestion and still takes a tap.
-struct ChoicePill: View {
+/// An answer, full width in its row. `filled` marks the hub's guess: solid
+/// ink, the other answer a plain pill beside it.
+struct CheckinButton: View {
     var title: String
-    var suggested = false
+    var filled = false
     var small = false
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title).font(small ? .footnote : .subheadline.weight(.medium))
-                .padding(.horizontal, small ? 10 : 16).frame(minHeight: small ? 28 : 34)
-                .foregroundStyle(suggested ? Fit.readiness : Color.primary)
-                .background(Fit.track.opacity(suggested ? 0.2 : 0.5), in: .capsule)
-                .overlay { Capsule().strokeBorder(suggested ? Fit.readiness : .clear, style: StrokeStyle(lineWidth: 1.2, dash: [4, 3])) }
+            Text(title).font(small ? .footnote.weight(.medium) : .body.weight(.medium))
+                .frame(maxWidth: .infinity, minHeight: small ? 34 : 46)
+                .foregroundStyle(filled ? BrickLook.card : BrickLook.ink)
+                .background(filled ? BrickLook.ink : BrickLook.pill, in: .capsule)
         }
         .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: filled)
     }
 }
 
