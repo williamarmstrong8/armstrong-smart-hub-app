@@ -50,6 +50,13 @@ struct ActiveWorkoutView: View {
             RestPanel(store: store).ignoresSafeArea(.keyboard)
         }
         .animation(.snappy, value: store.restEndsAt != nil)
+        // While the workout is open, keep the heart rate coming: reconnect, or reopen a stream that went quiet.
+        .task {
+            while !Task.isCancelled {
+                watch.keepHeartRateFlowing()
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
         .sheet(isPresented: $picking, onDismiss: Self.hideKeyboard) {
             ExercisePicker(store: store) { store.addExercises($0) }
         }
@@ -172,8 +179,7 @@ struct ActiveWorkoutView: View {
 
     private func fullList(_ workout: ActiveWorkout) -> some View {
         List {
-            WorkoutStats(workout: workout, liveBpm: liveBpm, maxHr: maxHr,
-                         status: watch.savedWatchID == nil ? "No watch" : "Connecting…")
+            WorkoutStats(workout: workout, liveBpm: liveBpm, maxHr: maxHr, status: watch.heartRateStatus)
                 .workoutRow(top: 8, bottom: 16)
 
             if workout.exercises.isEmpty {

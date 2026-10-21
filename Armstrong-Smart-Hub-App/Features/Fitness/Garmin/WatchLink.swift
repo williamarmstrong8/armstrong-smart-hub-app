@@ -318,6 +318,48 @@ final class WatchLink: NSObject {
         return accepted ? handles[service] : nil
     }
 
+    // MARK: Live streams
+
+    private var lastReopen = Date.distantPast
+
+    /// Registers a live service again and turns it on.
+    private func reopen(_ service: Garmin.Service) async {
+        guard state == .connected else { return }
+        if let handle = await register(service.rawValue) {
+            write([handle, 0x01])
+            note("Reopened \(service)")
+        } else {
+            note("Watch refused \(service) again")
+        }
+    }
+
+    /// For a screen that needs heart rate now (a workout): reconnects if the
+    /// link is down, and if it's up but no reading has come for 20 seconds,
+    /// opens the heart rate stream again (at most every 30 seconds).
+    func keepHeartRateFlowing() {
+        guard savedWatchID != nil else { return }
+        if state != .connected {
+            if !isBusy { connectSaved() }
+            return
+        }
+        let quiet = heartRateAt.map { Date.now.timeIntervalSince($0) > 20 } ?? true
+        guard quiet, Date.now.timeIntervalSince(lastReopen) > 30 else { return }
+        lastReopen = .now
+        note("No heart rate for 20 s; reopening the stream")
+        Task { await reopen(.realtimeHeartRate) }
+    }
+
+    /// What a heart rate readout says while it has no reading.
+    var heartRateStatus: String {
+        guard savedWatchID != nil else { return "No watch" }
+        switch state {
+        case .connected: return "Waiting for watch…"
+        case .connecting, .pairing, .handshaking, .scanning: return "Connecting…"
+        case .bluetoothOff: return "Bluetooth off"
+        case .idle, .failed: return "Watch not connected"
+        }
+    }
+
     // MARK: Sending
 
     /// Queues one raw multi-link packet.
@@ -365,6 +407,13 @@ final class WatchLink: NSObject {
             note("Control message \(type)")
         case let .closedHandle(service):
             note("Watch closed service \(service)")
+            // A live stream the watch shut (it can, mid-connection): open it again.
+            if let live = Garmin.Service(rawValue: service), Garmin.Service.live.contains(live), state == .connected {
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    await reopen(live)
+                }
+            }
         case let .data(handle, payload):
             switch handles.first(where: { $0.value == handle })?.key {
             case Garmin.Service.gfdi.rawValue:
