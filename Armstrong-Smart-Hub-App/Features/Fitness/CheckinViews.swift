@@ -22,12 +22,13 @@ struct MorningCheckin: View {
     private var guessedEnergy: Int? { guess.map { Int($0.energy.rounded()) } }
 
     var body: some View {
-        FitSection(title: saved == nil || editing ? "How are you feeling?" : "Checked in", trailing: trailing) {
+        FitSection(trailing: trailing) {
             if let saved, !editing {
                 summary(saved)
             } else {
                 form
             }
+            LogFeelingButton(store: store)
         }
         .onAppear(perform: reset)
         .onChange(of: store.page?.day) { reset() }
@@ -263,11 +264,10 @@ enum CheckinRoute: Hashable {
 struct PastQuestion: View {
     @Environment(AppSession.self) private var session
     var store: CheckinStore
-    @State private var skipped: Set<String> = []
 
     var body: some View {
-        if let stretch = store.suggestions.first(where: { !skipped.contains($0.id) }) {
-            FitSection(title: "Help the hub learn", trailing: "\(store.suggestions.count - skipped.count) to go") {
+        if let stretch = store.suggestions.first {
+            FitSection(trailing: "\(store.suggestions.count) to go") {
                 Text("Were you \(stretch.label.lowercased()) around \(Self.range(stretch))?")
                     .font(Fit.value).fixedSize(horizontal: false, vertical: true)
                 Takeaway(text: "Your watch data looked like it then. Answering once teaches the hub what it looks like for you.")
@@ -275,7 +275,8 @@ struct PastQuestion: View {
                     AnswerButton(title: "Yes", selected: false, tint: Fit.positive) { answer(stretch, true) }
                     AnswerButton(title: "No", selected: false, tint: Fit.attention) { answer(stretch, false) }
                     AnswerButton(title: "Don't remember", selected: false, tint: Fit.muted) {
-                        withAnimation(.smooth) { _ = skipped.insert(stretch.id) }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Task { await store.skip(stretch, api: session.api) }
                     }
                 }
             }
@@ -374,6 +375,10 @@ struct CheckinDetailPage: View {
                 }
             }
             PastQuestion(store: store)
+            FitSection(title: "Tell it yourself") {
+                Takeaway(text: "Sick, hungover or run down, today or days ago: log it and the hub learns what that looks like for you.")
+                LogFeelingButton(store: store)
+            }
         }
         .refreshable { await store.load(api: session.api) }
     }
@@ -600,5 +605,111 @@ struct TagCloud: View {
                 .sensoryFeedback(.selection, trigger: on)
             }
         }
+    }
+}
+
+// MARK: Telling it yourself
+
+/// "I'm sick", "I was hungover Saturday", "fever since Monday": tags one day or a
+/// run of days without waiting for the hub to guess. Every tag is a label the
+/// hub learns from, the same as answering its questions.
+struct LogFeelingSheet: View {
+    @Environment(AppSession.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    var store: CheckinStore
+    @State private var from = Date.now
+    @State private var to = Date.now
+    @State private var several = false
+    @State private var tags: Set<String> = []
+    @State private var note = ""
+
+    var body: some View {
+        let vocab = store.page?.vocabulary
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("How are you?").font(Fit.label).foregroundStyle(Fit.muted)
+                        TagCloud(tags: vocab?.states ?? [], selected: tags, toggle: toggle)
+                    }
+                    if tags.contains("sick") || !(vocab?.symptoms ?? []).filter({ tags.contains($0.key) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Symptoms").font(Fit.label).foregroundStyle(Fit.muted)
+                            TagCloud(tags: vocab?.symptoms ?? [], selected: tags, toggle: toggle)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Why, if you know").font(Fit.label).foregroundStyle(Fit.muted)
+                        TagCloud(tags: vocab?.causes ?? [], selected: tags, toggle: toggle)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("Several days", isOn: $several.animation(.smooth)).font(.subheadline)
+                        DatePicker(several ? "From" : "Day", selection: $from, in: ...Date.now, displayedComponents: .date)
+                            .font(.subheadline)
+                        if several {
+                            DatePicker("To", selection: $to, in: from...Date.now, displayedComponents: .date).font(.subheadline)
+                        }
+                    }
+                    TextField("Anything else?", text: $note, axis: .vertical)
+                        .font(.subheadline).lineLimit(1...4)
+                        .padding(10).background(Fit.track.opacity(0.5), in: .rect(cornerRadius: 10))
+                    if vocab == nil {
+                        Takeaway(text: "Open the check-in once with the hub in reach to load the choices.")
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle("Log how you feel")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }.disabled(tags.isEmpty)
+                }
+            }
+            .onChange(of: from) { if to < from { to = from } }
+        }
+        .presentationDetents([.large])
+    }
+
+    private func toggle(_ key: String) {
+        if tags.contains(key) { tags.remove(key) } else { tags.insert(key) }
+    }
+
+    private func save() {
+        let first = Self.day(from)
+        let last = several ? max(Self.day(to), first) : first
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        let tags = tags.sorted()
+        Task { await store.log(from: first, to: last, tags: tags, note: trimmed.isEmpty ? nil : trimmed, api: session.api) }
+        dismiss()
+    }
+
+    /// The local calendar day, as the hub keys check-ins.
+    static func day(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = .current
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: date)
+    }
+}
+
+/// The way in to the sheet: a quiet line under the morning check-in.
+struct LogFeelingButton: View {
+    var store: CheckinStore
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "plus.circle")
+                Text("Sick, hungover, off? Log it")
+            }
+            .font(.footnote).foregroundStyle(Fit.muted)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showing) { LogFeelingSheet(store: store) }
     }
 }

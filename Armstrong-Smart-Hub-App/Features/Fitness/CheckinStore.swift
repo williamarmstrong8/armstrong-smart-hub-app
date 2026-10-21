@@ -146,6 +146,10 @@ final class CheckinStore {
     enum Pending: Codable, Equatable {
         case checkin(Checkin, guess: GuessEcho?)
         case stretch(state: String, from: String, to: String, yes: Bool)
+        /// "Don't remember": not a label, only so the hub stops asking.
+        case skip(state: String, from: String, to: String)
+        /// How the person felt over some days, told without being asked.
+        case log(from: String, to: String, tags: [String], note: String?)
         case session(SessionFeedback)
     }
 
@@ -182,8 +186,10 @@ final class CheckinStore {
     /// Past stretches still to answer, without the ones answered on this phone.
     var suggestions: [PastStretch] {
         let answered = Set(pending.compactMap { p -> String? in
-            if case let .stretch(state, from, _, _) = p { return "\(state) \(from)" }
-            return nil
+            switch p {
+            case let .stretch(state, from, _, _), let .skip(state, from, _): "\(state) \(from)"
+            default: nil
+            }
         })
         return (page?.suggestions ?? []).filter { !answered.contains($0.id) }
     }
@@ -217,6 +223,19 @@ final class CheckinStore {
         await flush(api: api)
     }
 
+    /// "Don't remember": the hub keeps it so the question doesn't come back.
+    func skip(_ stretch: PastStretch, api: APIClient) async {
+        enqueue(.skip(state: stretch.state, from: stretch.from, to: stretch.to))
+        await flush(api: api)
+    }
+
+    /// Tags every day from `from` to `to` (sick, hungover, symptoms, causes), then refreshes the guess.
+    func log(from: String, to: String, tags: [String], note: String?, api: APIClient) async {
+        enqueue(.log(from: from, to: to, tags: tags, note: note))
+        await flush(api: api)
+        if pending.isEmpty { await load(api: api) }
+    }
+
     func save(_ feedback: SessionFeedback, api: APIClient) async {
         pending.removeAll { if case let .session(f) = $0 { f.kind == feedback.kind && f.refId == feedback.refId } else { false } }
         enqueue(.session(feedback))
@@ -248,6 +267,17 @@ final class CheckinStore {
 
     private var flushing = false
 
+    /// The hub's answer to a PUT. A refusal (400) arrives as `{ error }`, which
+    /// retrying won't fix: it's shown, and the item is dropped so it can't hold
+    /// up the answers behind it. Only an unreachable hub keeps an item waiting.
+    private struct Reply: Decodable { var error: String? }
+    private struct Refused: Error { var message: String }
+
+    private func send(_ api: APIClient, _ request: URLRequest) async throws {
+        let reply: Reply = try await api.send(request)
+        if let error = reply.error { throw Refused(message: error) }
+    }
+
     /// Sends what's waiting, oldest first, and stops at the first failure so the order holds.
     func flush(api: APIClient) async {
         guard !flushing, !pending.isEmpty else { return }
@@ -262,17 +292,32 @@ final class CheckinStore {
                         var tags: [String]; var rejected: [String]; var note: String?; var guess: GuessEcho?
                     }
                     let body = Body(day: c.day, energy: c.energy, mood: c.mood, soreness: c.soreness, tags: c.tags, rejected: c.rejected, note: c.note, guess: guess)
-                    let _: Empty = try await api.send(api.request("/api/mobile/fitness/checkin", method: "PUT", body: body))
+                    try await send(api, api.request("/api/mobile/fitness/checkin", method: "PUT", body: body))
                     if page?.day == c.day { page?.entry = c }
                 case let .stretch(state, from, to, yes):
                     struct Stretch: Encodable { var state: String; var from: String; var to: String; var yes: Bool }
                     struct Body: Encodable { var stretch: Stretch }
-                    let _: Empty = try await api.send(api.request("/api/mobile/fitness/checkin", method: "PUT",
+                    try await send(api, api.request("/api/mobile/fitness/checkin", method: "PUT",
                                                                   body: Body(stretch: Stretch(state: state, from: from, to: to, yes: yes))))
                     page?.suggestions.removeAll { $0.state == state && $0.from == from }
+                case let .skip(state, from, to):
+                    struct Stretch: Encodable { var state: String; var from: String; var to: String; var yes = false; var skip = true }
+                    struct Body: Encodable { var stretch: Stretch }
+                    try await send(api, api.request("/api/mobile/fitness/checkin", method: "PUT",
+                                                                  body: Body(stretch: Stretch(state: state, from: from, to: to))))
+                    page?.suggestions.removeAll { $0.state == state && $0.from == from }
+                case let .log(from, to, tags, note):
+                    struct Log: Encodable { var from: String; var to: String; var tags: [String]; var note: String? }
+                    struct Body: Encodable { var log: Log }
+                    try await send(api, api.request("/api/mobile/fitness/checkin", method: "PUT",
+                                                                  body: Body(log: Log(from: from, to: to, tags: tags, note: note))))
                 case let .session(f):
-                    let _: Empty = try await api.send(api.request("/api/mobile/fitness/feedback", method: "PUT", body: f))
+                    try await send(api, api.request("/api/mobile/fitness/feedback", method: "PUT", body: f))
                 }
+                pending.removeFirst()
+                persist()
+            } catch let refused as Refused {
+                self.error = "The hub didn't take an answer: \(refused.message)"
                 pending.removeFirst()
                 persist()
             } catch {
