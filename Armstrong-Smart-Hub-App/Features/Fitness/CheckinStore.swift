@@ -130,6 +130,19 @@ final class CheckinStore {
     /// A guess counts as a guess from this probability up.
     static let threshold = 0.4
 
+    /// When the newest sleep ended, from the Fitness snapshot.
+    var lastWake: Date?
+
+    /// The morning being asked about. It turns over when the person wakes up,
+    /// not at midnight: up at 12:30 am, last night's sleep hasn't happened yet,
+    /// so it's still yesterday. With no sleep ended today, 6 am is the cutover.
+    var day: String {
+        let calendar = Calendar.current
+        if let lastWake, calendar.isDateInToday(lastWake) { return localDay() }
+        if calendar.component(.hour, from: .now) < 6 { return addDays(localDay(), -1) }
+        return localDay()
+    }
+
     enum Pending: Codable, Equatable {
         case checkin(Checkin, guess: GuessEcho?)
         case stretch(state: String, from: String, to: String, yes: Bool)
@@ -161,7 +174,7 @@ final class CheckinStore {
     }
 
     /// The guess for today, once the hub has last night.
-    var guess: DayGuess? { page?.day == localDay() ? page?.guess : nil }
+    var guess: DayGuess? { page?.day == day ? page?.guess : nil }
 
     /// States the hub thinks are likely this morning, most likely first.
     var likely: [StateGuess] { (guess?.states ?? []).filter { $0.probability >= Self.threshold } }
@@ -175,7 +188,8 @@ final class CheckinStore {
         return (page?.suggestions ?? []).filter { !answered.contains($0.id) }
     }
 
-    func load(api: APIClient, day: String = localDay()) async {
+    func load(api: APIClient, day: String? = nil) async {
+        let day = day ?? self.day
         await flush(api: api)
         loading = true
         defer { loading = false }
