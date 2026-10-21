@@ -58,11 +58,33 @@ final class FitnessStore {
         let hub = hubSeries(kind).filter { $0.date >= since }
         let covered = Set(hub.map { bucket($0.date) })
         let phone = live.series(kind, since: since).filter { !covered.contains(bucket($0.at)) }
+        if kind == .bodyBattery { return (hub + heldBodyBattery(since: since, skip: covered)).sorted { $0.date < $1.date } }
         let local: [Reading] = kind == .heartRate
             ? phone.map { Reading(date: $0.at, value: $0.value) }
             : Dictionary(grouping: phone) { bucket($0.at) }
                 .map { Reading(date: Date(timeIntervalSince1970: Double($0.key) * 300), value: $0.value.map(\.value).reduce(0, +) / $0.value.count) }
         return (hub + local).sorted { $0.date < $1.date }
+    }
+
+    /// The watch sends Body Battery live only when it changes, so between
+    /// readings the level holds. Every 5 minutes the phone was hearing the
+    /// watch (it has heart rate then) gets the newest level so far, so the line
+    /// doesn't break between changes; while the link was down it still breaks.
+    private func heldBodyBattery(since: Date, skip covered: Set<Int>) -> [Reading] {
+        let levels = live.series(.bodyBattery, since: since.addingTimeInterval(-6 * 3600))
+        let heard = Set(live.series(.heartRate, since: since).map { Int($0.at.timeIntervalSince1970 / 300) })
+        var out: [Reading] = []
+        var next = 0
+        var level: Int?
+        for slot in heard.subtracting(covered).sorted() {
+            let end = Date(timeIntervalSince1970: Double(slot + 1) * 300)
+            while next < levels.count, levels[next].at < end {
+                level = levels[next].value
+                next += 1
+            }
+            if let level { out.append(Reading(date: Date(timeIntervalSince1970: Double(slot) * 300), value: level)) }
+        }
+        return out
     }
 
     private func hubSeries(_ kind: LiveStore.Kind) -> [Reading] {

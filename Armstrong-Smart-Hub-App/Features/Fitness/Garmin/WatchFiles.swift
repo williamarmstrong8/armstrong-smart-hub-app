@@ -3,8 +3,9 @@ import Observation
 import UIKit
 
 /// Copies FIT files from the watch to the phone: activities, all-day
-/// monitoring and sleep. Read-only towards the watch: it lists and downloads,
-/// and never archives, deletes or marks files synced.
+/// monitoring and sleep. Towards the watch it lists, downloads and, once the
+/// hub has a file, marks it synced as Garmin Connect does; it never archives
+/// or deletes anything.
 ///
 /// The flow is a port of the Pi collector's fetch_fit.py (FileTransfer and
 /// FileSync, after Gadgetbridge; AGPL-3.0-or-later). WatchLink hands every
@@ -43,6 +44,8 @@ final class WatchFiles {
     private var announced: [GarminFiles.ListedFile] = []
     private var nextRequestID: UInt16 = 0xC000
     private var lastProgress = Date()
+    /// When the watch last asked for a sync on its own, to pace automatic requests.
+    private var lastWatchRequest = Date.distantPast
 
     // The legacy transfer in flight.
     private var legacy: GarminFiles.LegacyDownload?
@@ -126,12 +129,62 @@ final class WatchFiles {
             failure = failure ?? error.localizedDescription
             link.note("Upload stopped: \(error.localizedDescription)")
         }
+        if link.state == .connected { await markSynced(listed) }
         lastSync = Summary(listed: listed.count, byKind: Dictionary(grouping: listed, by: \.kind).mapValues(\.count),
                            downloaded: downloaded, uploaded: uploaded, failed: failure, finishedAt: .now)
         // The hub has parsed what was just sent; put its sleep, HRV and training numbers on the glances.
         progress = "Updating the glances"
         fraction = 0.97
         await link.settings.push(api: api)
+    }
+
+    // MARK: Watch-initiated sync
+
+    /// The watch asks for a sync after a workout or sleep, on its own schedule,
+    /// or from its menu, as it does with Garmin Connect. A manual request runs
+    /// straight away; automatic ones at most every 10 minutes. It runs in the
+    /// background too: the request's packet wakes the app, and the background
+    /// task keeps it awake for the few small files it brings.
+    func watchAskedForSync(manual: Bool) {
+        guard let api = link?.api, !isSyncing else { return }
+        if !manual, Date.now.timeIntervalSince(lastWatchRequest) < 10 * 60 { return }
+        lastWatchRequest = .now
+        link?.note("Syncing because the watch asked (\(manual ? "manual" : "automatic"))")
+        Task {
+            let task = UIApplication.shared.beginBackgroundTask(withName: "Watch sync")
+            defer { if task != .invalid { UIApplication.shared.endBackgroundTask(task) } }
+            await sync(api: api)
+        }
+    }
+
+    // MARK: Marking synced
+
+    /// Sets the synced flag on every listed file the hub has stored, so the
+    /// watch treats it as Garmin Connect's: it can start a fresh all-day file
+    /// rather than keeping one open until midnight. Only files safely on the
+    /// hub are marked; a refusal is logged and tried again next sync.
+    private func markSynced(_ listed: [GarminFiles.ListedFile]) async {
+        let ready = listed.filter { store.saved[$0.id]?.uploadedAt != nil && store.saved[$0.id]?.markedSyncedAt == nil }
+        guard !ready.isEmpty else { return }
+        progress = "Marking \(ready.count) file\(ready.count == 1 ? "" : "s") synced"
+        var marked = 0
+        for file in ready {
+            guard link?.state == .connected, let body = GarminFiles.markSyncedRequest(file.entry) else { break }
+            do {
+                let reply = try await request(body, answer: 16)
+                let status = GarminFiles.modifyFlagsStatus(reply) ?? 0
+                guard status == 0 else {
+                    link?.note("Watch wouldn't mark \(file.kind) synced (status \(status))")
+                    continue
+                }
+                store.markSyncedOnWatch(file.id)
+                marked += 1
+            } catch {
+                link?.note("Marking \(file.kind) synced stopped: \(error.localizedDescription)")
+                break
+            }
+        }
+        link?.note("Marked \(marked) of \(ready.count) files synced on the watch")
     }
 
     // MARK: Hub
@@ -514,10 +567,12 @@ final class WatchFiles {
         if sync.has(5) { // TransferStatusRequest: answer as Gadgetbridge does
             link.send(GarminFiles.protobufRequest(.protobufResponse, requestID: chunk.requestID, body: GarminFiles.transferStatusResponse()))
         }
-        if sync.has(22) { // StartSyncNotification: the watch has new data for the phone
+        if sync.has(22) { // SyncButtonNotification: sync pressed on the watch
             link.note("Watch asks for a sync")
+            watchAskedForSync(manual: true)
         }
-        let unhandled = sync.values.keys.filter { ![2, 5, 10, 12, 22].contains($0) }.sorted()
+        if sync.has(17) { link.note("Watch updated a file's flags") } // ItemUpdatedNotification, after marking synced
+        let unhandled = sync.values.keys.filter { ![2, 5, 10, 12, 16, 17, 22].contains($0) }.sorted()
         if !unhandled.isEmpty { link.note("Watch file sync message, fields \(unhandled)") }
         if sync.has(12) {
             let files = GarminFiles.newFiles(sync)
@@ -545,6 +600,8 @@ final class FitStore {
         var uploadedAt: Date?
         /// The size the watch listed when this copy was taken, to spot a file that has grown.
         var listedSize: Int?
+        /// When the watch accepted the synced flag for this file.
+        var markedSyncedAt: Date?
         var parseError: String?
     }
 
@@ -607,6 +664,11 @@ final class FitStore {
 
     func markFailed(_ id: String, error: String) {
         saved[id]?.parseError = "not accepted: \(error)"
+        write(saved, to: "saved.json")
+    }
+
+    func markSyncedOnWatch(_ id: String) {
+        saved[id]?.markedSyncedAt = .now
         write(saved, to: "saved.json")
     }
 

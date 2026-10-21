@@ -107,6 +107,7 @@ struct TrendsView: View {
                     DailyBarChart(points: FitData.last(days, steps), tint: Fit.positive, goal: store.today?.stepGoal.map(Double.init))
                 }
             }
+            dayTotals
             RestingSection(store: store)
             let weeks = weeklyMinutes()
             if !weeks.isEmpty {
@@ -116,6 +117,28 @@ struct TrendsView: View {
                 }
             }
             byActivity
+        }
+    }
+
+    /// The newest finished day the watch summed up itself: distance, calories, floors, intensity.
+    @ViewBuilder private var dayTotals: some View {
+        if let day = store.days.first(where: { $0.distanceMeters != nil || $0.activeKcal != nil }) {
+            let all: [(String, String?)] = [
+                ("Distance", day.distanceMeters.map { FitnessFormat.distance($0) }),
+                ("Active calories", day.activeKcal.map { "\($0.formatted()) kcal" }),
+                ("Resting calories", day.restingKcal.map { "\($0.formatted()) kcal" }),
+                ("Active time", day.activeSeconds.map { FitnessFormat.duration($0) }),
+                ("Floors", day.floorsUp.map { up in "\(Int(up.rounded())) up · \(Int((day.floorsDown ?? 0).rounded())) down" }),
+                ("Intensity minutes", day.intensityMinutes.map { "\($0) (\(day.moderateMinutes ?? 0) moderate, \(day.vigorousMinutes ?? 0) vigorous)" }),
+            ]
+            let rows = all.compactMap { label, value in value.map { (label, $0) } }
+            FitSection(title: "Day totals", trailing: day.date.map { $0.formatted(.dateTime.weekday(.wide).month().day()) }) {
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                        DetailRow(label: row.0, value: row.1, last: index == rows.count - 1)
+                    }
+                }
+            }
         }
     }
 
