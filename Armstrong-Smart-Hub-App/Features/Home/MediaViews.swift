@@ -241,6 +241,50 @@ struct RequestList: View {
     }
 }
 
+/// The burst when a title goes to the TV: light pours out of the Dynamic Island and ripples down
+/// the screen, like two phones meeting for AirDrop.
+struct SendGlow: View {
+    let start: Date
+    static let duration: Double = 1.4
+
+    private let blue = Color(red: 0.36, green: 0.64, blue: 1)
+    private let violet = Color(red: 0.62, green: 0.48, blue: 1)
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = min(timeline.date.timeIntervalSince(start) / Self.duration, 1)
+            Canvas { ctx, size in
+                let origin = CGPoint(x: size.width / 2, y: 29.5)
+                let reach = hypot(size.width, size.height)
+                func circle(_ r: CGFloat) -> Path {
+                    Path(ellipseIn: CGRect(x: origin.x - r, y: origin.y - r, width: r * 2, height: r * 2))
+                }
+
+                // A glow that swells out of the island and fades as it spreads.
+                let spread = 1 - pow(1 - t, 3)
+                let glowR = 40 + spread * reach * 0.85
+                let glow = sin(.pi * min(t * 1.3, 1)) * 0.5
+                ctx.fill(circle(glowR), with: .radialGradient(
+                    Gradient(colors: [.white.opacity(glow), blue.opacity(glow * 0.8), violet.opacity(glow * 0.35), .clear]),
+                    center: origin, startRadius: 0, endRadius: glowR))
+
+                // Three soft rings rippling down behind it.
+                for i in 0..<3 {
+                    let ti = (t - Double(i) * 0.14) / 0.75
+                    guard ti > 0, ti < 1 else { continue }
+                    let r = 16 + (1 - pow(1 - ti, 2.2)) * reach
+                    var ring = ctx
+                    ring.addFilter(.blur(radius: 4 + 10 * ti))
+                    ring.stroke(circle(r), with: .color((i == 1 ? violet : blue).opacity((1 - ti) * 0.85)),
+                                lineWidth: 2 + 12 * (1 - ti))
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
 /// Fetches a poster through the shared URL cache, where the shelf's and search's posters already
 /// sit, so a title's card can open with its image in place rather than loading it mid-slide.
 enum PosterLoader {
@@ -263,8 +307,8 @@ enum PosterLoader {
 
 /// A title's card, drawn over Home rather than as a sheet so the page behind can blur in step with
 /// it: as tall as the poster, which fills it from the top and fades into black under the words.
-/// Drag it down or tap above it to close; on a title that can play, swipe it up to play on the TV
-/// and it flies off the top.
+/// Drag it down or tap above it to close. On a title that can play, swiping up shrinks the card to
+/// its poster as it rises; let go and the poster drops into the Dynamic Island and plays on the TV.
 struct MediaDetailCard: View {
     let pick: MediaPick
     /// The poster, already loaded, so it arrives with the card; nil falls back to loading it here.
@@ -274,8 +318,9 @@ struct MediaDetailCard: View {
     @Binding var reveal: CGFloat
     let onChanged: () -> Void
     let onClose: () -> Void
-    /// Called once a swipe up has sent the card off the top, for Home to remove it in place.
-    let onFlewOff: () -> Void
+    /// Called once the poster has gone into the Dynamic Island, for Home to remove the card in place
+    /// and play the send burst.
+    let onSent: () -> Void
 
     @Environment(AppSession.self) private var session
     @State private var detail: MediaDetail?
@@ -286,6 +331,11 @@ struct MediaDetailCard: View {
     @State private var drag: CGFloat = 0
     /// A swipe up has passed the point where letting go plays it.
     @State private var armed = false
+    /// Set once let go on a play swipe: the poster's flight into the island, taking over from the drag.
+    @State private var sending = false
+    @State private var sendY: CGFloat = 0
+    @State private var sendScale: CGFloat = 1
+    @State private var sendOpacity: Double = 1
 
     private var available: Bool { detail?.available ?? (pick.known == .available) }
     private var canPlay: Bool { available && (detail?.canPlay ?? true) }
@@ -294,11 +344,16 @@ struct MediaDetailCard: View {
     var body: some View {
         GeometryReader { geo in
             let height = min(geo.size.width * 1.5, geo.size.height - 60)
+            // 0 as the full card, 1 once a play swipe has shrunk it down to its poster.
+            let shrink = canPlay ? min(max(-drag, 0) / 300, 1) : 0
             ZStack(alignment: .bottom) {
                 Color.clear.contentShape(.rect).onTapGesture(perform: onClose)
-                card
+                card(shrink: sending ? 1 : shrink)
                     .frame(width: geo.size.width, height: height)
-                    .offset(y: drag)
+                    .scaleEffect(sending ? sendScale : 1 - 0.45 * shrink)
+                    .offset(y: sending ? sendY : drag)
+                    .opacity(sendOpacity)
+                    .allowsHitTesting(!sending)
                     .gesture(
                         DragGesture(minimumDistance: 8)
                             .onChanged { v in
@@ -311,7 +366,11 @@ struct MediaDetailCard: View {
                             .onEnded { v in
                                 let dy = v.translation.height
                                 if canPlay && (dy < -120 || v.predictedEndTranslation.height < -360) {
-                                    flyOff(clearing: geo.size.height + 80)
+                                    // Where the card's centre sits at rest, and the island's centre, in
+                                    // this view's space (it starts below the status bar).
+                                    let rest = geo.size.height - height / 2
+                                    let island = 29.5 - geo.safeAreaInsets.top
+                                    send(toward: island - rest, posterHeight: height)
                                 } else if dy > 120 || v.predictedEndTranslation.height > 320 {
                                     onClose()
                                 } else {
@@ -335,8 +394,9 @@ struct MediaDetailCard: View {
         }
     }
 
-    private var card: some View {
+    private func card(shrink: CGFloat) -> some View {
         // Every row keeps its place while the details load, so nothing moves when they arrive.
+        // On a play swipe the words, fade and close button dissolve, leaving just the poster.
         VStack(alignment: .leading, spacing: 12) {
             Text(pick.title).font(.system(size: 28, weight: .semibold)).lineLimit(2)
             Text(detail.map(meta) ?? "2026 · Movie · 120 min")
@@ -355,6 +415,7 @@ struct MediaDetailCard: View {
                 .disabled(working || !(available || isRequested))
         }
         .foregroundStyle(.white)
+        .opacity(1 - min(shrink * 2.2, 1))
         .padding(.horizontal, 24)
         .padding(.bottom, 44)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -379,10 +440,12 @@ struct MediaDetailCard: View {
                     .init(color: .black.opacity(0.92), location: 0.85),
                     .init(color: .black, location: 1),
                 ], startPoint: .top, endPoint: .bottom)
+                .opacity(1 - shrink)
             }
         }
         .background(.black)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 36, topTrailingRadius: 36))
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 36, bottomLeadingRadius: 36 * shrink,
+                                          bottomTrailingRadius: 36 * shrink, topTrailingRadius: 36))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 14, weight: .bold))
@@ -392,6 +455,7 @@ struct MediaDetailCard: View {
             }
             .padding(16)
             .accessibilityLabel("Close")
+            .opacity(1 - shrink)
         }
         .shadow(color: .black.opacity(0.3), radius: 24, y: -4)
     }
@@ -434,14 +498,22 @@ struct MediaDetailCard: View {
         .buttonStyle(.plain)
     }
 
-    /// Plays the title and sends the card up and out of the top of the screen, the blur clearing with it.
-    private func flyOff(clearing distance: CGFloat) {
+    /// Plays the title and flies the poster into the Dynamic Island: up to just under it, then in,
+    /// shrinking to the island's height and fading as it goes.
+    private func send(toward island: CGFloat, posterHeight: CGFloat) {
         Task { await play() }
-        withAnimation(.easeIn(duration: 0.32)) {
-            drag = -distance
-            reveal = 0
+        withAnimation(.easeInOut(duration: 0.3)) {
+            sending = true
+            sendY = island + 70
+            sendScale = 0.16
         } completion: {
-            onFlewOff()
+            withAnimation(.easeIn(duration: 0.16)) {
+                sendY = island
+                sendScale = 30 / posterHeight
+                sendOpacity = 0
+            } completion: {
+                onSent()
+            }
         }
     }
 

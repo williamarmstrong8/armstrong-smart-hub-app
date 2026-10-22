@@ -23,6 +23,9 @@ struct HomeView: View {
     /// How far the title card is up (0–1); the page behind blurs by it.
     @State private var reveal: CGFloat = 0
     @State private var poster: UIImage?
+    /// When the last title went to the TV, for the send burst; nil once it's over.
+    @State private var sentAt: Date?
+    @State private var pulse = false
     @State private var editingHabit: HabitEditTarget?
     @State private var managing = false
     @State private var display = false
@@ -59,15 +62,16 @@ struct HomeView: View {
                     MediaDetailCard(pick: p, poster: poster, toast: toast, reveal: $reveal,
                                     onChanged: { Task { await store.refresh(api: session.api) } },
                                     onClose: closeTitle,
-                                    onFlewOff: {
-                                        // Already off the top: remove it in place, without sliding back down.
-                                        var t = SwiftUI.Transaction(); t.disablesAnimations = true
-                                        withTransaction(t) { pick = nil; reveal = 0 }
-                                    })
+                                    onSent: sent)
                         .id(p.id)
                         .transition(.move(edge: .bottom))
                 }
             }
+            .scaleEffect(pulse ? 0.965 : 1, anchor: .top)
+            .overlay {
+                if let sentAt { SendGlow(start: sentAt) }
+            }
+            .sensoryFeedback(.impact(weight: .heavy), trigger: sentAt) { _, now in now != nil }
             .toolbarVisibility(pick == nil ? .visible : .hidden, for: .tabBar)
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
@@ -125,6 +129,23 @@ struct HomeView: View {
             let image = await PosterLoader.image(p.posterURL)
             poster = image
             withAnimation(.smooth(duration: 0.4)) { pick = p; reveal = 1 }
+        }
+    }
+
+    /// The poster has gone into the island: drop the card where it is (it's already invisible), and
+    /// play the burst while the page unblurs and gives a little pulse.
+    private func sent() {
+        var t = SwiftUI.Transaction(); t.disablesAnimations = true
+        withTransaction(t) { pick = nil }
+        let now = Date.now
+        sentAt = now
+        withAnimation(.smooth(duration: 0.7)) { reveal = 0 }
+        withAnimation(.easeOut(duration: 0.14)) { pulse = true } completion: {
+            withAnimation(.spring(duration: 0.5, bounce: 0.45)) { pulse = false }
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(SendGlow.duration + 0.1))
+            if sentAt == now { sentAt = nil }
         }
     }
 
