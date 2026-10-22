@@ -343,13 +343,16 @@ struct MediaDetailCard: View {
 
     var body: some View {
         GeometryReader { geo in
-            let height = min(geo.size.width * 1.5, geo.size.height - 60)
+            // Floats a little in from the screen's edges so its corners can be round all the way.
+            let width = geo.size.width - 16
+            let height = min(width * 1.5, geo.size.height - 60)
             // 0 as the full card, 1 once a play swipe has shrunk it down to its poster.
             let shrink = canPlay ? min(max(-drag, 0) / 300, 1) : 0
             ZStack(alignment: .bottom) {
                 Color.clear.contentShape(.rect).onTapGesture(perform: onClose)
                 card(shrink: sending ? 1 : shrink)
-                    .frame(width: geo.size.width, height: height)
+                    .frame(width: width, height: height)
+                    .padding(.bottom, 8)
                     .scaleEffect(sending ? sendScale : 1 - 0.45 * shrink)
                     .offset(y: sending ? sendY : drag)
                     .opacity(sendOpacity)
@@ -361,14 +364,14 @@ struct MediaDetailCard: View {
                                 // Up follows the finger only when there's something to play.
                                 drag = dy > 0 || canPlay ? dy : dy / 6
                                 reveal = 1 - min(max(drag / height, 0), 1)
-                                armed = canPlay && dy < -120
+                                armed = canPlay && dy < -100
                             }
                             .onEnded { v in
                                 let dy = v.translation.height
-                                if canPlay && (dy < -120 || v.predictedEndTranslation.height < -360) {
+                                if canPlay && (dy < -100 || v.predictedEndTranslation.height < -240) {
                                     // Where the card's centre sits at rest, and the island's centre, in
                                     // this view's space (it starts below the status bar).
-                                    let rest = geo.size.height - height / 2
+                                    let rest = geo.size.height - 8 - height / 2
                                     let island = 29.5 - geo.safeAreaInsets.top
                                     send(toward: island - rest, posterHeight: height)
                                 } else if dy > 120 || v.predictedEndTranslation.height > 320 {
@@ -444,8 +447,7 @@ struct MediaDetailCard: View {
             }
         }
         .background(.black)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 36, bottomLeadingRadius: 36 * shrink,
-                                          bottomTrailingRadius: 36 * shrink, topTrailingRadius: 36))
+        .clipShape(.rect(cornerRadius: 44, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 14, weight: .bold))
@@ -498,23 +500,19 @@ struct MediaDetailCard: View {
         .buttonStyle(.plain)
     }
 
-    /// Plays the title and flies the poster into the Dynamic Island: up to just under it, then in,
-    /// shrinking to the island's height and fading as it goes.
+    /// Plays the title and carries on from the swipe in one motion: the poster shrinks to the
+    /// island's size as it travels up into it, fading only at the very end. The burst says it went,
+    /// so there's no toast unless it fails.
     private func send(toward island: CGFloat, posterHeight: CGFloat) {
-        Task { await play() }
-        withAnimation(.easeInOut(duration: 0.3)) {
+        Task { await play(announce: false) }
+        withAnimation(.easeIn(duration: 0.34)) {
             sending = true
-            sendY = island + 70
-            sendScale = 0.16
+            sendY = island
+            sendScale = 37 / posterHeight
         } completion: {
-            withAnimation(.easeIn(duration: 0.16)) {
-                sendY = island
-                sendScale = 30 / posterHeight
-                sendOpacity = 0
-            } completion: {
-                onSent()
-            }
+            onSent()
         }
+        withAnimation(.easeIn(duration: 0.1).delay(0.26)) { sendOpacity = 0 }
     }
 
     private func meta(_ d: MediaDetail) -> String {
@@ -560,12 +558,12 @@ struct MediaDetailCard: View {
         }
     }
 
-    private func play() async {
+    private func play(announce: Bool = true) async {
         working = true
         defer { working = false }
         do {
             let _: Empty? = try await session.api.run("playMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
-            toast.show("Playing on the TV")
+            if announce { toast.show("Playing on the TV") }
         } catch {
             toast.error(error)
         }

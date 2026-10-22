@@ -40,6 +40,8 @@ final class WatchFiles {
     // Protobuf requests waiting for their reply, by request id.
     private var pending: [UInt16: [UInt8]] = [:]
     private var inbox: [Protobuf.Fields] = []
+    /// Replies to our requests from services other than file sync, as whole Smart messages.
+    private var smartInbox: [Protobuf.Fields] = []
     /// Files the watch announced with a NewFileNotification during this sync.
     private var announced: [GarminFiles.ListedFile] = []
     private var nextRequestID: UInt16 = 0xC000
@@ -84,10 +86,15 @@ final class WatchFiles {
             // The flush can make the watch announce new files; give it a moment.
             try? await Task.sleep(for: .seconds(2))
 
+            progress = "Asking the watch for today"
+            fraction = 0.1
+            await askForToday()
+
             progress = "Listing files"
             fraction = 0.15
             listed = try await listFiles()
             store.saveListing(listed)
+            noteToday(listed)
             await probeListing() // DIAGNOSTIC: remove once health files arrive
 
             let wanted = listed
@@ -278,6 +285,7 @@ final class WatchFiles {
     private func reset() {
         pending = [:]
         inbox = []
+        smartInbox = []
         legacy = nil
         legacyError = nil
         streamHandle = nil
@@ -295,6 +303,53 @@ final class WatchFiles {
             if Date.now.timeIntervalSince(lastProgress) > idleTimeout { throw .timeout(what) }
             try? await Task.sleep(for: .milliseconds(100))
         }
+    }
+
+    // MARK: Today's all-day data
+
+    /// The watch keeps today's all-day file open until midnight and doesn't
+    /// list it. Before listing, ask in every way the protocol has for the watch
+    /// to sync now, in case one makes it close the file early:
+    /// CoreService.SyncRequest (Smart field 13, a request in Gadgetbridge's
+    /// protocol definitions it never sends), then the "app in foreground",
+    /// "sync ready" and "new download available" system events. Whatever the
+    /// watch answers is logged, and noteToday says whether a file for today
+    /// showed up. Nothing on the watch is changed.
+    private func askForToday() async {
+        guard let link else { return }
+        nextRequestID = 0xC000 + (nextRequestID &+ 1) % 0x3000
+        let id = nextRequestID
+        pending[id] = []
+        smartInbox = []
+        let syncRequest = Protobuf.encode([(13, .bytes(Protobuf.encode([(1, .bytes([]))])))])
+        link.send(GarminFiles.protobufRequest(.protobufRequest, requestID: id, body: syncRequest))
+        let deadline = Date.now.addingTimeInterval(5)
+        while smartInbox.isEmpty, Date.now < deadline, link.state == .connected {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        pending[id] = nil
+        if let reply = smartInbox.first {
+            let core = reply.bytes(13).flatMap(Protobuf.decode)
+            let status = core?.bytes(2).flatMap(Protobuf.decode)?.int(1)
+            link.note("TODAY core sync request: answered, Smart fields \(reply.values.keys.sorted()), core \(core?.values.keys.sorted() ?? []), status \(status.map(String.init) ?? "-")")
+        } else {
+            link.note("TODAY core sync request: no answer in 5 s")
+        }
+        for event in [Garmin.SystemEvent.hostDidEnterForeground, .syncReady, .newDownloadAvailable] {
+            link.send(GFDIMessage.systemEvent(event))
+        }
+        // Room for the watch to close a file and announce it (ItemAddedNotification).
+        try? await Task.sleep(for: .seconds(3))
+        link.note("TODAY after sync request and events: \(announced.count) file(s) announced")
+    }
+
+    /// Logs whether the listing has an all-day file from today, and the newest one it has.
+    private func noteToday(_ listed: [GarminFiles.ListedFile]) {
+        let monitors = listed.filter { $0.kind == "monitor" }.compactMap(\.date)
+        let midnight = Calendar.current.startOfDay(for: .now)
+        let newest = monitors.max()
+        let today = monitors.filter { $0 > midnight.addingTimeInterval(60) }.count
+        link?.note("TODAY listing: \(today) all-day file(s) from after midnight; newest \(newest.map { $0.formatted(.dateTime.month().day().hour().minute()) } ?? "none")")
     }
 
     // MARK: Legacy download
@@ -562,7 +617,11 @@ final class WatchFiles {
         } else {
             return false
         }
-        guard let sync = GarminFiles.fileSyncFields(body) else { return ours }
+        guard let sync = GarminFiles.fileSyncFields(body) else {
+            // Another service's reply to one of our requests (askForToday).
+            if ours, let smart = Protobuf.decode(body) { smartInbox.append(smart) }
+            return ours
+        }
         if !ours { link.send(GFDIMessage.protobufAck(message.type, requestID: chunk.requestID, offset: 0)) }
         if sync.has(5) { // TransferStatusRequest: answer as Gadgetbridge does
             link.send(GarminFiles.protobufRequest(.protobufResponse, requestID: chunk.requestID, body: GarminFiles.transferStatusResponse()))

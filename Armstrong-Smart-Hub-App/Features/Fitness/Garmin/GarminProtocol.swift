@@ -44,7 +44,9 @@ enum Garmin {
     enum SystemEvent: UInt8 {
         case syncComplete = 0
         case pairComplete = 4
+        case hostDidEnterForeground = 6
         case syncReady = 8
+        case newDownloadAvailable = 9
         case setupWizardComplete = 14
         case timeUpdated = 16
     }
