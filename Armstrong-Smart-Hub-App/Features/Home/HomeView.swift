@@ -36,6 +36,9 @@ struct HomeView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 48)
             }
+            // The search page's keyboard mustn't resize Home underneath it: that scrolled the page
+            // when search closed.
+            .ignoresSafeArea(.keyboard)
             .background(BrickLook.page.ignoresSafeArea())
             .foregroundStyle(BrickLook.ink)
             .tint(BrickLook.ink)
@@ -43,10 +46,14 @@ struct HomeView: View {
             .overlay {
                 if searching {
                     MediaSearchView(onPick: open) {
-                        withAnimation(.smooth(duration: 0.3)) { searching = false }
+                        withAnimation(.smooth(duration: 0.45)) { searching = false }
                     }
                     .transition(.opacity)
                 }
+            }
+            // A title requested from search flies to the shelf, so the search page gets out of its way.
+            .onAppear {
+                TitleCardPresenter.shared.revealShelf = { withAnimation(.smooth(duration: 0.45)) { searching = false } }
             }
             // Shelf titles' details are fetched ahead, so their cards open complete.
             .task(id: shelf.map(\.id)) { await MediaDetailCache.prefetch(shelf, api: session.api) }
@@ -97,6 +104,14 @@ struct HomeView: View {
             .habitEditor($editingHabit, store: habits)
             .toast(toast)
         }
+    }
+
+    /// What's on its way, then what's ready; a title just requested from its card goes first until
+    /// the hub lists it.
+    private var shelfRequests: [MediaRequest] {
+        let real = store.activeDownloads + store.ready
+        let pending = TitleCardPresenter.shared.justRequested.filter { p in !real.contains { $0.tmdbId == p.tmdbId } }
+        return pending + real
     }
 
     /// Shelf titles as the card opens them.
@@ -186,7 +201,7 @@ struct HomeView: View {
             habitsSection
 
             if !searching {
-                MediaSearchBar { withAnimation(.smooth(duration: 0.3)) { searching = true } }
+                MediaSearchBar { withAnimation(.smooth(duration: 0.45)) { searching = true } }
             } else {
                 Color.clear.frame(height: 50)
             }
@@ -194,8 +209,8 @@ struct HomeView: View {
             if let problem = store.state?.errors.requests {
                 Text("Download status isn't updating: \(problem)")
                     .font(.footnote).foregroundStyle(BrickLook.soft)
-            } else if !store.activeDownloads.isEmpty || !store.ready.isEmpty {
-                MediaShelf(requests: store.activeDownloads + store.ready, onPick: open)
+            } else if !shelfRequests.isEmpty {
+                MediaShelf(requests: shelfRequests, onPick: open)
             }
         }
     }

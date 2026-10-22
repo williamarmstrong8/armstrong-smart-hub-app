@@ -49,7 +49,10 @@ struct MediaSearchView: View {
                             .submitLabel(.search)
                         if searching { ProgressView().controlSize(.small) }
                         if typing {
-                            Button("Clear", systemImage: "xmark.circle.fill") { query = ""; results = nil }
+                            Button("Clear", systemImage: "xmark.circle.fill") {
+                                query = ""
+                                withAnimation(.smooth(duration: 0.4)) { results = nil }
+                            }
                                 .labelStyle(.iconOnly).foregroundStyle(BrickLook.soft).buttonStyle(.plain)
                         }
                     }
@@ -73,16 +76,12 @@ struct MediaSearchView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if let error { Text(error).font(.footnote).foregroundStyle(.red) }
-                    if typing {
-                        if let results {
-                            if results.isEmpty, !searching {
-                                Text("Nothing found.").font(.subheadline).foregroundStyle(BrickLook.soft)
-                            } else {
-                                grid(results)
-                            }
-                        }
+                    // Whatever was showing stays until the new results land, then they move into its slots.
+                    let shown = typing ? (results ?? recent) : recent
+                    if typing, results?.isEmpty == true, !searching {
+                        Text("Nothing found.").font(.subheadline).foregroundStyle(BrickLook.soft)
                     } else {
-                        grid(recent)
+                        grid(shown)
                     }
                 }
             }
@@ -108,7 +107,9 @@ struct MediaSearchView: View {
             searching = true
             defer { searching = false }
             do {
-                results = try await session.api.run("searchMedia", [.string(q)]) ?? []
+                let found: [MediaResult] = try await session.api.run("searchMedia", [.string(q)]) ?? []
+                guard !Task.isCancelled else { return }
+                withAnimation(.smooth(duration: 0.4)) { results = found }
                 error = nil
             } catch is CancellationError {
             } catch {
@@ -121,16 +122,14 @@ struct MediaSearchView: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12)], spacing: 16) {
             ForEach(items) { r in
                 Button {
+                    focused = false
                     onPick(MediaPick(id: r.id, mediaType: r.mediaType, title: r.title, posterURL: r.posterURL))
                 } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Poster(url: r.posterURL)
-                        Text(r.title).font(.footnote.weight(.medium)).lineLimit(2)
-                        Text([r.year, r.mediaType == .tv ? "Series" : "Movie"].compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption2).foregroundStyle(BrickLook.soft)
-                    }
+                    Poster(url: r.posterURL)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel([r.title, r.year].compactMap { $0 }.joined(separator: ", "))
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
             }
         }
     }
@@ -163,8 +162,12 @@ struct MediaShelf: View {
                     .disabled(r.tmdbId == nil)
                 }
             }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                TitleCardPresenter.shared.shelfSlot = CGRect(x: frame.minX, y: frame.minY, width: 150, height: 225)
+            }
+            .onDisappear { TitleCardPresenter.shared.shelfSlot = nil }
             .padding(.horizontal, 16)
-            .animation(.smooth, value: requests.map(\.id))
+            .animation(.smooth(duration: 0.45), value: requests.map(\.id))
         }
         .padding(.horizontal, -16)
         .scrollClipDisabled()
@@ -320,6 +323,12 @@ final class TitleCardPresenter {
     private(set) var sentAt: Date?
     let toast = Toast()
     @ObservationIgnored private(set) var onChanged: () -> Void = {}
+    /// Titles just requested from a card, shown first on the shelf as queued until the hub lists them.
+    private(set) var justRequested: [MediaRequest] = []
+    /// Where a new title lands on Home's shelf (its first slot, on screen), for a request's flight.
+    @ObservationIgnored var shelfSlot: CGRect?
+    /// Home's hook to get its shelf in view for a request's flight (it closes the search page).
+    @ObservationIgnored var revealShelf: () -> Void = {}
 
     /// Opens once the poster is in hand (normally cached, so at once), so it slides in with the card.
     func open(_ p: MediaPick, onChanged: @escaping () -> Void) {
@@ -331,7 +340,27 @@ final class TitleCardPresenter {
     }
 
     func close() {
-        withAnimation(.smooth(duration: 0.35)) { pick = nil; reveal = 0 }
+        withAnimation(.smooth(duration: 0.5)) { pick = nil; reveal = 0 }
+    }
+
+    /// A request is flying to the shelf: open its slot at the front, the others sliding over.
+    func requesting(_ p: MediaPick) {
+        let queued = MediaRequest(id: -p.id, tmdbId: p.id, title: p.title, mediaType: p.mediaType,
+                                  posterURL: p.posterURL, stage: .approved, progress: nil, etaSeconds: nil,
+                                  updatedAt: nil, statusMessage: nil)
+        revealShelf()
+        withAnimation(.smooth(duration: 0.45)) {
+            justRequested.removeAll { $0.tmdbId == p.id }
+            justRequested.insert(queued, at: 0)
+            reveal = 0
+        }
+    }
+
+    /// The poster has landed in its slot: drop the card in place, where the queued tile now shows.
+    func landed() {
+        var t = SwiftUI.Transaction(); t.disablesAnimations = true
+        withTransaction(t) { pick = nil }
+        onChanged()
     }
 
     /// The poster has gone into the island: drop the card where it is (it's already invisible) and
@@ -427,7 +456,13 @@ struct MediaDetailCard: View {
     @State private var armed = false
     /// Set once let go on a play swipe: the poster's flight into the island, taking over from the drag.
     @State private var sending = false
+    @State private var sendX: CGFloat = 0
     @State private var sendY: CGFloat = 0
+    /// This view's origin on screen, to place a request's flight to the shelf.
+    @State private var origin: CGPoint = .zero
+    /// The card's size and resting centre, as laid out.
+    @State private var cardSize: CGSize = .zero
+    @State private var restY: CGFloat = 0
     @State private var sendScale: CGFloat = 1
     @State private var sendOpacity: Double = 1
 
@@ -458,7 +493,7 @@ struct MediaDetailCard: View {
                     .frame(width: width, height: height)
                     .padding(.bottom, Self.inset)
                     .scaleEffect(sending ? sendScale : 1 - (1 - Self.smallest) * shrink)
-                    .offset(y: sending ? sendY : y)
+                    .offset(x: sending ? sendX : 0, y: sending ? sendY : y)
                     .opacity(sendOpacity)
                     .allowsHitTesting(!sending)
                     .gesture(
@@ -484,6 +519,9 @@ struct MediaDetailCard: View {
                     .sensoryFeedback(.impact(weight: .medium), trigger: armed) { _, now in now }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .onAppear { cardSize = CGSize(width: width, height: height); restY = rest }
+            .onChange(of: rest) { _, r in cardSize = CGSize(width: width, height: height); restY = r }
+            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { origin = $0 }
         }
         .ignoresSafeArea(edges: .bottom)
         .preferredColorScheme(.dark)
@@ -599,6 +637,25 @@ struct MediaDetailCard: View {
         .buttonStyle(.plain)
     }
 
+    /// Shrinks the card to a poster and flies it into the front of Home's shelf, which opens a slot
+    /// for it. False when the shelf isn't on screen to land in.
+    private func flyToShelf() -> Bool {
+        let presenter = TitleCardPresenter.shared
+        guard let slot = presenter.shelfSlot, cardSize.width > 0,
+              let screen = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.screen }).first,
+              slot.maxY > 0, slot.minY < screen.bounds.height else { return false }
+        presenter.requesting(pick)
+        withAnimation(.smooth(duration: 0.6)) {
+            sending = true
+            sendX = slot.midX - origin.x - cardSize.width / 2 - Self.inset
+            sendY = slot.midY - origin.y - restY
+            sendScale = slot.width / cardSize.width
+        } completion: {
+            presenter.landed()
+        }
+        return true
+    }
+
     /// Plays the title and carries on from the swipe in one motion: the poster shrinks to the
     /// island's size as it travels up into it, fading only at the very end. The burst says it went,
     /// so there's no toast unless it fails.
@@ -641,8 +698,10 @@ struct MediaDetailCard: View {
             let _: Empty? = try await session.api.run("requestMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
             requested = true
             MediaDetailCache.set(nil, for: pick)
-            toast.show("Requested \(pick.title)")
-            onChanged()
+            if !flyToShelf() {
+                toast.show("Requested \(pick.title)")
+                onChanged()
+            }
         } catch {
             toast.error(error)
         }

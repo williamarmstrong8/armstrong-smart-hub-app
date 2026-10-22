@@ -107,7 +107,7 @@ enum RequestStage: String, Codable, Sendable {
     var label: String {
         switch self {
         case .pendingApproval: return "Pending approval"
-        case .approved: return "Approved"
+        case .approved: return "Queued"
         case .searching: return "Searching"
         case .found: return "Found"
         case .downloading: return "Downloading"
