@@ -112,6 +112,10 @@ private struct BrickSheet: View {
     let store: BrickStore
     @Binding var path: [BrickRoute]
 
+    /// The button's height; the sheet's corners are its radius plus the gap around it, so the two curves run parallel.
+    private static let buttonHeight: CGFloat = 64
+    private static let cornerRadius = buttonHeight / 2 + Fit.gutter
+
     var body: some View {
         let p = store.blockingProfile ?? store.selected
         VStack(spacing: 0) {
@@ -141,13 +145,13 @@ private struct BrickSheet: View {
             }
             .font(.system(size: 18)).monospacedDigit().foregroundStyle(BrickLook.soft).padding(.top, 14)
             stats.padding(.top, 30)
-            brickButton.padding(.top, 30).padding(.bottom, 40)
+            brickButton.padding(.top, 30).padding(.bottom, Fit.gutter)
         }
         .padding(.horizontal, Fit.gutter + 20)
         .frame(maxWidth: .infinity)
         .background {
             // Reaches up under the status bar and past the top when pulled down.
-            UnevenRoundedRectangle(bottomLeadingRadius: 60, bottomTrailingRadius: 60, style: .continuous)
+            UnevenRoundedRectangle(bottomLeadingRadius: Self.cornerRadius, bottomTrailingRadius: Self.cornerRadius, style: .continuous)
                 .fill(BrickLook.sheet)
                 .padding(.top, -600)
                 .shadow(color: .black.opacity(0.10), radius: 18, y: 10)
@@ -190,7 +194,7 @@ private struct BrickSheet: View {
             Button { store.tapTag() } label: {
                 Text(store.isBlocking ? "Tap to Unbrick" : "Tap to Brick")
                     .font(.system(size: 18, weight: .medium))
-                    .frame(maxWidth: .infinity).padding(.vertical, 22)
+                    .frame(maxWidth: .infinity).frame(height: Self.buttonHeight)
                     .background(BrickLook.pill, in: Capsule())
                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
             }
