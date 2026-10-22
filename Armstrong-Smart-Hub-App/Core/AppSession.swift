@@ -32,6 +32,14 @@ final class AppSession {
         user = UserDefaults.standard.data(forKey: Self.userKey).flatMap { try? JSONDecoder().decode(HubUser.self, from: $0) }
         api = APIClient(baseURL: url ?? URL(string: "https://localhost")!, token: token)
         wire()
+        shareWithWidgets()
+    }
+
+    /// The widgets and controls call the hub with the same sign-in. A token saved before they
+    /// existed sits outside the shared Keychain group, so it's saved again once to move it there.
+    private func shareWithWidgets() {
+        SharedHub.setServerURL(token == nil ? nil : serverURL)
+        if let token, SharedHub.token != token { Keychain.write(token, for: "token") }
     }
 
     private func wire() {
@@ -72,6 +80,8 @@ final class AppSession {
         self.user = user
         api = APIClient(baseURL: url, token: token)
         wire()
+        shareWithWidgets()
+        WidgetSync.reloadAll()
     }
 
     func updateUser(_ user: HubUser) {
@@ -90,6 +100,8 @@ final class AppSession {
         DiskCache.clear()
         token = nil
         api = APIClient(baseURL: serverURL ?? URL(string: "https://localhost")!, token: nil)
+        shareWithWidgets()
+        WidgetSync.signedOut()
     }
 
     /// The hub's own web page, for things that need a browser (connecting Google).

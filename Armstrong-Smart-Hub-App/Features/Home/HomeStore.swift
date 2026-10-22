@@ -14,6 +14,8 @@ final class HomeStore {
             guard let state else { return }
             Self.lastKnown = state
             DiskCache.write(state, "home")
+            WidgetSync.lights(state)
+            if let tv = state.entities?.first(where: { $0.isTV && !$0.isUnavailable }) { TVActivityController.shared.tv = tv }
         }
     }
     private(set) var loadError: String?

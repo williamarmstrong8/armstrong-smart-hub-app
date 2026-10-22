@@ -830,6 +830,7 @@ struct MediaDetailCard: View {
         do {
             let _: Empty? = try await session.api.run("playMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
             if announce { toast.show("Playing on the TV") }
+            TVActivityController.shared.played()
         } catch {
             toast.error(error)
         }

@@ -2,7 +2,8 @@ import Foundation
 import Security
 
 /// Stores the hub session token in the Keychain, available after first unlock
-/// so background refreshes keep working, and never synced off the device.
+/// so background refreshes keep working, and never synced off the device. It's
+/// kept in the app group's access group, so the widgets can call the hub too.
 enum Keychain {
     private static let service = "com.armstrong.hub.session"
 
@@ -22,14 +23,19 @@ enum Keychain {
 
     static func write(_ value: String, for account: String) {
         delete(account)
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrAccessGroup as String: SharedHub.appGroup,
             kSecValueData as String: Data(value.utf8),
         ]
-        SecItemAdd(query as CFDictionary, nil)
+        // Without the group (a build missing the app group), keep it to the app rather than lose it.
+        if SecItemAdd(query as CFDictionary, nil) != errSecSuccess {
+            query[kSecAttrAccessGroup as String] = nil
+            SecItemAdd(query as CFDictionary, nil)
+        }
     }
 
     static func delete(_ account: String) {

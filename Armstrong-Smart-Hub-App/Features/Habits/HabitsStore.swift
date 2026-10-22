@@ -32,10 +32,14 @@ final class HabitsStore {
         loaded = true
     }
 
-    /// Keeps the board as it stands now (ticks included) for the next launch.
+    /// Keeps the board as it stands now (ticks included) for the next launch, and for the widgets.
     private func persist() {
         DiskCache.write(HabitsResponse(habits: habits, completions: Array(done), colors: colors, historyDays: historyDays), Self.cacheName)
+        WidgetSync.habits(self)
     }
+
+    /// Every tick as "habitId|day", the way the widgets count them.
+    var doneKeys: [String] { done.map { HabitsSnapshot.doneKey($0.habitId, $0.date) } }
 
     var doneToday: Int { habits.filter { isDone($0.id, today) }.count }
 

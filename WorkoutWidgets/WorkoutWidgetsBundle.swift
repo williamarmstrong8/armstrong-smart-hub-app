@@ -7,6 +7,14 @@ struct WorkoutWidgetsBundle: WidgetBundle {
     var body: some Widget {
         WorkoutLiveActivity()
         WorkoutHomeWidget()
+        TVLiveActivity()
+        LightsWidget()
+        LightControl()
+        HabitsWidget()
+        FitnessWidget()
+        BodyBatteryWidget()
+        StepsWidget()
+        BrickWidget()
     }
 }
 

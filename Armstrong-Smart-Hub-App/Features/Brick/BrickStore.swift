@@ -247,6 +247,7 @@ final class BrickStore: NSObject {
         now = Date()
         sessions.append(BrickSession(profileName: p.name, start: now))
         save(sessions, "brick.sessions")
+        WidgetSync.brick(self)
     }
 
     private func stop(byTimer: Bool = false) {
@@ -261,6 +262,7 @@ final class BrickStore: NSObject {
         endsAt = nil
         defaults.removeObject(forKey: "brick.active")
         defaults.removeObject(forKey: "brick.endsAt")
+        WidgetSync.brick(self)
     }
 
     /// Timers and schedules are checked while the app runs and each time it opens.
@@ -271,6 +273,7 @@ final class BrickStore: NSObject {
         if isBlocking { now = Date() }
         if let endsAt, endsAt <= Date(), isBlocking { stop(byTimer: true) }
         checkSchedules()
+        WidgetSync.brick(self)
     }
 
     private func startTicker() {

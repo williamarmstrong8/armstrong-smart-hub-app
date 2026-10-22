@@ -10,6 +10,7 @@ struct HubApp: App {
     init() {
         // Lock screen and widget buttons run here, even when they wake the app in the background.
         WorkoutActions.handler = { WorkoutStore.shared.handle($0) }
+        TVActions.handler = { await TVActivityController.shared.handle($0) }
         // Check-in notifications answer themselves from the lock screen.
         CheckinReminders.shared.start()
         #if os(iOS)
@@ -27,10 +28,17 @@ struct HubApp: App {
                 #endif
                 // Brick timers and schedules, whichever tab is open.
                 .onChange(of: scenePhase, initial: true) { _, p in if p == .active { BrickStore.shared.check() } }
+                // What's playing on the TV, checked while the app is open.
+                .onChange(of: scenePhase, initial: true) { _, p in
+                    guard session.isSignedIn else { return }
+                    if p == .active { TVActivityController.shared.appBecameActive() }
+                    if p == .background { TVActivityController.shared.appWentToBackground() }
+                }
                 // Live watch readings go to the hub from here, whichever tab is open (or none).
                 .onChange(of: session.isSignedIn, initial: true) { _, signedIn in
                     watch.api = signedIn ? session.api : nil
                     CheckinReminders.shared.api = signedIn ? session.api : nil
+                    TVActivityController.shared.api = signedIn ? session.api : nil
                     // The 8 am and 6 pm check-ins, from the last page the phone has.
                     if signedIn { Task { await CheckinReminders.shared.schedule(CheckinStore.shared) } }
                 }
@@ -135,6 +143,18 @@ struct MainTabView: View {
             if let sentAt = titles.sentAt { SendGlow(start: sentAt) }
         }
         .sensoryFeedback(.impact(weight: .heavy), trigger: titles.sentAt) { _, now in now != nil }
+        // Widgets and the TV's Live Activity open their tab: armstronghub://home, /fitness, /brick.
+        .onOpenURL { url in
+            guard url.scheme == "armstronghub" else { return }
+            switch url.host() {
+            case "home": tab = .home
+            case "finance": tab = .finance
+            case "calendar": tab = .calendar
+            case "fitness": tab = .fitness
+            case "brick": tab = .brick
+            default: break
+            }
+        }
         .toast(titles.toast)
         .fullScreenCover(isPresented: $workouts.isPresented) {
             ActiveWorkoutView(store: workouts, maxHr: workouts.maxHr)

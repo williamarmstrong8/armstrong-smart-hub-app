@@ -55,6 +55,7 @@ final class LiveStore {
         guard samples[key] != sample else { return }
         samples[key] = sample
         unsent.insert(key)
+        WidgetSync.live(kind, value, at: minute)
         if isNew {
             revision += 1
             prune()

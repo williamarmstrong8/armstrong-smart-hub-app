@@ -6,6 +6,17 @@
 	<array>
 		<string>D2760000850101</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.paularmstrong.ArmstrongSmartHubApp</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>armstronghub</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>Rings your wake-up alarm, even when the app is closed or the iPad is on silent.</string>
 	<key>NSSupportsLiveActivities</key>

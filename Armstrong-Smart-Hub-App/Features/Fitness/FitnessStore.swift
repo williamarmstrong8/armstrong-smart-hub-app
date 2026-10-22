@@ -34,6 +34,7 @@ final class FitnessStore {
             snapshot = try APIClient.decoder.decode(FitnessSnapshot.self, from: data)
             updatedAt = .now
             error = nil
+            WidgetSync.fitness(self)
             try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: Self.cacheURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch is CancellationError {
