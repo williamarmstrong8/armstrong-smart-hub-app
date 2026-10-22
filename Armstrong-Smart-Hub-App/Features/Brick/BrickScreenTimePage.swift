@@ -33,15 +33,18 @@ struct BrickScreenTimeSection: View {
             }
             .padding(.bottom, 22)
             if store.authorized {
-                NavigationLink(value: BrickRoute.screenTime) {
-                    DeviceActivityReport(.brickSummary, filter: screenTimeFilter(week: false))
-                        .frame(height: 250)
-                        .clipShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
-                        .allowsHitTesting(false)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, Fit.gutter)
+                DeviceActivityReport(.brickSummary, filter: screenTimeFilter(week: false))
+                    .frame(height: 250)
+                    .clipShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                    .allowsHitTesting(false)
+                    // An in-process layer on top takes every touch, so drags scroll the page and a tap opens the rest.
+                    .overlay {
+                        NavigationLink(value: BrickRoute.screenTime) {
+                            Color.clear.contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, Fit.gutter)
                 NavigationLink(value: BrickRoute.screenTime) {
                     HStack(spacing: 6) {
                         Text("All screen time")
