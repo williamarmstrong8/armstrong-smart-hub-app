@@ -30,6 +30,7 @@ struct TransactionsView: View {
                     .chartYAxis { AxisMarks { v in AxisValueLabel { if let d = v.as(Double.self) { Text(Fmt.axis(d)) } } } }
                     .frame(height: 150)
                 }
+                .listRowBackground(BrickLook.card)
             }
             ForEach(byDay, id: \.key) { day, items in
                 Section {
@@ -38,6 +39,7 @@ struct TransactionsView: View {
                             .contentShape(.rect)
                             .onTapGesture { retagging = t }
                     }
+                    .listRowBackground(BrickLook.card)
                 } header: {
                     HStack {
                         Text(day.formatted(.dateTime.weekday(.wide).month().day()))
@@ -47,6 +49,7 @@ struct TransactionsView: View {
                 }
             }
         }
+        .brickList()
         .overlay { if filtered.isEmpty { ContentUnavailableView.search(text: search) } }
         .searchable(text: $search, prompt: "Merchant or account")
         .navigationTitle(category ?? "Transactions")

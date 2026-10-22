@@ -50,6 +50,17 @@ final class FinanceStore {
         }
     }
 
+    /// What the Tag card works through: the hub's review queue, then any other money out that is still
+    /// Uncategorized, newest first. The queue alone misses anything that was never queued.
+    var tagQueue: [Transaction] {
+        guard let d = dashboard else { return [] }
+        let queued = Set(d.toReview.map(\.id))
+        let stray = d.transactions
+            .filter { !queued.contains($0.id) && !$0.hold && $0.category == "Uncategorized" && $0.categorySource == "auto" }
+            .sorted { $0.posted > $1.posted }
+        return d.toReview + stray
+    }
+
     /// Re-tags one transaction, optimistically.
     func retag(_ transaction: Transaction, to category: String, api: APIClient, toast: Toast) async {
         let before = response

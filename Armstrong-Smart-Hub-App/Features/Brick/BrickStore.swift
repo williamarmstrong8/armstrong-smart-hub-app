@@ -66,6 +66,8 @@ final class BrickStore: NSObject {
     private(set) var sessions: [BrickSession] = []
     private(set) var emergencyLeft = BrickStore.emergencyAllowance
     var message: String?
+    /// The time the pages count a running session up to. Ticks while bricked, so totals grow live.
+    private(set) var now = Date()
 
     @ObservationIgnored private let settings = ManagedSettingsStore()
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -242,7 +244,8 @@ final class BrickStore: NSObject {
         endsAt = p.timerMinutes.map { Date().addingTimeInterval(Double($0) * 60) }
         defaults.set(p.id.uuidString, forKey: "brick.active")
         defaults.set(endsAt?.timeIntervalSince1970 ?? 0, forKey: "brick.endsAt")
-        sessions.append(BrickSession(profileName: p.name, start: Date()))
+        now = Date()
+        sessions.append(BrickSession(profileName: p.name, start: now))
         save(sessions, "brick.sessions")
     }
 
@@ -253,6 +256,7 @@ final class BrickStore: NSObject {
             save(sessions, "brick.sessions")
         }
         settings.clearAllSettings()
+        now = Date()
         blockingProfileID = nil
         endsAt = nil
         defaults.removeObject(forKey: "brick.active")
@@ -261,6 +265,10 @@ final class BrickStore: NSObject {
 
     /// Timers and schedules are checked while the app runs and each time it opens.
     func check() {
+        // The system's answer can arrive after launch, or change in Settings; never trust a single read.
+        let approved = AuthorizationCenter.shared.authorizationStatus == .approved
+        if approved != authorized { authorized = approved }
+        if isBlocking { now = Date() }
         if let endsAt, endsAt <= Date(), isBlocking { stop(byTimer: true) }
         checkSchedules()
     }
@@ -311,6 +319,8 @@ final class BrickStore: NSObject {
     private func deliver(_ id: String) {
         let cb = onTag
         onTag = nil
+        // Done with this scan: its closing invalidation shouldn't show an error.
+        session = nil
         cb?(id)
     }
 }
@@ -324,6 +334,12 @@ extension BrickStore: NFCTagReaderSessionDelegate {
             guard self.session === session else { return }
             self.session = nil
             self.onTag = nil
+            // Cancelling, or closing after a good read, isn't worth a message; anything else is.
+            let code = (error as? NFCReaderError)?.code
+            if code != .readerSessionInvalidationErrorUserCanceled,
+               code != .readerSessionInvalidationErrorFirstNDEFTagRead {
+                self.message = "NFC scan failed: \(error.localizedDescription)"
+            }
         }
     }
 

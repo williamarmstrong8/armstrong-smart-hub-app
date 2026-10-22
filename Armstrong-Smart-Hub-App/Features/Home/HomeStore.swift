@@ -59,7 +59,8 @@ final class HomeStore {
             let next: HomeState = try await api.get("/api/home")
             var merged = next
             merged.entities = next.entities.map(applyOverrides) ?? state?.entities
-            merged.requests = next.requests ?? state?.requests
+            // A failed requests fetch must not leave last poll's downloads on screen as if current.
+            merged.requests = next.requests ?? (next.errors.requests == nil ? state?.requests : nil)
             merged.automations = next.automations ?? state?.automations
             state = merged
             loadError = nil

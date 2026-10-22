@@ -32,6 +32,7 @@ struct LightSheet: View {
                             Label(entity.stateLabel, systemImage: entity.symbol)
                         }
                     }
+                    .listRowBackground(BrickLook.card)
                     if entity.supportsBrightness {
                         Section("Brightness") {
                             HStack {
@@ -43,6 +44,7 @@ struct LightSheet: View {
                                 Text("\(Int(brightness))%").monospacedDigit().frame(width: 44, alignment: .trailing)
                             }
                         }
+                        .listRowBackground(BrickLook.card)
                     }
                     if entity.supportsColorTemp {
                         let minK = Double(entity.minKelvin ?? 2000)
@@ -56,6 +58,7 @@ struct LightSheet: View {
                                 Text("\(Int(kelvin))K").monospacedDigit().frame(width: 56, alignment: .trailing)
                             }
                         }
+                        .listRowBackground(BrickLook.card)
                     }
                     if entity.supportsColor {
                         Section("Color") {
@@ -77,8 +80,10 @@ struct LightSheet: View {
                             }
                             .padding(.vertical, 6)
                         }
+                        .listRowBackground(BrickLook.card)
                     }
                 }
+                .brickList()
                 .navigationTitle(entity.name)
                 .navigationBarTitleDisplayMode(.inline)
             }

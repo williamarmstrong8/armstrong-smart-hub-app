@@ -50,7 +50,7 @@ struct ExercisePicker: View {
                 filters
                 List {
                     if store.exercises.isEmpty {
-                        Text(store.error ?? "Loading the library…").foregroundStyle(Fit.muted).listRowSeparator(.hidden)
+                        Text(store.error ?? "Loading the library…").foregroundStyle(BrickLook.soft).listRowSeparator(.hidden)
                     }
                     if !filtering, !recent.isEmpty {
                         Section { ForEach(recent) { row($0) } } header: { header("Recent Exercises") }
@@ -68,15 +68,19 @@ struct ExercisePicker: View {
                     }
                 }
                 .listStyle(.plain)
+                .listRowSeparatorTint(BrickLook.line)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.immediately)
                 .contentMargins(.bottom, picked.isEmpty ? 0 : 90, for: .scrollContent)
             }
             .overlay(alignment: .bottom) { addButton }
-            .background(Fit.page)
-            .presentationBackground(Fit.page)
+            .background(BrickLook.page.ignoresSafeArea())
+            .presentationBackground(BrickLook.page)
+            .foregroundStyle(BrickLook.ink)
+            .tint(BrickLook.ink)
             .navigationTitle(replacing ? "Replace Exercise" : "Add Exercise")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(BrickLook.page, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button("Create") { creating = true } }
@@ -92,19 +96,19 @@ struct ExercisePicker: View {
     private var filters: some View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Fit.muted)
+                Image(systemName: "magnifyingglass").foregroundStyle(BrickLook.soft)
                 TextField("Search exercise", text: $search)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.search)
                 if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Fit.faint) }
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(BrickLook.soft) }
                         .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 14)
             .frame(height: 44)
-            .background(Fit.track.opacity(0.7), in: .rect(cornerRadius: 12))
+            .background(BrickLook.card, in: .capsule)
             HStack(spacing: 12) {
                 filterMenu(title: equipment.map(WorkoutFormat.label) ?? "All Equipment", selection: $equipment, options: Self.equipmentKinds, all: "All Equipment")
                 filterMenu(title: muscle.map(WorkoutFormat.label) ?? "All Muscles", selection: $muscle, options: Self.muscles, all: "All Muscles")
@@ -124,16 +128,16 @@ struct ExercisePicker: View {
         } label: {
             Text(title)
                 .font(.body.weight(.medium))
-                .foregroundStyle(selection.wrappedValue == nil ? Color.primary : Color.white)
+                .foregroundStyle(selection.wrappedValue == nil ? BrickLook.ink : BrickLook.page)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
-                .background(selection.wrappedValue == nil ? Fit.track.opacity(0.7) : Fit.energy, in: .rect(cornerRadius: 12))
+                .background(selection.wrappedValue == nil ? BrickLook.card : BrickLook.bar, in: .capsule)
         }
     }
 
     private func header(_ title: String) -> some View {
-        Text(title).font(.subheadline).foregroundStyle(Fit.muted).textCase(nil)
+        BrickCaps(text: title).foregroundStyle(BrickLook.soft)
     }
 
     private func row(_ exercise: Exercise) -> some View {
@@ -148,14 +152,14 @@ struct ExercisePicker: View {
                 HStack(spacing: 14) {
                     ExerciseThumb(exerciseId: exercise.id, muscle: exercise.muscle, size: 56)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(exercise.name).font(.body).foregroundStyle(.primary).lineLimit(2)
+                        Text(exercise.name).font(.body).foregroundStyle(BrickLook.ink).lineLimit(2)
                         Text(exercise.custom ? "\(exercise.muscleName) · Custom" : exercise.muscleName)
-                            .font(.subheadline).foregroundStyle(Fit.muted)
+                            .font(.subheadline).foregroundStyle(BrickLook.soft)
                     }
                     Spacer(minLength: 4)
                     if let order {
-                        Text("\(order + 1)").font(.caption.weight(.bold)).foregroundStyle(.white)
-                            .frame(width: 24, height: 24).background(Fit.energy, in: .circle)
+                        Text("\(order + 1)").font(.caption.weight(.bold)).foregroundStyle(BrickLook.page)
+                            .frame(width: 24, height: 24).background(BrickLook.bar, in: .circle)
                     }
                 }
                 .contentShape(.rect)
@@ -164,9 +168,9 @@ struct ExercisePicker: View {
             Button { path.append(ExerciseRoute(exercise)) } label: {
                 Image(systemName: "info")
                     .font(.footnote.weight(.bold))
-                    .foregroundStyle(Fit.muted)
+                    .foregroundStyle(BrickLook.soft)
                     .frame(width: 30, height: 30)
-                    .background(Fit.track, in: .circle)
+                    .background(BrickLook.card, in: .circle)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("About \(exercise.name)")
@@ -175,8 +179,8 @@ struct ExercisePicker: View {
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         .listRowBackground(
             HStack(spacing: 0) {
-                Rectangle().fill(order == nil ? Color.clear : Fit.energy).frame(width: 4)
-                Rectangle().fill(order == nil ? Color.clear : Fit.energy.opacity(0.08))
+                Rectangle().fill(order == nil ? Color.clear : BrickLook.bar).frame(width: 4)
+                Rectangle().fill(order == nil ? Color.clear : BrickLook.card)
             }
         )
     }
@@ -189,10 +193,10 @@ struct ExercisePicker: View {
             } label: {
                 Text(picked.count == 1 ? "Add exercise" : "Add \(picked.count) exercises")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(BrickLook.page)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
-                    .background(Fit.energy, in: .rect(cornerRadius: 14))
+                    .background(BrickLook.bar, in: .rect(cornerRadius: 18, style: .continuous))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
@@ -217,6 +221,7 @@ private struct NewExerciseSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Group {
                 TextField("Name", text: $name)
                 Picker("Muscle", selection: $muscle) {
                     ForEach(ExercisePicker.muscles, id: \.self) { Text(WorkoutFormat.label($0)).tag($0) }
@@ -232,9 +237,13 @@ private struct NewExerciseSheet: View {
                     Text("Time").tag("duration")
                 }
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
+                }
+                .listRowBackground(BrickLook.card)
             }
+            .brickList()
             .navigationTitle("New exercise")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(BrickLook.page, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -243,6 +252,7 @@ private struct NewExerciseSheet: View {
                 }
             }
         }
+        .presentationBackground(BrickLook.page)
     }
 
     private func save() async {

@@ -14,7 +14,6 @@ struct AutomationsSection: View {
         let items = payload.scenes + payload.scripts
         if !items.isEmpty || !payload.automations.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(title: "Automations")
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
                     // Scenes and scripts: tap to run.
                     ForEach(items) { item in
@@ -98,7 +97,7 @@ private struct AutomationCard: View {
                 Spacer(minLength: 0)
             }
             .padding(12)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+            .background(BrickLook.card, in: .rect(cornerRadius: 22))
             .contentShape(.rect(cornerRadius: 16))
         }
         .buttonStyle(CardPressStyle())

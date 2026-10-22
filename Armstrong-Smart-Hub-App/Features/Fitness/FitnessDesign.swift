@@ -75,9 +75,13 @@ struct FitPage<Content: View>: View {
         Group {
             if flat { stack } else { ScrollView { stack } }
         }
-        .background(Color(.systemBackground))
+        .environment(\.fitnessCards, true)
+        .background(BrickLook.page.ignoresSafeArea())
+        .foregroundStyle(BrickLook.ink)
+        .tint(BrickLook.ink)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(BrickLook.page, for: .navigationBar)
     }
 }
 
@@ -87,8 +91,30 @@ struct FitSection<Content: View>: View {
     var trailing: String?
     var divider = true
     @ViewBuilder var content: Content
+    @Environment(\.fitnessCards) private var cards
 
     var body: some View {
+        if cards { card } else { plain }
+    }
+
+    /// Brick's look: a centered heading, then the content on a soft card.
+    private var card: some View {
+        VStack(spacing: 18) {
+            if title != nil || trailing != nil {
+                VStack(spacing: 6) {
+                    if let title { Text(title).font(.system(size: 26, weight: .regular)).foregroundStyle(BrickLook.ink) }
+                    if let trailing { BrickCaps(text: trailing).foregroundStyle(BrickLook.soft).monospacedDigit() }
+                }
+            }
+            BrickCard(padding: 20) {
+                VStack(alignment: .leading, spacing: 16) { content }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 28)
+    }
+
+    private var plain: some View {
         VStack(alignment: .leading, spacing: 16) {
             if divider { Rectangle().fill(Fit.hairline).frame(height: 1).padding(.bottom, 8) }
             if title != nil || trailing != nil {
@@ -122,11 +148,12 @@ struct ScoreRing: View {
     var tint: Color
     var size: CGFloat = 96
     var label: String?
+    var track: Color = Fit.track
 
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                Circle().stroke(Fit.track, lineWidth: max(3, size * 0.035))
+                Circle().stroke(track, lineWidth: max(3, size * 0.035))
                 Circle().trim(from: 0, to: max(0.002, min(1, fraction)))
                     .stroke(tint, style: StrokeStyle(lineWidth: max(3, size * 0.035), lineCap: .round))
                     .rotationEffect(.degrees(-90))
@@ -247,7 +274,7 @@ struct DetailRow: View {
                 Text(value).font(.subheadline).foregroundStyle(valueColor ?? Fit.muted).monospacedDigit().multilineTextAlignment(.trailing)
             }
             .padding(.vertical, 11)
-            if !last { Rectangle().fill(Fit.hairline).frame(height: 1) }
+            if !last { FitDivider() }
         }
     }
 }

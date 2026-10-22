@@ -11,27 +11,18 @@ struct FinanceView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 28) {
+                    topBar.padding(.bottom, -20)
                     content
                 }
                 .padding(16)
-                .animation(.smooth(duration: 0.35), value: store.dashboard?.toReview.map(\.id))
+                .animation(.smooth(duration: 0.35), value: store.tagQueue.map(\.id))
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Finance")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { AccountButton() }
-                if store.response?.configured == true {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            Task { await store.sync(api: session.api, toast: toast) }
-                        } label: {
-                            if store.syncing { ProgressView() } else { Label("Sync", systemImage: "arrow.clockwise") }
-                        }
-                        .disabled(store.syncing)
-                    }
-                }
-            }
+            .background(BrickLook.page.ignoresSafeArea())
+            .foregroundStyle(BrickLook.ink)
+            .tint(BrickLook.ink)
+            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .task { if !store.fetched { await store.load(api: session.api) } }
             .refreshable { await store.load(api: session.api) }
             .sheet(item: $retagging) { t in
@@ -40,6 +31,20 @@ struct FinanceView: View {
                 }
             }
             .toast(toast)
+        }
+    }
+
+    private var topBar: some View {
+        BrickTopBar {
+            if store.response?.configured == true {
+                Button {
+                    Task { await store.sync(api: session.api, toast: toast) }
+                } label: {
+                    if store.syncing { ProgressView() } else { Image(systemName: "arrow.clockwise") }
+                }
+                .disabled(store.syncing)
+                .accessibilityLabel("Sync")
+            }
         }
     }
 
@@ -74,26 +79,15 @@ struct FinanceView: View {
             ErrorBanner(message: "Last sync failed: \(failure)")
         }
 
-        // The month, big.
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Spent in \(month)").font(.subheadline).foregroundStyle(.secondary)
-            Text(money(d.monthSpending.total))
-                .font(.system(size: 52, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-            Text(abs(pace) < 1 ? "Same pace as last month" : "\(money(abs(pace))) \(pace > 0 ? "more" : "less") than last month by now")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(pace > 0 ? Color.negative : Color.positive)
-            HStack(spacing: 16) {
-                Label(money(d.cash), systemImage: "banknote")
-                Label(money(d.netWorth), systemImage: "chart.line.uptrend.xyaxis")
-            }
-            .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
-            .padding(.top, 2)
+        BrickHero(caption: "Spent in \(month)", title: money(d.monthSpending.total),
+                  subtitle: abs(pace) < 1 ? "Same pace as last month" : "\(money(abs(pace))) \(pace > 0 ? "more" : "less") than last month by now",
+                  subtitleColor: pace > 0 ? Color.negative : Color.positive) {
+            BrickPill(text: money(d.cash), icon: "banknote")
+            BrickPill(text: money(d.netWorth), icon: "chart.line.uptrend.xyaxis")
         }
 
-        if let next = d.toReview.first {
-            TagCard(transaction: next, remaining: d.toReview.count, quick: r.quickCategories) { category in
+        if let next = store.tagQueue.first {
+            TagCard(transaction: next, remaining: store.tagQueue.count, quick: r.quickCategories) { category in
                 Task { await store.retag(next, to: category, api: session.api, toast: toast) }
             } onOther: {
                 retagging = next
@@ -115,7 +109,7 @@ struct FinanceView: View {
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)
             }
             .padding(16)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+            .background(BrickLook.card, in: .rect(cornerRadius: BrickLook.cardRadius))
         }
         .buttonStyle(.plain)
     }
@@ -167,7 +161,7 @@ private struct TagCard: View {
                 .frame(maxWidth: .infinity)
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
+        .background(BrickLook.card, in: .rect(cornerRadius: BrickLook.cardRadius))
         .sensoryFeedback(.selection, trigger: transaction.id)
     }
 
@@ -212,13 +206,13 @@ private struct MonthBars: View {
             + [Row(category: "Invest", amount: max(Self.income - spent, 0), kind: .invest)]
 
         return VStack(alignment: .leading, spacing: 16) {
-            Text("Where \(month) went").font(.headline)
+            Text("Where \(month) went").font(.system(size: 22))
             if items.isEmpty {
                 Text("No spending yet this month.").font(.subheadline).foregroundStyle(.secondary)
             } else {
                 ForEach(sheet) { row in
                     let over = row.budget.map { row.amount > $0 } ?? false
-                    let fill: Double = row.kind == .income || (row.budget == nil && row.category == "Bills & Utilities")
+                    let fill: Double = row.kind == .income || (row.budget == nil && (row.category == "Rent" || row.category == "Bills & Utilities"))
                         ? 1 : row.budget.map { row.amount / $0 } ?? row.amount / Self.income
                     let color: Color = row.kind == .income ? .positive : over ? .negative : .accentColor
                     HStack(spacing: 12) {
@@ -250,7 +244,7 @@ private struct MonthBars: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
+        .background(BrickLook.card, in: .rect(cornerRadius: BrickLook.cardRadius))
     }
 }
 
@@ -260,7 +254,7 @@ private struct AccountsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Accounts").font(.headline)
+            Text("Accounts").font(.system(size: 22))
             ForEach(accounts) { a in
                 HStack(spacing: 12) {
                     BankLogo(institution: a.institution, kind: a.kind)
@@ -276,7 +270,7 @@ private struct AccountsCard: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
+        .background(BrickLook.card, in: .rect(cornerRadius: BrickLook.cardRadius))
     }
 }
 
@@ -384,6 +378,7 @@ struct CategoryPicker: View {
                 Section {
                     TransactionRow(transaction: transaction)
                 }
+                .listRowBackground(BrickLook.card)
                 Section("Tag") {
                     ForEach(options, id: \.self) { c in
                         Button {
@@ -398,13 +393,16 @@ struct CategoryPicker: View {
                         }
                     }
                 }
+                .listRowBackground(BrickLook.card)
                 Section("New tag") {
                     HStack {
                         TextField("Name", text: $custom).submitLabel(.done).onSubmit(addCustom)
                         Button("Add", action: addCustom).disabled(custom.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
+                .listRowBackground(BrickLook.card)
             }
+            .brickList()
             .navigationTitle("Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }

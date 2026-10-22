@@ -12,7 +12,7 @@ struct WorkoutsSection: View {
     var onResume: () -> Void
 
     var body: some View {
-        FitSection(title: "Workouts", trailing: store.pending.isEmpty ? nil : "\(store.pending.count) waiting to upload") {
+        FitSection(trailing: store.pending.isEmpty ? nil : "\(store.pending.count) waiting to upload") {
             if let active = store.active {
                 Button(action: onResume) {
                     HStack(spacing: 14) {
@@ -45,7 +45,7 @@ struct WorkoutsSection: View {
             VStack(spacing: 0) {
                 ForEach(store.workouts.prefix(3)) { workout in
                     NavigationLink(value: WorkoutRoute(id: workout.id)) { WorkoutRow(workout: workout) }.buttonStyle(.plain)
-                    Rectangle().fill(Fit.hairline).frame(height: 1)
+                    FitDivider()
                 }
                 NavigationLink { WorkoutsPage(store: store, onStart: onStart) } label: {
                     LinkRow(title: store.routines.count > 3 ? "All \(store.routines.count) routines and history" : "Routines and history",
@@ -67,6 +67,7 @@ struct RoutineCard: View {
     var onStart: () -> Void
     @State private var editing = false
     @State private var confirmDelete = false
+    @Environment(\.fitnessCards) private var cards
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -96,7 +97,7 @@ struct RoutineCard: View {
             .disabled(!canStart)
         }
         .padding(14)
-        .background(Fit.track.opacity(0.5), in: .rect(cornerRadius: 14))
+        .background(cards ? BrickLook.page : Fit.track.opacity(0.5), in: .rect(cornerRadius: 14))
         .contentShape(.rect)
         .onTapGesture { editing = true }
         .sheet(isPresented: $editing) { RoutineEditor(store: store, routine: routine) }
@@ -185,7 +186,7 @@ struct WorkoutsPage: View {
                         VStack(spacing: 0) {
                             ForEach(store.workouts) { workout in
                                 NavigationLink(value: WorkoutRoute(id: workout.id)) { WorkoutRow(workout: workout) }.buttonStyle(.plain)
-                                if workout.id != store.workouts.last?.id { Rectangle().fill(Fit.hairline).frame(height: 1) }
+                                if workout.id != store.workouts.last?.id { FitDivider() }
                             }
                         }
                     }
@@ -207,7 +208,9 @@ struct WorkoutsPage: View {
             .padding(.horizontal, Fit.gutter)
             .padding(.bottom, 40)
         }
-        .background(Color(.systemBackground))
+        .environment(\.fitnessCards, true)
+        .background(BrickLook.page.ignoresSafeArea())
+        .foregroundStyle(BrickLook.ink)
         .navigationTitle("Workouts")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await store.load(api: session.api) }

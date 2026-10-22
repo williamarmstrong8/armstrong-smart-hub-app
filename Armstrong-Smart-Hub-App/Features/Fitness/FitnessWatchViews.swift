@@ -49,7 +49,7 @@ struct RacesSection: View {
                                 .frame(minWidth: 84, alignment: .trailing)
                         }
                         .padding(.vertical, 11)
-                        if index < shown.count - 1 { Rectangle().fill(Fit.hairline).frame(height: 1) }
+                        if index < shown.count - 1 { FitDivider() }
                     }
                 }
             }
@@ -235,7 +235,7 @@ struct ActivityPage: View {
                                 .monospacedDigit().frame(width: 64, alignment: .trailing)
                         }
                         .padding(.vertical, 11)
-                        if index < sets.count - 1 { Rectangle().fill(Fit.hairline).frame(height: 1) }
+                        if index < sets.count - 1 { FitDivider() }
                     }
                 }
             }
@@ -270,7 +270,7 @@ struct ActivityPage: View {
                                 .frame(width: 36, alignment: .trailing)
                         }
                         .padding(.vertical, 10)
-                        if index < laps.count - 1 { Rectangle().fill(Fit.hairline).frame(height: 1) }
+                        if index < laps.count - 1 { FitDivider() }
                     }
                 }
             }

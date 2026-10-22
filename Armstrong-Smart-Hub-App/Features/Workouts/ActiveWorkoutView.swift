@@ -40,6 +40,7 @@ struct ActiveWorkoutView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(BrickLook.page, for: .navigationBar)
             .toolbar { toolbar }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: store) }
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: store) }
@@ -65,7 +66,9 @@ struct ActiveWorkoutView: View {
                 if let exercise = picked.first { store.replaceExercise(target.id, with: exercise) }
             }
         }
-        .presentationBackground(Fit.page)
+        .presentationBackground(BrickLook.page)
+        .foregroundStyle(BrickLook.ink)
+        .tint(BrickLook.ink)
         .sheet(isPresented: $showingSettings) {
             WorkoutSettingsSheet(store: store, defaultUnit: $defaultUnit)
         }
@@ -102,7 +105,7 @@ struct ActiveWorkoutView: View {
             Button { dismiss() } label: { Image(systemName: "chevron.down") }.accessibilityLabel("Minimize")
         }
         ToolbarItem(placement: .principal) {
-            Text(store.active?.name ?? "Workout").font(.headline).lineLimit(1)
+            Text(store.active?.name ?? "Workout").font(.system(size: 20, weight: .regular)).lineLimit(1)
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
@@ -121,15 +124,11 @@ struct ActiveWorkoutView: View {
         }
         ToolbarItem(placement: .confirmationAction) {
             if reordering {
-                Button("Done") { withAnimation(.snappy) { reordering = false } }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Fit.energy)
+                Button { withAnimation(.snappy) { reordering = false } } label: { WorkoutToolbarLabel(title: "Done") }
             } else {
-                Button("Finish") {
+                Button {
                     if store.active?.completedSets.isEmpty ?? true { confirmEmpty = true } else { finish() }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Fit.energy)
+                } label: { WorkoutToolbarLabel(title: "Finish") }
             }
         }
     }
@@ -161,19 +160,19 @@ struct ActiveWorkoutView: View {
     /// One row per exercise, held and dragged into a new order.
     private func reorderList(_ workout: ActiveWorkout) -> some View {
         List {
-            Text("Hold and drag to reorder").font(.footnote).foregroundStyle(Fit.muted)
+            Text("Hold and drag to reorder").font(.footnote).foregroundStyle(BrickLook.soft)
                 .workoutRow(top: 12, bottom: 4)
                 .moveDisabled(true)
             ForEach(workout.exercises) { exercise in
                 ReorderRow(exerciseId: exercise.exerciseId, name: exercise.name, muscle: store.exercise(exercise.exerciseId)?.muscle)
-                    .listRowBackground(Fit.page)
+                    .listRowBackground(BrickLook.page)
                     .deleteDisabled(true)
             }
             .onMove { store.moveExercises(from: $0, to: $1) }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Fit.page)
+        .background(BrickLook.page)
         .environment(\.editMode, .constant(.active))
     }
 
@@ -184,9 +183,9 @@ struct ActiveWorkoutView: View {
 
             if workout.exercises.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "dumbbell").font(.largeTitle).foregroundStyle(Fit.faint)
-                    Text("Get started").font(.headline)
-                    Text("Add an exercise to start your workout").font(.subheadline).foregroundStyle(Fit.muted)
+                    Image(systemName: "dumbbell").font(.system(size: 34, weight: .light)).foregroundStyle(BrickLook.soft)
+                    Text("Get started").font(.system(size: 26, weight: .regular))
+                    Text("Add an exercise to start your workout").font(.subheadline).foregroundStyle(BrickLook.soft)
                 }
                 .frame(maxWidth: .infinity)
                 .workoutRow(top: 24, bottom: 24)
@@ -199,17 +198,17 @@ struct ActiveWorkoutView: View {
             Button { picking = true } label: {
                 Label("Add Exercise", systemImage: "plus")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(BrickLook.page)
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
-                    .background(Fit.energy, in: .rect(cornerRadius: 12))
+                    .background(BrickLook.bar, in: .rect(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.borderless)
             .workoutRow(top: 20, bottom: 6)
 
             HStack(spacing: 12) {
                 Button { showingSettings = true } label: {
-                    Text("Settings").greyButton(.primary)
+                    Text("Settings").greyButton(BrickLook.ink)
                 }
                 .buttonStyle(.borderless)
                 Button { confirmDiscard = true } label: {
@@ -221,7 +220,7 @@ struct ActiveWorkoutView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Fit.page)
+        .background(BrickLook.page)
         .scrollDismissesKeyboard(.immediately)
         .contentMargins(.bottom, store.restEndsAt == nil ? 0 : 210, for: .scrollContent)
     }
@@ -248,11 +247,11 @@ struct ActiveWorkoutView: View {
                 .swipeActions { Button("Delete", role: .destructive) { store.removeSet(exercise.id, set.id) } }
                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                 .listRowSeparator(.hidden)
-                .listRowBackground(set.completedAt != nil ? Fit.positive.opacity(0.22) : Color.clear)
+                .listRowBackground(set.completedAt != nil ? BrickLook.live.opacity(0.22) : Color.clear)
         }
 
         Button { store.addSet(exercise: exercise.id) } label: {
-            Label("Add Set", systemImage: "plus").greyButton(.primary)
+            Label("Add Set", systemImage: "plus").greyButton(BrickLook.ink)
         }
         .buttonStyle(.borderless)
         .workoutRow(top: 10, bottom: 8)
@@ -292,7 +291,7 @@ extension Text {
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity)
             .frame(height: 46)
-            .background(Fit.track, in: .rect(cornerRadius: 12))
+            .modifier(GreyFill())
     }
 }
 
@@ -302,7 +301,7 @@ extension Label where Title == Text, Icon == Image {
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity)
             .frame(height: 46)
-            .background(Fit.track, in: .rect(cornerRadius: 12))
+            .modifier(GreyFill())
     }
 }
 
@@ -324,11 +323,11 @@ private struct WorkoutStats: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 12) {
                 TimelineView(.periodic(from: workout.startedAt, by: 1)) { context in
-                    stat("Duration", WorkoutFormat.elapsed(context.date.timeIntervalSince(workout.startedAt)), tint: Fit.energy)
+                    stat("Duration", WorkoutFormat.elapsed(context.date.timeIntervalSince(workout.startedAt)), tint: BrickLook.bar)
                 }
                 stat("Volume", WorkoutFormat.volume(workout.volumeKg, unit: workout.unit))
             }
-            Rectangle().fill(Fit.hairline).frame(height: 1)
+            Rectangle().fill(BrickLook.line).frame(height: 1)
             heart
             zones
         }
@@ -336,7 +335,7 @@ private struct WorkoutStats: View {
 
     private func stat(_ label: String, _ value: String, tint: Color = .primary) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.footnote).foregroundStyle(Fit.muted)
+            Text(label).font(.footnote).foregroundStyle(BrickLook.soft)
             Text(value).font(.system(size: 26, weight: .semibold)).monospacedDigit()
                 .foregroundStyle(tint).lineLimit(1).minimumScaleFactor(0.6)
         }
@@ -357,19 +356,19 @@ private struct WorkoutStats: View {
     private var heart: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Heart rate").font(.footnote).foregroundStyle(Fit.muted)
+                BrickCaps(text: "Heart rate").foregroundStyle(BrickLook.soft)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Image(systemName: "heart.fill")
                         .font(.title2)
                         .foregroundStyle(Fit.heart)
                         .symbolEffect(.pulse, isActive: liveBpm != nil)
                     if let bpm = liveBpm {
-                        Text("\(bpm)").font(.system(size: 44, weight: .semibold)).monospacedDigit()
+                        Text("\(bpm)").font(.system(size: 44, weight: .light)).monospacedDigit()
                             .contentTransition(.numericText(value: Double(bpm)))
                             .animation(.snappy, value: bpm)
-                        Text("bpm").font(.subheadline).foregroundStyle(Fit.muted)
+                        Text("bpm").font(.subheadline).foregroundStyle(BrickLook.soft)
                     } else {
-                        Text(status).font(.title3).foregroundStyle(Fit.muted)
+                        Text(status).font(.title3).foregroundStyle(BrickLook.soft)
                     }
                 }
             }
@@ -378,10 +377,10 @@ private struct WorkoutStats: View {
                 if let zone = currentZone, let bpm = zoneBpm {
                     Text("Zone \(zone + 1)").font(.title3.weight(.bold)).foregroundStyle(HeartZones.colors[zone])
                     Text("\(HeartZones.names[zone]) · \(Int((bpm / peak * 100).rounded()))% max")
-                        .font(.caption).foregroundStyle(Fit.muted)
+                        .font(.caption).foregroundStyle(BrickLook.soft)
                 }
                 if let summary = summary {
-                    Text(summary).font(.caption).foregroundStyle(Fit.muted).monospacedDigit()
+                    Text(summary).font(.caption).foregroundStyle(BrickLook.soft).monospacedDigit()
                 }
             }
         }
@@ -410,9 +409,9 @@ private struct WorkoutStats: View {
                         .fill(color.opacity(on ? 1 : 0.25))
                         .frame(height: on ? 14 : 8)
                     Text("Z\(zone + 1)").font(.caption.weight(on ? .bold : .medium))
-                        .foregroundStyle(on ? color : Fit.muted)
+                        .foregroundStyle(on ? color : BrickLook.soft)
                     Text(time[zone] >= 1 ? WorkoutFormat.elapsed(time[zone]) : "–")
-                        .font(.caption2).foregroundStyle(on ? Color.primary : Fit.muted).monospacedDigit()
+                        .font(.caption2).foregroundStyle(on ? BrickLook.ink : BrickLook.soft).monospacedDigit()
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
@@ -445,8 +444,8 @@ private struct RepsProgress: View {
         VStack(spacing: 6) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Fit.track)
-                    Capsule().fill(Fit.energy).frame(width: geo.size.width * fraction)
+                    Capsule().fill(BrickLook.line)
+                    Capsule().fill(BrickLook.bar).frame(width: geo.size.width * fraction)
                 }
             }
             .frame(height: 6)
@@ -456,13 +455,13 @@ private struct RepsProgress: View {
                 Text("\(Int((fraction * 100).rounded()))%")
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(Fit.muted)
+            .foregroundStyle(BrickLook.soft)
             .monospacedDigit()
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
         .padding(.bottom, 8)
-        .background(Fit.page)
+        .background(BrickLook.page)
         .animation(.snappy, value: done)
         .accessibilityElement(children: .combine)
     }
@@ -500,7 +499,7 @@ private struct ExerciseHeader: View {
                 HStack(spacing: 12) {
                     ExerciseThumb(exerciseId: exercise.exerciseId, muscle: store.exercise(exercise.exerciseId)?.muscle, size: 48)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(exercise.name).font(.title3.weight(.semibold)).foregroundStyle(Fit.energy)
+                        Text(exercise.name).font(.system(size: 20, weight: .regular)).foregroundStyle(BrickLook.ink)
                             .multilineTextAlignment(.leading)
                         if exercise.superset != nil {
                             Text("Superset").font(.caption.weight(.medium)).foregroundStyle(Fit.health)
@@ -526,7 +525,7 @@ private struct ExerciseHeader: View {
                     .frame(width: 36, height: 36).contentShape(.rect)
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(.primary)
+            .foregroundStyle(BrickLook.ink)
         }
     }
 
@@ -585,10 +584,10 @@ struct WorkoutPill: View {
             Text(title).monospacedDigit()
         }
         .font(.subheadline.weight(.medium))
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 14)
+        .foregroundStyle(BrickLook.ink)
+        .padding(.horizontal, 16)
         .frame(height: 38)
-        .background(Fit.track, in: .rect(cornerRadius: 10))
+        .background(BrickLook.card, in: .capsule)
     }
 }
 
@@ -617,8 +616,9 @@ private struct ExerciseSetsHeader: View {
             }
             Image(systemName: "checkmark").frame(width: WorkoutColumns.check)
         }
-        .font(.footnote.weight(.medium))
-        .foregroundStyle(Fit.muted)
+        .font(.system(size: 12, weight: .medium))
+        .tracking(1.0)
+        .foregroundStyle(BrickLook.soft)
     }
 }
 
@@ -647,11 +647,11 @@ private struct SetRow: View {
                         .font(.body.weight(.semibold)).monospacedDigit()
                         .foregroundStyle(kindColor)
                         .frame(width: WorkoutColumns.set, height: 40)
-                        .background(Fit.track.opacity(done ? 0.3 : 1), in: .rect(cornerRadius: 8))
+                        .background(BrickLook.card.opacity(done ? 0.3 : 1), in: .rect(cornerRadius: 8))
                 }
                 .buttonStyle(.borderless)
                 Button(action: fillFromPrevious) {
-                    Text(previous).font(.body).foregroundStyle(Fit.muted).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(previous).font(.body).foregroundStyle(BrickLook.soft).lineLimit(1).minimumScaleFactor(0.7)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderless)
@@ -668,9 +668,9 @@ private struct SetRow: View {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.bold))
-                        .foregroundStyle(done ? Color.white : Fit.muted)
+                        .foregroundStyle(done ? BrickLook.page : BrickLook.soft)
                         .frame(width: WorkoutColumns.check, height: 40)
-                        .background(done ? Fit.positive : Fit.track, in: .rect(cornerRadius: 8))
+                        .background(done ? BrickLook.live : BrickLook.card, in: .rect(cornerRadius: 8))
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(done ? "Uncheck set" : "Check off set")
@@ -714,7 +714,7 @@ private struct SetRow: View {
             .multilineTextAlignment(.center)
             .font(.body.weight(done ? .bold : .medium)).monospacedDigit()
             .frame(width: width, height: 40)
-            .background(done ? Color.clear : Fit.track.opacity(0.5), in: .rect(cornerRadius: 8))
+            .background(done ? Color.clear : BrickLook.card, in: .rect(cornerRadius: 8))
     }
 
     /// A timed set: a play button that counts the set down, and the time typed
@@ -728,9 +728,9 @@ private struct SetRow: View {
                 } label: {
                     Image(systemName: timing == nil ? "play.fill" : "stop.fill")
                         .font(.footnote)
-                        .foregroundStyle(Fit.energy)
+                        .foregroundStyle(BrickLook.bar)
                         .frame(width: 32, height: 32)
-                        .overlay(Circle().stroke(Fit.energy, lineWidth: 2))
+                        .overlay(Circle().stroke(BrickLook.bar, lineWidth: 2))
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(timing == nil ? "Start timer" : "Stop timer")
@@ -740,7 +740,7 @@ private struct SetRow: View {
                     TimelineView(.periodic(from: .now, by: 0.25)) { context in
                         let left = max(0, timing.endsAt.timeIntervalSince(context.date)).rounded(.up)
                         Text(WorkoutFormat.timer(String(Int(left))))
-                            .font(.body.weight(.semibold)).monospacedDigit().foregroundStyle(Fit.energy)
+                            .font(.body.weight(.semibold)).monospacedDigit().foregroundStyle(BrickLook.bar)
                     }
                 } else {
                     TextField(entry.repsHint.isEmpty ? "00:00" : WorkoutFormat.timer(entry.repsHint), text: Binding(
@@ -752,8 +752,8 @@ private struct SetRow: View {
                 }
             }
             .frame(width: WorkoutColumns.time, height: 40)
-            .background(done ? Color.clear : Fit.track.opacity(0.5), in: .rect(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(timing == nil ? Color.clear : Fit.energy, lineWidth: 1.5))
+            .background(done ? Color.clear : BrickLook.card, in: .rect(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(timing == nil ? Color.clear : BrickLook.bar, lineWidth: 1.5))
         }
         .frame(width: WorkoutColumns.time + 40, alignment: .trailing)
     }
@@ -781,25 +781,27 @@ private struct RestPanel: View {
                 let remaining = max(0, end.timeIntervalSince(context.date))
                 VStack(spacing: 0) {
                     GeometryReader { geo in
-                        Rectangle().fill(Fit.energy)
+                        Rectangle().fill(BrickLook.bar)
                             .frame(width: geo.size.width * (store.restTotal > 0 ? min(1, remaining / store.restTotal) : 0))
                     }
                     .frame(height: 4)
                     VStack(spacing: 16) {
                         Text(WorkoutFormat.timer(String(Int(remaining.rounded(.up)))))
-                            .font(.system(size: 64, weight: .medium)).monospacedDigit()
+                            .font(.system(size: 64, weight: .light)).monospacedDigit()
                             .contentTransition(.numericText(countsDown: true))
                         HStack(spacing: 12) {
-                            button("-15", fill: Fit.track, text: .primary) { store.adjustRest(by: -15) }
-                            button("+15", fill: Fit.track, text: .primary) { store.adjustRest(by: 15) }
-                            button("Skip", fill: Fit.energy, text: .white) { store.skipRest() }
+                            button("-15", fill: BrickLook.card, text: BrickLook.ink) { store.adjustRest(by: -15) }
+                            button("+15", fill: BrickLook.card, text: BrickLook.ink) { store.adjustRest(by: 15) }
+                            button("Skip", fill: BrickLook.bar, text: BrickLook.page) { store.skipRest() }
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 14)
                     .padding(.bottom, 10)
                 }
-                .background(Color(.secondarySystemBackground).ignoresSafeArea(edges: .bottom))
+                .background(BrickLook.sheet.ignoresSafeArea(edges: .bottom))
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: BrickLook.cardRadius, topTrailingRadius: BrickLook.cardRadius, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 10, y: -2)
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
@@ -809,7 +811,7 @@ private struct RestPanel: View {
         Button(action: action) {
             Text(title).font(.title3.weight(.medium)).foregroundStyle(text)
                 .frame(maxWidth: .infinity).frame(height: 52)
-                .background(fill, in: .rect(cornerRadius: 14))
+                .background(fill, in: .rect(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -831,6 +833,7 @@ private struct WorkoutSettingsSheet: View {
                     TextField("Notes", text: Binding(get: { store.active?.notes ?? "" }, set: { store.active?.notes = $0 }), axis: .vertical)
                         .lineLimit(2...6)
                 }
+                .listRowBackground(BrickLook.card)
                 Section {
                     Picker("Weight unit", selection: Binding(get: { store.active?.unit ?? defaultUnit }, set: { unit in
                         store.setUnit(unit)
@@ -838,16 +841,41 @@ private struct WorkoutSettingsSheet: View {
                     })) {
                         ForEach(WeightUnit.allCases) { Text($0 == .lb ? "lbs" : "kg").tag($0) }
                     }
+                    .listRowBackground(BrickLook.card)
                 } footer: {
                     Text("Weights already typed are converted.")
                 }
             }
+            .brickList()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(BrickLook.page, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        .presentationBackground(BrickLook.page)
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// The grey fill behind a button; on the overview's soft cards it drops darker so it stands out.
+struct GreyFill: ViewModifier {
+    @Environment(\.fitnessCards) private var cards
+    func body(content: Content) -> some View {
+        content.background(cards ? BrickLook.page : BrickLook.card, in: .rect(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// The filled slate pill for Finish, Done and Save in a workout's toolbar.
+struct WorkoutToolbarLabel: View {
+    var title: String
+    var body: some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(BrickLook.page)
+            .padding(.horizontal, 16)
+            .frame(height: 34)
+            .background(BrickLook.bar, in: .capsule)
     }
 }

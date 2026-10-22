@@ -129,7 +129,7 @@ struct Poster: View {
                 }
             }
         }
-        .frame(width: width)
+        .frame(width: width, height: width.map { $0 * 1.5 })
         .aspectRatio(2 / 3, contentMode: .fit)
         .clipShape(.rect(cornerRadius: 8))
     }

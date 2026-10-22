@@ -61,8 +61,13 @@ struct ExerciseDetailPage: View {
             }
             .refreshable { await load() }
         }
+        .environment(\.fitnessCards, true)
+        .background(BrickLook.page.ignoresSafeArea())
+        .foregroundStyle(BrickLook.ink)
+        .tint(BrickLook.ink)
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(BrickLook.page, for: .navigationBar)
         .task { await load() }
         .task { details = await ExerciseMedia.details(route.id) }
     }
@@ -81,8 +86,8 @@ struct ExerciseDetailPage: View {
             ForEach(Page.allCases, id: \.self) { item in
                 Button { withAnimation(.snappy) { tab = item } } label: {
                     VStack(spacing: 10) {
-                        Text(item.rawValue).font(.body).foregroundStyle(tab == item ? Fit.energy : Fit.muted)
-                        Rectangle().fill(tab == item ? Fit.energy : Color.clear).frame(height: 3)
+                        Text(item.rawValue).font(.system(size: 17)).foregroundStyle(tab == item ? BrickLook.ink : BrickLook.soft)
+                        Capsule().fill(tab == item ? BrickLook.ink : Color.clear).frame(height: 3)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(.rect)
@@ -91,7 +96,7 @@ struct ExerciseDetailPage: View {
             }
         }
         .padding(.top, 6)
-        .overlay(alignment: .bottom) { Rectangle().fill(Fit.hairline).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(BrickLook.line).frame(height: 1) }
     }
 
     // MARK: Summary
@@ -99,9 +104,12 @@ struct ExerciseDetailPage: View {
     private var summary: some View {
         VStack(alignment: .leading, spacing: 0) {
             ExerciseAnimation(exerciseId: route.id, muscle: route.muscle)
+                .clipShape(.rect(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                .padding(.horizontal, Fit.gutter)
+                .padding(.top, 16)
             VStack(alignment: .leading, spacing: 4) {
-                Text(route.name).font(.title2.weight(.bold))
-                Text(muscleLine).font(.subheadline).foregroundStyle(Fit.muted)
+                Text(route.name).font(.system(size: 26, weight: .regular))
+                Text(muscleLine).font(.subheadline).foregroundStyle(BrickLook.soft)
             }
             .padding(.horizontal, Fit.gutter)
             .padding(.top, 20)
@@ -136,16 +144,17 @@ struct ExerciseDetailPage: View {
             guard let date = session.start, date >= range.start, let value = chosen.value(session.sets) else { return nil }
             return ChartPoint(date: date, value: value, inProgress: session.inProgress)
         }
+        BrickCard(padding: 20) {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 if let last = points.last {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(chosen.format(last.value, unit)).font(.title3.weight(.semibold)).monospacedDigit()
+                        Text(chosen.format(last.value, unit)).font(.system(size: 22, weight: .regular)).monospacedDigit()
                         Text(last.inProgress ? "(In progress)" : last.date.formatted(.dateTime.month(.abbreviated).day()))
-                            .font(.title3).foregroundStyle(Fit.muted)
+                            .font(.title3).foregroundStyle(BrickLook.soft)
                     }
                 } else {
-                    Text(loading ? "Loading…" : "No sessions yet").font(.title3).foregroundStyle(Fit.muted)
+                    Text(loading ? "Loading…" : "No sessions yet").font(.title3).foregroundStyle(BrickLook.soft)
                 }
                 Spacer(minLength: 8)
                 Menu {
@@ -158,7 +167,7 @@ struct ExerciseDetailPage: View {
                         Image(systemName: "chevron.down").font(.caption.weight(.semibold))
                     }
                     .font(.subheadline)
-                    .foregroundStyle(Fit.energy)
+                    .foregroundStyle(BrickLook.ink)
                 }
             }
             if points.isEmpty {
@@ -172,14 +181,15 @@ struct ExerciseDetailPage: View {
                     ForEach(metrics, id: \.self) { item in
                         Button { metric = item } label: {
                             Text(item.title).font(.subheadline.weight(.medium))
-                                .foregroundStyle(chosen == item ? Color.white : Color.primary)
+                                .foregroundStyle(chosen == item ? BrickLook.page : BrickLook.ink)
                                 .padding(.horizontal, 16).frame(height: 38)
-                                .background(chosen == item ? Fit.energy : Fit.track, in: .capsule)
+                                .background(chosen == item ? BrickLook.bar : BrickLook.page, in: .capsule)
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
+        }
         }
     }
 
@@ -197,27 +207,27 @@ struct ExerciseDetailPage: View {
         return Chart {
             ForEach(logged) { point in
                 LineMark(x: .value("Date", point.date), y: .value(chosen.title, chosen.plot(point.value, unit)), series: .value("Series", "Logged"))
-                    .foregroundStyle(Fit.energy)
+                    .foregroundStyle(BrickLook.bar)
                 PointMark(x: .value("Date", point.date), y: .value(chosen.title, chosen.plot(point.value, unit)))
-                    .foregroundStyle(Fit.energy)
+                    .foregroundStyle(BrickLook.bar)
                     .symbolSize(36)
             }
             ForEach(today) { point in
                 LineMark(x: .value("Date", point.date), y: .value(chosen.title, chosen.plot(point.value, unit)), series: .value("Series", "Today"))
-                    .foregroundStyle(Fit.energy)
+                    .foregroundStyle(BrickLook.bar)
                     .lineStyle(StrokeStyle(lineWidth: 2, dash: [3, 4]))
             }
         }
         .chartYScale(domain: .automatic(includesZero: false))
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 3)) { _ in
-                AxisGridLine().foregroundStyle(Fit.hairline)
+                AxisGridLine().foregroundStyle(BrickLook.line)
                 AxisValueLabel(format: .dateTime.month(.abbreviated).day())
             }
         }
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { _ in
-                AxisGridLine().foregroundStyle(Fit.hairline)
+                AxisGridLine().foregroundStyle(BrickLook.line)
                 AxisValueLabel()
             }
         }
@@ -239,10 +249,10 @@ struct ExerciseDetailPage: View {
                         HStack {
                             Text(row.title)
                             Spacer()
-                            Text(row.value).foregroundStyle(Fit.energy).monospacedDigit()
+                            Text(row.value).foregroundStyle(BrickLook.soft).monospacedDigit()
                         }
                         .padding(.vertical, 14)
-                        Rectangle().fill(Fit.hairline).frame(height: 1)
+                        FitDivider()
                     }
                 }
             }
@@ -290,13 +300,14 @@ struct ExerciseDetailPage: View {
             Takeaway(text: loading ? "Loading…" : "No sessions of this exercise yet.")
                 .padding(Fit.gutter)
         } else {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 ForEach(sessions) { session in
-                    sessionCard(session)
-                    Rectangle().fill(Fit.hairline).frame(height: 1)
+                    BrickCard(padding: 20) { sessionCard(session) }
                 }
             }
             .padding(.horizontal, Fit.gutter)
+            .padding(.top, 16)
+            .padding(.bottom, 40)
         }
     }
 
@@ -309,7 +320,7 @@ struct ExerciseDetailPage: View {
                     HStack {
                         header(session)
                         Spacer()
-                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Fit.faint)
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(BrickLook.soft)
                     }
                     .contentShape(.rect)
                 }
@@ -320,27 +331,27 @@ struct ExerciseDetailPage: View {
                 Spacer()
                 Text(isDuration ? "TIME" : "WEIGHT & REPS")
             }
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Fit.muted)
+            .font(.system(size: 12, weight: .medium))
+            .tracking(1.0)
+            .foregroundStyle(BrickLook.soft)
             ForEach(Array(session.sets.enumerated()), id: \.offset) { index, set in
                 HStack {
                     Text(label(index, session.sets))
                         .font(.subheadline.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(set.kind == "warmup" ? Fit.fair : set.kind == "drop" ? Fit.health : set.kind == "failure" ? Fit.attention : Color.primary)
+                        .foregroundStyle(set.kind == "warmup" ? Fit.fair : set.kind == "drop" ? Fit.health : set.kind == "failure" ? Fit.attention : BrickLook.ink)
                         .frame(width: 28, alignment: .leading)
                     Spacer()
                     Text(describe(set)).font(.subheadline).monospacedDigit()
                 }
             }
         }
-        .padding(.vertical, 16)
     }
 
     private func header(_ session: ExerciseHistory.Session) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(session.workoutName).font(.headline)
+            Text(session.workoutName).font(.system(size: 20, weight: .regular))
             Text(session.inProgress ? "In progress" : session.start?.formatted(.dateTime.weekday(.wide).month(.wide).day().year()) ?? "")
-                .font(.subheadline).foregroundStyle(session.inProgress ? Fit.energy : Fit.muted)
+                .font(.subheadline).foregroundStyle(session.inProgress ? BrickLook.live : BrickLook.soft)
         }
     }
 
@@ -363,11 +374,11 @@ struct ExerciseDetailPage: View {
     @ViewBuilder private var howTo: some View {
         VStack(alignment: .leading, spacing: 20) {
             ExerciseAnimation(exerciseId: route.id, muscle: route.muscle)
-                .padding(.horizontal, -Fit.gutter)
+                .clipShape(.rect(cornerRadius: BrickLook.cardRadius, style: .continuous))
             if let steps = details?.instructions, !steps.isEmpty {
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                     HStack(alignment: .firstTextBaseline, spacing: 14) {
-                        Text("\(index + 1)").font(.headline).foregroundStyle(Fit.energy).frame(width: 22, alignment: .leading)
+                        Text("\(index + 1)").font(.headline).foregroundStyle(BrickLook.soft).frame(width: 22, alignment: .leading)
                         Text(step).font(.body).fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -376,6 +387,7 @@ struct ExerciseDetailPage: View {
             }
         }
         .padding(.horizontal, Fit.gutter)
+        .padding(.top, 16)
         .padding(.bottom, 40)
     }
 }

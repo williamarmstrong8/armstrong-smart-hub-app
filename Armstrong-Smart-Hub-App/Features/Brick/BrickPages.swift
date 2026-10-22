@@ -2,56 +2,61 @@ import SwiftUI
 
 #if os(iOS)
 import FamilyControls
-import DeviceActivity
 
 // MARK: Modes
 
-/// Every mode in one list. Tap one to make it the mode the next Brick uses; the arrow edits it.
+/// Every mode as a card. Tap a card to edit it; the circle makes it the mode the next Brick uses.
 struct BrickModesPage: View {
     let store: BrickStore
     @Binding var path: [BrickRoute]
 
     var body: some View {
         BrickPage(title: "Modes") {
-            BrickList {
-                ForEach(Array(store.profiles.enumerated()), id: \.element.id) { i, p in
-                    if i > 0 { Divider().padding(.leading, 60) }
-                    let chosen = store.selectedID == p.id
-                    HStack(spacing: 12) {
-                        Button { if !store.isBlocking { store.selectedID = p.id } } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: chosen ? "checkmark.circle.fill" : "circle")
-                                    .font(.title3)
-                                    .foregroundStyle(chosen ? Color.accentColor : Color(.tertiaryLabel))
-                                    .frame(width: 32)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(p.name).font(.subheadline.weight(.medium))
-                                    Text(modeSummary(p)).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
+            ForEach(store.profiles) { p in
+                let chosen = store.selectedID == p.id
+                ZStack(alignment: .leading) {
+                    NavigationLink(value: BrickRoute.mode(p.id)) {
+                        HStack(spacing: 14) {
+                            // Room for the circle, which sits on top as its own button.
+                            Color.clear.frame(width: 26, height: 26)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(p.name).font(.system(size: 19, weight: .medium))
+                                Text(modeSummary(p)).font(.system(size: 15)).foregroundStyle(BrickLook.soft)
                             }
-                            .contentShape(Rectangle())
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(BrickLook.soft)
                         }
-                        .buttonStyle(.plain)
-                        NavigationLink(value: BrickRoute.mode(p.id)) {
-                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary).frame(width: 32, height: 32)
-                        }
-                        .buttonStyle(.plain)
+                        .padding(20)
+                        .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .buttonStyle(.plain)
+                    Button { if !store.isBlocking { store.selectedID = p.id } } label: {
+                        Image(systemName: chosen ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 22, weight: .light))
+                            .foregroundStyle(chosen ? BrickLook.bar : BrickLook.soft)
+                            .frame(width: 26, height: 26)
+                            .padding(10)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 10)
+                    .accessibilityLabel(chosen ? "\(p.name), selected" : "Use \(p.name)")
                 }
             }
             if store.isBlocking {
-                BrickNote(text: "Modes can't change while bricked.")
+                Text("Modes can't change while bricked.").font(.footnote).foregroundStyle(BrickLook.soft)
             } else {
                 Button { path.append(.mode(store.addProfile())) } label: {
-                    Label("New mode", systemImage: "plus").font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+                    VStack(spacing: 16) {
+                        Text("New mode").font(.system(size: 18)).foregroundStyle(BrickLook.soft)
+                        BrickPlus()
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .padding(.top, 24)
             }
         }
     }
@@ -77,38 +82,42 @@ struct BrickModePage: View {
     var body: some View {
         BrickPage(title: profile?.name ?? "Mode") {
             if let p = profile {
-                BrickList {
-                    TextField("Name", text: Binding(get: { p.name }, set: { var q = p; q.name = $0; store.update(q) }))
-                        .font(.subheadline.weight(.medium)).padding(16)
-                    Divider().padding(.leading, 16)
-                    Button { picking = true } label: {
-                        BrickRow(icon: "apps.iphone", title: "Apps and sites",
-                                 value: p.blockedCount == 0 ? "Choose" : "\(p.blockedCount)")
+                BrickCard(padding: 0) {
+                    VStack(spacing: 0) {
+                        TextField("Name", text: Binding(get: { p.name }, set: { var q = p; q.name = $0; store.update(q) }))
+                            .font(.system(size: 18)).padding(.vertical, 20)
+                        BrickDivider()
+                        Button { picking = true } label: {
+                            BrickRow(icon: "apps.iphone", title: "Apps and sites",
+                                     value: p.blockedCount == 0 ? "Choose" : "\(p.blockedCount)")
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 24)
                 }
-                Card {
+                BrickCard {
                     Toggle(isOn: Binding(get: { p.strict }, set: { var q = p; q.strict = $0; store.update(q) })) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Strict").font(.subheadline.weight(.medium))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Strict").font(.system(size: 18))
                             Text("Only your Brick, or an emergency unbrick, ends it.")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.system(size: 15)).foregroundStyle(BrickLook.soft)
                         }
                     }
-                    Divider()
+                    .tint(BrickLook.bar)
+                    BrickDivider().padding(.vertical, 18)
                     Stepper(value: Binding(get: { p.timerMinutes ?? 0 },
                                            set: { var q = p; q.timerMinutes = $0 > 0 ? $0 : nil; store.update(q) }),
                             in: 0...480, step: 15) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Auto-unbrick").font(.subheadline.weight(.medium))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Auto-unbrick").font(.system(size: 18))
                             Text(p.timerMinutes.map { "After \(brickDuration(Double($0) * 60))" } ?? "Off, until you tap")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.system(size: 15)).foregroundStyle(BrickLook.soft)
                         }
                     }
                 }
                 if store.profiles.count > 1 {
                     Button("Delete mode", role: .destructive) { store.delete(p); dismiss() }
-                        .font(.subheadline.weight(.medium)).frame(maxWidth: .infinity).padding(.top, 8)
+                        .font(.system(size: 17)).padding(.top, 12)
                 }
             }
         }
@@ -136,17 +145,20 @@ struct BrickSchedulePage: View {
     var body: some View {
         BrickPage(title: "Schedule") {
             if let s = schedule {
-                Card {
-                    TextField("Name", text: bind(s, \.name)).font(.subheadline.weight(.medium))
-                    Divider()
-                    Toggle("On", isOn: bind(s, \.enabled)).font(.subheadline.weight(.medium))
+                BrickCard(padding: 0) {
+                    VStack(spacing: 0) {
+                        TextField("Name", text: bind(s, \.name)).font(.system(size: 18)).padding(.vertical, 20)
+                        BrickDivider()
+                        Toggle("On", isOn: bind(s, \.enabled)).font(.system(size: 18)).tint(BrickLook.bar).padding(.vertical, 14)
+                    }
+                    .padding(.horizontal, 24)
                 }
-                Card {
+                BrickCard {
                     DatePicker("Bricks at", selection: timeBinding(s), displayedComponents: .hourAndMinute)
-                        .font(.subheadline.weight(.medium))
-                    Divider()
-                    Text("Days").font(.subheadline.weight(.medium))
-                    HStack(spacing: 6) {
+                        .font(.system(size: 18))
+                    BrickDivider().padding(.vertical, 18)
+                    Text("Days").font(.system(size: 18))
+                    HStack(spacing: 8) {
                         ForEach(1...7, id: \.self) { d in
                             let on = s.weekdays.contains(d)
                             Button {
@@ -155,23 +167,25 @@ struct BrickSchedulePage: View {
                                 store.update(q)
                             } label: {
                                 Text(Calendar.current.veryShortWeekdaySymbols[d - 1])
-                                    .font(.subheadline.weight(.semibold))
-                                    .frame(maxWidth: .infinity).frame(height: 38)
-                                    .background(on ? Color.accentColor : Color(.tertiarySystemFill), in: .circle)
-                                    .foregroundStyle(on ? Color.white : .primary)
+                                    .font(.system(size: 15, weight: .medium))
+                                    .frame(maxWidth: .infinity).frame(height: 40)
+                                    .background(on ? BrickLook.bar : BrickLook.track, in: Circle())
+                                    .foregroundStyle(on ? Color.white : BrickLook.ink)
                             }
                             .buttonStyle(.plain)
                         }
                     }
-                    Divider()
+                    .padding(.top, 14)
+                    BrickDivider().padding(.vertical, 18)
                     Picker("Mode", selection: bind(s, \.profileID)) {
                         ForEach(store.profiles) { p in Text(p.name).tag(Optional(p.id)) }
                     }
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: 18))
                 }
-                BrickNote(text: "Bricks within an hour of the start time while the app is open or next opened. Your Brick ends it.")
+                Takeaway(text: "Bricks within an hour of the start time while the app is open or next opened. Your Brick ends it.")
+                    .padding(.horizontal, 4)
                 Button("Delete schedule", role: .destructive) { store.delete(s); dismiss() }
-                    .font(.subheadline.weight(.medium)).frame(maxWidth: .infinity).padding(.top, 8)
+                    .font(.system(size: 17)).padding(.top, 12)
             }
         }
     }
@@ -198,7 +212,7 @@ struct BrickSchedulePage: View {
 
 // MARK: Activity
 
-/// The week in full: average, chart, totals, each day, and iOS's own Screen Time.
+/// The week in full: average, chart, a card per day, totals, and iOS's own Screen Time.
 struct BrickActivityPage: View {
     let store: BrickStore
     @State private var weeksBack = 0
@@ -208,53 +222,53 @@ struct BrickActivityPage: View {
         let shown = week.filter { $0.date <= Date() }.reversed()
         let total = week.reduce(0) { $0 + $1.value }
         let count = week.reduce(0) { $0 + store.sessions(on: $1.date).count }
-        BrickPage(title: "Activity") {
-            Picker("Week", selection: $weeksBack) {
-                Text("This week").tag(0)
-                Text("Last week").tag(1)
-                Text("2 wks ago").tag(2)
-                Text("3 wks ago").tag(3)
-            }
-            .pickerStyle(.segmented)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Average a day · \(weekLabel(week))").font(.subheadline).foregroundStyle(.secondary)
-                if let avg = store.average(week) {
-                    Text(brickDuration(avg))
-                        .font(.system(size: 44, weight: .bold, design: .rounded)).monospacedDigit()
-                } else {
-                    Text("Your first day is underway. Check back for your average.")
-                        .font(.subheadline.weight(.medium))
+        ScrollView {
+            VStack(spacing: 0) {
+                Menu {
+                    Picker("Week", selection: $weeksBack) {
+                        Text("This week").tag(0)
+                        Text("Last week").tag(1)
+                        Text("2 weeks ago").tag(2)
+                        Text("3 weeks ago").tag(3)
+                    }
+                } label: {
+                    VStack(spacing: 18) {
+                        BrickHeading(title: "Weekly Activity", chevron: true)
+                        BrickCaps(text: weekLabel(week))
+                    }
                 }
-            }
-            .padding(.vertical, 4)
-
-            Card {
-                BrickWeekChart(days: week)
-                Divider()
+                .buttonStyle(.plain)
+                .padding(.top, 8).padding(.bottom, 22)
+                BrickAverage(value: store.average(week)).padding(.horizontal, Fit.gutter).padding(.vertical, 20)
+                BrickWeekChart(days: week).padding(.top, 8)
                 HStack(spacing: 0) {
                     stat(brickDuration(total), "Total")
                     stat("\(count)", count == 1 ? "Session" : "Sessions")
                     stat("\(store.streak)", "Day streak")
                 }
-            }
-
-            SectionHeader(title: "Days").padding(.top, 8)
-            BrickList {
-                ForEach(Array(shown.enumerated()), id: \.element.id) { i, d in
-                    if i > 0 { Divider().padding(.leading, 16) }
-                    BrickDayRow(day: d.date, seconds: d.value, sessions: store.sessions(on: d.date)).padding(16)
+                .padding(.vertical, 22)
+                .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                .padding(.horizontal, Fit.gutter).padding(.top, 28)
+                VStack(spacing: 16) {
+                    ForEach(Array(shown)) { d in
+                        BrickDayCard(day: d.date, seconds: d.value, sessions: store.sessions(on: d.date))
+                    }
                 }
+                .padding(.horizontal, Fit.gutter).padding(.top, 16)
+                NavigationLink(value: BrickRoute.screenTime) {
+                    BrickCard(padding: 0) {
+                        BrickRow(icon: "hourglass", title: "Screen Time", value: nil).padding(.horizontal, 24)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, Fit.gutter).padding(.top, 40)
             }
-
-            SectionHeader(title: "Screen Time today").padding(.top, 8)
-            let cal = Calendar.current
-            DeviceActivityReport(DeviceActivityReport.Context("BrickScreenTime"),
-                                 filter: DeviceActivityFilter(segment: .daily(during: DateInterval(start: cal.startOfDay(for: Date()), end: Date())),
-                                                              users: .all, devices: .init([.iPhone])))
-                .frame(minHeight: 360)
-                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+            .padding(.bottom, 48)
         }
+        .background(BrickLook.page.ignoresSafeArea())
+        .foregroundStyle(BrickLook.ink)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(BrickLook.page, for: .navigationBar)
     }
 
     private func weekLabel(_ week: [DayValue]) -> String {
@@ -265,9 +279,9 @@ struct BrickActivityPage: View {
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.title3.weight(.semibold)).monospacedDigit()
-            Text(label).font(.caption).foregroundStyle(.secondary)
+        VStack(spacing: 6) {
+            Text(value).font(.system(size: 24).monospacedDigit())
+            Text(label).font(.system(size: 14)).foregroundStyle(BrickLook.soft)
         }
         .frame(maxWidth: .infinity)
     }
@@ -281,20 +295,24 @@ struct BrickTagPage: View {
 
     var body: some View {
         BrickPage(title: "My Brick") {
-            Image("BrickDevice").resizable().scaledToFit().frame(width: 120, height: 120)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-            BrickList {
-                BrickRow(icon: "wave.3.right", title: "Tag",
-                         value: store.tagID.map { String($0.prefix(8)).uppercased() } ?? "Not set", chevron: false)
-                Divider().padding(.leading, 60)
-                Button { store.registerTag() } label: {
-                    BrickRow(icon: "plus.viewfinder", title: store.tagID == nil ? "Register tag" : "Replace tag", value: nil)
+            Image("BrickDevice").resizable().scaledToFit().frame(width: 140, height: 140)
+                .shadow(color: .black.opacity(0.16), radius: 18, y: 12)
+                .padding(.vertical, 28)
+            BrickCard(padding: 0) {
+                VStack(spacing: 0) {
+                    BrickRow(icon: "wave.3.right", title: "Tag",
+                             value: store.tagID.map { String($0.prefix(8)).uppercased() } ?? "Not set", chevron: false)
+                    BrickDivider()
+                    Button { store.registerTag() } label: {
+                        BrickRow(icon: "plus.viewfinder", title: store.tagID == nil ? "Register tag" : "Replace tag", value: nil)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.isBlocking)
                 }
-                .buttonStyle(.plain)
-                .disabled(store.isBlocking)
+                .padding(.horizontal, 24)
             }
-            BrickNote(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes the key: tap it to Brick, tap it again to unbrick. Replacing it makes the old one stop working.")
+            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes the key: tap it to Brick, tap it again to unbrick. Replacing it makes the old one stop working.")
+                .padding(.horizontal, 4)
         }
     }
 }
@@ -306,25 +324,29 @@ struct BrickEmergencyPage: View {
 
     var body: some View {
         BrickPage(title: "Emergency Unbrick") {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Left").font(.subheadline).foregroundStyle(.secondary)
-                Text("\(store.emergencyLeft) of \(BrickStore.emergencyAllowance)")
-                    .font(.system(size: 44, weight: .bold, design: .rounded)).monospacedDigit()
+            VStack(spacing: 8) {
+                Text("\(store.emergencyLeft)").font(.system(size: 72, weight: .light).monospacedDigit())
+                Text("of \(BrickStore.emergencyAllowance) left").font(.system(size: 18)).foregroundStyle(BrickLook.soft)
             }
-            .padding(.vertical, 4)
-            Button(role: .destructive) { confirming = true } label: {
-                Text("Emergency Unbrick").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+            .padding(.vertical, 32)
+            Button { confirming = true } label: {
+                Text("Emergency Unbrick")
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(maxWidth: .infinity).padding(.vertical, 22)
+                    .background(BrickLook.pill, in: Capsule())
+                    .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(.plain)
             .disabled(!store.isBlocking || store.emergencyLeft == 0)
+            .opacity(store.isBlocking && store.emergencyLeft > 0 ? 1 : 0.5)
             .confirmationDialog("Use one of your \(store.emergencyLeft) emergency unbricks?", isPresented: $confirming,
                                 titleVisibility: .visible) {
                 Button("Unbrick", role: .destructive) { store.emergencyUnbrick() }
             }
-            BrickNote(text: store.isBlocking
-                      ? "Ends this Brick without the tag. They don't come back, so save them for when you really need your phone."
-                      : "For when you're bricked and away from your Brick. Ends the session without the tag. They don't come back.")
+            Takeaway(text: store.isBlocking
+                     ? "Ends this Brick without the tag. They don't come back, so save them for when you really need your phone."
+                     : "For when you're bricked and away from your Brick. Ends the session without the tag. They don't come back.")
+                .padding(.horizontal, 4).padding(.top, 8)
         }
     }
 }

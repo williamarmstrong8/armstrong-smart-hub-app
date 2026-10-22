@@ -12,15 +12,15 @@ struct MiniWorkoutBar: View {
             HStack(spacing: 12) {
                 Button { store.isPresented = true } label: {
                     HStack(spacing: 10) {
-                        Circle().fill(Fit.positive).frame(width: 8, height: 8)
+                        Circle().fill(BrickLook.live).frame(width: 8, height: 8)
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
                                 Text(workout.name).font(.subheadline.weight(.semibold)).lineLimit(1)
                                 Text(workout.startedAt, style: .timer)
-                                    .font(.subheadline).foregroundStyle(Fit.muted).monospacedDigit()
+                                    .font(.subheadline).foregroundStyle(BrickLook.soft).monospacedDigit()
                             }
                             if placement != .inline {
-                                detail.font(.caption).foregroundStyle(Fit.muted).lineLimit(1)
+                                detail.font(.caption).foregroundStyle(BrickLook.soft).lineLimit(1)
                             }
                         }
                         Spacer(minLength: 0)
@@ -40,7 +40,7 @@ struct MiniWorkoutBar: View {
         if let end = store.restEndsAt, end > .now {
             HStack(spacing: 4) {
                 Text("Rest")
-                Text(timerInterval: Date.now...end, countsDown: true).monospacedDigit().foregroundStyle(Fit.energy)
+                Text(timerInterval: Date.now...end, countsDown: true).monospacedDigit().foregroundStyle(BrickLook.ink)
             }
         } else if let state = store.activityState, let name = state.exerciseName {
             Text("\(name) · \(state.setLabel)")
@@ -51,18 +51,16 @@ struct MiniWorkoutBar: View {
 
     @ViewBuilder private var action: some View {
         if let end = store.restEndsAt, end > .now {
-            Button("Skip") { store.skipRest() }
-                .font(.subheadline.weight(.semibold))
-                .buttonStyle(.borderedProminent)
-                .tint(Fit.energy)
+            Button { store.skipRest() } label: { WorkoutToolbarLabel(title: "Skip") }
+                .buttonStyle(.plain)
         } else if store.nextSet != nil {
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 store.handle(.completeSet)
             } label: {
-                Image(systemName: "checkmark").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                Image(systemName: "checkmark").font(.subheadline.weight(.bold)).foregroundStyle(BrickLook.page)
                     .frame(width: 34, height: 34)
-                    .background(Fit.positive, in: .circle)
+                    .background(BrickLook.live, in: .circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Complete next set")
