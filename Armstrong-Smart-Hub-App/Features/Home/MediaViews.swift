@@ -358,8 +358,9 @@ final class TitleCardPresenter {
         }
     }
 
+    /// Gathers speed as it goes, so the card doesn't linger along the bottom edge on its way out.
     func close() {
-        withAnimation(.smooth(duration: 0.5)) { pick = nil; reveal = 0 }
+        withAnimation(.timingCurve(0.3, 0, 0.75, 0.5, duration: 0.42)) { pick = nil; reveal = 0 }
     }
 
     /// A request is about to fly to the shelf: close search so the shelf shows, and open an empty

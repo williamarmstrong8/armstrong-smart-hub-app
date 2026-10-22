@@ -80,10 +80,11 @@ struct MainTabView: View {
     @Environment(WatchLink.self) private var watch
     @State private var workouts = WorkoutStore.shared
     @State private var titles = TitleCardPresenter.shared
-    /// A title card's height plus the gap under it: a poster at the screen's width, less the insets.
+    /// A title card's height plus the gap under it (a poster at the screen's width, less the
+    /// insets), and enough more that its shadow is gone too.
     private var titleCardTravel: CGFloat {
         let width = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen.bounds.width }.first ?? 402
-        return (width - 16) * 1.5 + 8
+        return (width - 16) * 1.5 + 8 + 32
     }
     @State private var tab: HubTab = {
         #if DEBUG
