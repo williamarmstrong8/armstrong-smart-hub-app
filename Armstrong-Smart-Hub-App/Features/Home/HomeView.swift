@@ -22,6 +22,7 @@ struct HomeView: View {
     @State private var pick: MediaPick?
     /// How far the title card is up (0–1); the page behind blurs by it.
     @State private var reveal: CGFloat = 0
+    @State private var poster: UIImage?
     @State private var editingHabit: HabitEditTarget?
     @State private var managing = false
     @State private var display = false
@@ -55,9 +56,14 @@ struct HomeView: View {
             .blur(radius: 14 * reveal)
             .overlay {
                 if let p = pick {
-                    MediaDetailCard(pick: p, toast: toast, reveal: $reveal,
+                    MediaDetailCard(pick: p, poster: poster, toast: toast, reveal: $reveal,
                                     onChanged: { Task { await store.refresh(api: session.api) } },
-                                    onClose: closeTitle)
+                                    onClose: closeTitle,
+                                    onFlewOff: {
+                                        // Already off the top: remove it in place, without sliding back down.
+                                        var t = Transaction(); t.disablesAnimations = true
+                                        withTransaction(t) { pick = nil; reveal = 0 }
+                                    })
                         .id(p.id)
                         .transition(.move(edge: .bottom))
                 }
@@ -112,8 +118,14 @@ struct HomeView: View {
         }
     }
 
+    /// Opens a title's card once its poster is in hand (it's normally cached, so this is instant),
+    /// so the image slides in with the card instead of popping in partway.
     private func open(_ p: MediaPick) {
-        withAnimation(.smooth(duration: 0.4)) { pick = p; reveal = 1 }
+        Task {
+            let image = await PosterLoader.image(p.posterURL)
+            poster = image
+            withAnimation(.smooth(duration: 0.4)) { pick = p; reveal = 1 }
+        }
     }
 
     private func closeTitle() {

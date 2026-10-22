@@ -241,16 +241,41 @@ struct RequestList: View {
     }
 }
 
+/// Fetches a poster through the shared URL cache, where the shelf's and search's posters already
+/// sit, so a title's card can open with its image in place rather than loading it mid-slide.
+enum PosterLoader {
+    static func image(_ url: String?, waitingAtMost limit: Duration = .milliseconds(500)) async -> UIImage? {
+        guard let url = url.flatMap(URL.init(string:)) else { return nil }
+        return await withTaskGroup(of: UIImage?.self) { group in
+            group.addTask {
+                var req = URLRequest(url: url)
+                req.cachePolicy = .returnCacheDataElseLoad
+                guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
+                return UIImage(data: data)
+            }
+            group.addTask { try? await Task.sleep(for: limit); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+}
+
 /// A title's card, drawn over Home rather than as a sheet so the page behind can blur in step with
 /// it: as tall as the poster, which fills it from the top and fades into black under the words.
-/// Drag it down or tap above it to close.
+/// Drag it down or tap above it to close; on a title that can play, swipe it up to play on the TV
+/// and it flies off the top.
 struct MediaDetailCard: View {
     let pick: MediaPick
+    /// The poster, already loaded, so it arrives with the card; nil falls back to loading it here.
+    let poster: UIImage?
     let toast: Toast
     /// 1 while the card is fully up, falling toward 0 as it's dragged down; Home blurs by it.
     @Binding var reveal: CGFloat
     let onChanged: () -> Void
     let onClose: () -> Void
+    /// Called once a swipe up has sent the card off the top, for Home to remove it in place.
+    let onFlewOff: () -> Void
 
     @Environment(AppSession.self) private var session
     @State private var detail: MediaDetail?
@@ -259,8 +284,11 @@ struct MediaDetailCard: View {
     @State private var requested = false
     @State private var confirmRemove = false
     @State private var drag: CGFloat = 0
+    /// A swipe up has passed the point where letting go plays it.
+    @State private var armed = false
 
     private var available: Bool { detail?.available ?? (pick.known == .available) }
+    private var canPlay: Bool { available && (detail?.canPlay ?? true) }
     private var isRequested: Bool { requested || (detail?.alreadyRequested ?? (pick.known == .requested)) }
 
     var body: some View {
@@ -274,17 +302,25 @@ struct MediaDetailCard: View {
                     .gesture(
                         DragGesture(minimumDistance: 8)
                             .onChanged { v in
-                                drag = v.translation.height > 0 ? v.translation.height : v.translation.height / 6
+                                let dy = v.translation.height
+                                // Up follows the finger only when there's something to play.
+                                drag = dy > 0 || canPlay ? dy : dy / 6
                                 reveal = 1 - min(max(drag / height, 0), 1)
+                                armed = canPlay && dy < -120
                             }
                             .onEnded { v in
-                                if v.translation.height > 120 || v.predictedEndTranslation.height > 320 {
+                                let dy = v.translation.height
+                                if canPlay && (dy < -120 || v.predictedEndTranslation.height < -360) {
+                                    flyOff(clearing: geo.size.height + 80)
+                                } else if dy > 120 || v.predictedEndTranslation.height > 320 {
                                     onClose()
                                 } else {
+                                    armed = false
                                     withAnimation(.smooth(duration: 0.3)) { drag = 0; reveal = 1 }
                                 }
                             }
                     )
+                    .sensoryFeedback(.impact(weight: .medium), trigger: armed) { _, now in now }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
@@ -323,8 +359,16 @@ struct MediaDetailCard: View {
         .padding(.bottom, 44)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .background {
-            AsyncImage(url: (detail?.posterURL ?? pick.posterURL).flatMap(URL.init(string:))) { phase in
-                if let image = phase.image { image.resizable().scaledToFill() } else { Color.white.opacity(0.06) }
+            // One image for the card's whole life: swapping to the details' poster URL reloaded it,
+            // which is what flashed.
+            Group {
+                if let poster {
+                    Image(uiImage: poster).resizable().scaledToFill()
+                } else {
+                    AsyncImage(url: (pick.posterURL ?? detail?.posterURL).flatMap(URL.init(string:))) { phase in
+                        if let image = phase.image { image.resizable().scaledToFill() } else { Color.white.opacity(0.06) }
+                    }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .clipped()
@@ -388,6 +432,17 @@ struct MediaDetailCard: View {
                 .overlay { if working { ProgressView().tint(.black) } }
         }
         .buttonStyle(.plain)
+    }
+
+    /// Plays the title and sends the card up and out of the top of the screen, the blur clearing with it.
+    private func flyOff(clearing distance: CGFloat) {
+        Task { await play() }
+        withAnimation(.easeIn(duration: 0.32)) {
+            drag = -distance
+            reveal = 0
+        } completion: {
+            onFlewOff()
+        }
     }
 
     private func meta(_ d: MediaDetail) -> String {
