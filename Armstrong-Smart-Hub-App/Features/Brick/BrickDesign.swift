@@ -137,6 +137,8 @@ struct BrickTopBar<Trailing: View>: View {
             Spacer()
             trailing.frame(minWidth: 28, minHeight: 28)
         }
+        // A fixed row height, so the account button sits at the same spot whatever the trailing button's size.
+        .frame(height: 32)
         .font(.system(size: 22, weight: .light))
         .foregroundStyle(BrickLook.ink)
     }
