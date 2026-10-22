@@ -19,7 +19,7 @@ struct BrickView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     BrickSheet(store: store, path: $path)
-                    BrickScreenTimeSection(store: store).padding(.top, 56)
+                    BrickScreenTimeSection(store: store, path: $path).padding(.top, 56)
                     BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()))
                         .padding(.horizontal, Fit.gutter).padding(.top, 26)
                     settings.padding(.top, 56)

@@ -19,11 +19,36 @@ private func screenTimeFilter(week: Bool) -> DeviceActivityFilter {
     return DeviceActivityFilter(segment: segment, users: .all, devices: .init([.iPhone]))
 }
 
+/// A clear UIKit view that catches touches meant for a view drawn by another process.
+/// A SwiftUI overlay isn't enough: it adds no UIView, so UIKit still hands the touch to the report.
+/// The scroll view above still sees drags through this; taps call `onTap`.
+private struct TouchShield: UIViewRepresentable {
+    var onTap: () -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.addGestureRecognizer(UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tap)))
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) { context.coordinator.onTap = onTap }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onTap: onTap) }
+
+    final class Coordinator: NSObject {
+        var onTap: () -> Void
+        init(onTap: @escaping () -> Void) { self.onTap = onTap }
+        @objc func tap() { onTap() }
+    }
+}
+
 /// The Brick page's Screen Time block: today's total and top apps, then a link to the rest.
 /// The report is drawn by another process and swallows touches (and scrolling), so it ignores them
 /// and the card is the link to the rest.
 struct BrickScreenTimeSection: View {
     let store: BrickStore
+    @Binding var path: [BrickRoute]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,13 +62,8 @@ struct BrickScreenTimeSection: View {
                     .frame(height: 250)
                     .clipShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
                     .allowsHitTesting(false)
-                    // An in-process layer on top takes every touch, so drags scroll the page and a tap opens the rest.
-                    .overlay {
-                        NavigationLink(value: BrickRoute.screenTime) {
-                            Color.clear.contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    // A real UIView on top takes the touch before the report can, so drags scroll the page.
+                    .overlay { TouchShield { path.append(.screenTime) } }
                     .padding(.horizontal, Fit.gutter)
                 NavigationLink(value: BrickRoute.screenTime) {
                     HStack(spacing: 6) {
