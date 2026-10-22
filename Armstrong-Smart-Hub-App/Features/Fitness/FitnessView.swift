@@ -262,7 +262,7 @@ struct FitnessView: View {
             }
             .padding(.top, 12)
             WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil)
-                .padding(.horizontal, -20).padding(.top, 4)
+                .padding(.horizontal, -16).padding(.top, 4)
             if watch.savedWatchID != nil {
                 BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                     .foregroundStyle(BrickLook.soft).padding(.top, 14)
@@ -274,7 +274,7 @@ struct FitnessView: View {
             }
             Spacer(minLength: 0).frame(height: 40)
         }
-        .padding(.horizontal, Fit.gutter + 4)
+        .padding(.horizontal, Fit.gutter)
         .frame(maxWidth: .infinity)
         .background {
             // Reaches up under the status bar and past the top when pulled down.

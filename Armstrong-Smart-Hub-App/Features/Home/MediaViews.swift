@@ -155,6 +155,8 @@ struct MediaSearchView: View {
 /// dark lifts from the bottom as it downloads until the whole poster shows.
 struct MediaShelf: View {
     let requests: [MediaRequest]
+    /// A tile a request's poster is flying to, hidden until it lands.
+    var hiding: Int? = nil
     let onPick: (MediaPick) -> Void
 
     var body: some View {
@@ -166,6 +168,7 @@ struct MediaShelf: View {
                                                     known: r.stage == .available ? .available : .requested)) }
                     } label: { tile(r) }
                     .buttonStyle(.plain)
+                    .opacity(r.tmdbId != nil && r.tmdbId == hiding ? 0 : 1)
                     .disabled(r.tmdbId == nil)
                 }
             }
@@ -332,6 +335,10 @@ final class TitleCardPresenter {
     @ObservationIgnored private(set) var onChanged: () -> Void = {}
     /// Titles just requested from a card, shown first on the shelf as queued until the hub lists them.
     private(set) var justRequested: [MediaRequest] = []
+    /// The shelf tile a request's poster is flying to, kept invisible until the poster lands on it.
+    private(set) var landingID: Int?
+    /// The hub's requests as Home last polled them, so an open card follows its download live.
+    var requests: [MediaRequest] = []
     /// Where a new title lands on Home's shelf (its first slot, on screen), for a request's flight.
     @ObservationIgnored var shelfSlot: CGRect?
     /// Home's hook to get its shelf in view for a request's flight (it closes the search page).
@@ -355,23 +362,27 @@ final class TitleCardPresenter {
         withAnimation(.smooth(duration: 0.5)) { pick = nil; reveal = 0 }
     }
 
-    /// A request is flying to the shelf: open its slot at the front, the others sliding over.
+    /// A request is about to fly to the shelf: close search so the shelf shows, and open an empty
+    /// slot at the front for it, the posters already there sliding right.
     func requesting(_ p: MediaPick) {
         let queued = MediaRequest(id: -p.id, tmdbId: p.id, title: p.title, mediaType: p.mediaType,
                                   posterURL: p.posterURL, stage: .approved, progress: nil, etaSeconds: nil,
                                   updatedAt: nil, statusMessage: nil)
         revealShelf()
-        withAnimation(.smooth(duration: 0.45)) {
+        landingID = p.id
+        withAnimation(.smooth(duration: 0.55)) {
             justRequested.removeAll { $0.tmdbId == p.id }
             justRequested.insert(queued, at: 0)
-            reveal = 0
         }
     }
 
-    /// The poster has landed in its slot: drop the card in place, where the queued tile now shows.
+    /// The flight couldn't happen (the shelf is off screen): show the queued tile as it is.
+    func cancelLanding() { landingID = nil }
+
+    /// The poster has landed in its slot: swap the card for the queued tile beneath it, unseen.
     func landed() {
         var t = SwiftUI.Transaction(); t.disablesAnimations = true
-        withTransaction(t) { pick = nil }
+        withTransaction(t) { pick = nil; landingID = nil }
         onChanged()
     }
 
@@ -491,12 +502,18 @@ struct MediaDetailCard: View {
     /// The card's size and resting centre, as laid out.
     @State private var cardSize: CGSize = .zero
     @State private var restY: CGFloat = 0
+    /// Set on a request's flight: the card takes on the queued tile's look as it shrinks into it.
+    @State private var landing = false
     @State private var sendScale: CGFloat = 1
     @State private var sendOpacity: Double = 1
 
-    private var available: Bool { detail?.available ?? (pick.known == .available) }
+    /// This title's request as Home last polled it, for a live download bar.
+    private var live: MediaRequest? { TitleCardPresenter.shared.requests.first { $0.tmdbId == pick.id } }
+    private var available: Bool { live?.stage == .available || (detail?.available ?? (pick.known == .available)) }
     private var canPlay: Bool { available && (detail?.canPlay ?? true) }
-    private var isRequested: Bool { requested || (detail?.alreadyRequested ?? (pick.known == .requested)) }
+    private var isRequested: Bool {
+        requested || live != nil || (detail?.alreadyRequested ?? (pick.known == .requested))
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -554,6 +571,10 @@ struct MediaDetailCard: View {
         .ignoresSafeArea(edges: .bottom)
         .preferredColorScheme(.dark)
         .task { await load() }
+        // Finished downloading while open: fetch the details again for Play.
+        .onChange(of: live?.stage) { _, stage in
+            if stage == .available { Task { await load() } }
+        }
         .confirmationDialog(available ? "Delete \(pick.title)?" : "Cancel the request for \(pick.title)?",
                             isPresented: $confirmRemove, titleVisibility: .visible) {
             Button(available ? "Delete movie and files" : "Cancel request", role: .destructive) { Task { await remove() } }
@@ -615,6 +636,18 @@ struct MediaDetailCard: View {
             }
         }
         .background(.black)
+        .overlay {
+            // The queued tile's dimming and label, sized up so they read right once shrunk.
+            if landing {
+                ZStack {
+                    Color.black.opacity(0.72)
+                    Text(RequestStage.approved.label)
+                        .font(.system(size: 13 / max(sendScale, 0.1), weight: .medium))
+                        .foregroundStyle(.white)
+                }
+                .transition(.opacity)
+            }
+        }
         .clipShape(.rect(cornerRadius: Self.screenRadius - Self.inset, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {
@@ -641,6 +674,8 @@ struct MediaDetailCard: View {
             }
             .opacity(canPlay ? 1 : 0.45)
             .disabled(!canPlay || working)
+        } else if let live, live.stage.isActive || live.stage == .pendingApproval {
+            progress(live)
         } else if isRequested {
             Label("Requested", systemImage: "checkmark").font(.system(size: 17, weight: .semibold))
                 .frame(maxWidth: .infinity)
@@ -657,6 +692,31 @@ struct MediaDetailCard: View {
         }
     }
 
+    /// Requested, as a bar that fills as the title downloads, with how far along it is.
+    private func progress(_ r: MediaRequest) -> some View {
+        let fill = r.stage == .downloading ? min(max(r.progress ?? 0, 0), 1) : r.stage == .processing ? 1 : 0
+        return HStack(spacing: 6) {
+            Text(r.stage == .downloading ? "Downloading" : r.stage.label)
+            if r.stage == .downloading, r.progress != nil {
+                Text("\(Int(fill * 100))%").monospacedDigit().contentTransition(.numericText())
+            }
+        }
+        .font(.system(size: 17, weight: .semibold))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background {
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(.white.opacity(0.18))
+                    Rectangle().fill(.white.opacity(0.32)).frame(width: g.size.width * fill)
+                }
+            }
+        }
+        .clipShape(.capsule)
+        .animation(.smooth(duration: 0.8), value: fill)
+        .accessibilityElement(children: .combine)
+    }
+
     private func pill(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
@@ -668,19 +728,27 @@ struct MediaDetailCard: View {
         .buttonStyle(.plain)
     }
 
-    /// Shrinks the card to a poster and flies it into the front of Home's shelf, which opens a slot
-    /// for it. False when the shelf isn't on screen to land in.
-    private func flyToShelf() -> Bool {
+    /// Search closes and the shelf opens an empty slot at its front, then the card shrinks into a
+    /// poster and flies up into it, taking on the queued tile's look as it lands. False when the
+    /// shelf isn't on screen to land in.
+    private func flyToShelf() async -> Bool {
         let presenter = TitleCardPresenter.shared
+        presenter.requesting(pick)
+        // A beat for the shelf to lay out (it may have only just appeared) and report its slot.
+        try? await Task.sleep(for: .milliseconds(60))
         guard let slot = presenter.shelfSlot, cardSize.width > 0,
               let screen = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.screen }).first,
-              slot.maxY > 0, slot.minY < screen.bounds.height else { return false }
-        presenter.requesting(pick)
-        withAnimation(.smooth(duration: 0.6)) {
+              slot.maxY > 0, slot.minY < screen.bounds.height else {
+            presenter.cancelLanding()
+            return false
+        }
+        withAnimation(.smooth(duration: 0.75)) {
             sending = true
+            landing = true
             sendX = slot.midX - origin.x - cardSize.width / 2 - Self.inset
             sendY = slot.midY - origin.y - restY
             sendScale = slot.width / cardSize.width
+            reveal = 0
         } completion: {
             presenter.landed()
         }
@@ -729,7 +797,7 @@ struct MediaDetailCard: View {
             let _: Empty? = try await session.api.run("requestMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
             requested = true
             MediaDetailCache.set(nil, for: pick)
-            if !flyToShelf() {
+            if !(await flyToShelf()) {
                 toast.show("Requested \(pick.title)")
                 onChanged()
             }

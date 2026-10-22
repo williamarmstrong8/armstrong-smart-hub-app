@@ -32,7 +32,7 @@ struct HomeView: View {
                     topBar.padding(.bottom, -32)
                     content
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, Fit.gutter)
                 .padding(.top, 12)
                 .padding(.bottom, 48)
             }
@@ -54,6 +54,10 @@ struct HomeView: View {
             // A title requested from search flies to the shelf, so the search page gets out of its way.
             .onAppear {
                 TitleCardPresenter.shared.revealShelf = { withAnimation(.smooth(duration: 0.45)) { searching = false } }
+            }
+            // An open title card follows its download from the same polls.
+            .onChange(of: store.state?.requests ?? [], initial: true) { _, requests in
+                TitleCardPresenter.shared.requests = requests
             }
             // Shelf titles' details are fetched ahead, so their cards open complete.
             .task(id: shelf.map(\.id)) { await MediaDetailCache.prefetch(shelf, api: session.api) }
@@ -210,7 +214,7 @@ struct HomeView: View {
                 Text("Download status isn't updating: \(problem)")
                     .font(.footnote).foregroundStyle(BrickLook.soft)
             } else if !shelfRequests.isEmpty {
-                MediaShelf(requests: shelfRequests, onPick: open)
+                MediaShelf(requests: shelfRequests, hiding: TitleCardPresenter.shared.landingID, onPick: open)
             }
         }
     }

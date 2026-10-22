@@ -15,7 +15,9 @@ struct FinanceView: View {
                     topBar.padding(.bottom, -20)
                     content
                 }
-                .padding(16)
+                .padding(.horizontal, Fit.gutter)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
                 .animation(.smooth(duration: 0.35), value: store.tagQueue.map(\.id))
             }
             .background(BrickLook.page.ignoresSafeArea())

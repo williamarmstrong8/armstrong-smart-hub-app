@@ -12,7 +12,7 @@ struct CalendarView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                topBar.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+                topBar.padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 8)
                 Group {
                     if let data {
                         agenda(data)
@@ -79,7 +79,7 @@ struct CalendarView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16).padding(.bottom, 16)
+                    .padding(.horizontal, Fit.gutter).padding(.bottom, 16)
                 }
             }
         }
