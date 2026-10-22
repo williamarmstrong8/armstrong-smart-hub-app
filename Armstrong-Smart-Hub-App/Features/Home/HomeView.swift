@@ -61,7 +61,7 @@ struct HomeView: View {
                                     onClose: closeTitle,
                                     onFlewOff: {
                                         // Already off the top: remove it in place, without sliding back down.
-                                        var t = Transaction(); t.disablesAnimations = true
+                                        var t = SwiftUI.Transaction(); t.disablesAnimations = true
                                         withTransaction(t) { pick = nil; reveal = 0 }
                                     })
                         .id(p.id)

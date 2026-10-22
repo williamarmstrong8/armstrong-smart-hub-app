@@ -250,6 +250,15 @@ final class WatchLink: NSObject {
     private func fail(_ message: String) {
         state = .failed(message)
         note("Stopped: \(message)")
+        // Try again on its own, in the background too: a hole in today's data
+        // can't be filled until the watch's midnight file.
+        guard wantsConnection, savedWatchID != nil, let peripheral else { return }
+        Task {
+            try? await Task.sleep(for: .seconds(15))
+            guard case .failed = state, wantsConnection, self.peripheral === peripheral else { return }
+            note("Retrying after: \(message)")
+            connect(peripheral)
+        }
     }
 
     func note(_ text: String) {
@@ -413,6 +422,10 @@ final class WatchLink: NSObject {
             return
         }
         if case let .closedHandle(service) = packet { handles[service] = nil }
+        // Stress arrives every few seconds even when heart rate has gone quiet,
+        // so any packet is a chance to reopen a stalled heart rate stream, in the
+        // background as well as with the app open.
+        if state == .connected, let at = heartRateAt, Date.now.timeIntervalSince(at) > 30 { keepHeartRateFlowing() }
         if files.handle(packet) { return }
         switch packet {
         case .closeAllResponse:
