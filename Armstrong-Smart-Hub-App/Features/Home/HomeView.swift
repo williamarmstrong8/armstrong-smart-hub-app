@@ -123,7 +123,7 @@ struct HomeView: View {
     }
 
     private func open(_ p: MediaPick) {
-        TitleCardPresenter.shared.open(p) { Task { await store.refresh(api: session.api) } }
+        TitleCardPresenter.shared.open(p, api: session.api) { Task { await store.refresh(api: session.api) } }
     }
 
     private var topBar: some View {

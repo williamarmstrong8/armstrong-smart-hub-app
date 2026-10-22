@@ -101,7 +101,6 @@ final class WatchFiles {
             listed = try await listFiles()
             store.saveListing(listed)
             noteToday(listed)
-            await probeListing() // DIAGNOSTIC: remove once health files arrive
 
             let wanted = listed
                 .filter { GarminFiles.healthKinds.contains($0.kind) && $0.size <= maxFileBytes && store.needsDownload($0) }

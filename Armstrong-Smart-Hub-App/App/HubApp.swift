@@ -80,6 +80,11 @@ struct MainTabView: View {
     @Environment(WatchLink.self) private var watch
     @State private var workouts = WorkoutStore.shared
     @State private var titles = TitleCardPresenter.shared
+    /// A title card's height plus the gap under it: a poster at the screen's width, less the insets.
+    private var titleCardTravel: CGFloat {
+        let width = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen.bounds.width }.first ?? 402
+        return (width - 16) * 1.5 + 8
+    }
     @State private var tab: HubTab = {
         #if DEBUG
         if ProcessInfo.processInfo.environment["BRICK_PREVIEW"] != nil {
@@ -120,7 +125,9 @@ struct MainTabView: View {
                 MediaDetailCard(pick: p, poster: titles.poster, toast: titles.toast, reveal: $titles.reveal,
                                 onChanged: titles.onChanged, onClose: titles.close, onSent: titles.sent)
                     .id(p.id)
-                    .transition(.move(edge: .bottom))
+                    // Slides by the card's own height (not the screen's), so it's moving into view
+                    // from the first frame, in step with the blur.
+                    .transition(.offset(y: titleCardTravel))
             }
         }
         .overlay {

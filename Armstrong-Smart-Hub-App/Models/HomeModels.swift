@@ -153,6 +153,18 @@ struct MediaResult: Codable, Identifiable, Hashable, Sendable {
     let mediaType: MediaType
     let year: String?
     let posterURL: String?
+    /// Overseerr's media status: 2 pending, 3 processing, 4 partly and 5 fully available.
+    let status: Int?
+
+    var known: MediaPick.Known? {
+        switch status {
+        case 4, 5: return .available
+        case 2, 3: return .requested
+        default: return nil
+        }
+    }
+
+    var pick: MediaPick { MediaPick(id: id, mediaType: mediaType, title: title, posterURL: posterURL, known: known) }
 }
 
 struct MediaDetail: Codable, Sendable {

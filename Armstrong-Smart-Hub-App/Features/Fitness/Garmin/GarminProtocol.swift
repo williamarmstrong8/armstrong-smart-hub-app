@@ -41,6 +41,20 @@ enum Garmin {
     }
 
     /// GFDI SYSTEM_EVENT types (Gadgetbridge's GarminSystemEventType, in order).
+    /// What the phone tells the watch it can do, one bit per capability in
+    /// Gadgetbridge's GarminCapability order: everything Gadgetbridge declares
+    /// (all but GPS ephemeris, LiveTrack and the unknown 104-111 and 114-119).
+    static let phoneCapabilities: [UInt8] = [0xff, 0xff, 0x3f, 0xef, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x03]
+
+    /// Names of the capabilities that matter for syncing, from a capability bitmask.
+    static func capabilityNames(_ bits: [UInt8]) -> [String] {
+        let known: [(Int, String)] = [
+            (3, "sync"), (4, "device initiates sync"), (5, "host initiated sync requests"), (10, "CIQ http"),
+            (29, "explicit archive"), (57, "HSA"), (77, "OAuth credentials"), (90, "neo sync"), (92, "realtime settings"),
+        ]
+        return known.filter { bit, _ in bit / 8 < bits.count && bits[bit / 8] & (1 << (bit % 8)) != 0 }.map(\.1)
+    }
+
     enum SystemEvent: UInt8 {
         case syncComplete = 0
         case pairComplete = 4

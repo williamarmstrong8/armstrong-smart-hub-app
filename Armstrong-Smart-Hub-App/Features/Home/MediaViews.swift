@@ -36,6 +36,8 @@ struct MediaSearchView: View {
     @FocusState private var focused: Bool
 
     private var typing: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// Whatever was showing stays until the new results land, then they move into its slots.
+    private var onShow: [MediaResult] { typing ? (results ?? recent) : recent }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -76,12 +78,10 @@ struct MediaSearchView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if let error { Text(error).font(.footnote).foregroundStyle(.red) }
-                    // Whatever was showing stays until the new results land, then they move into its slots.
-                    let shown = typing ? (results ?? recent) : recent
                     if typing, results?.isEmpty == true, !searching {
                         Text("Nothing found.").font(.subheadline).foregroundStyle(BrickLook.soft)
                     } else {
-                        grid(shown)
+                        grid(onShow)
                     }
                 }
             }
@@ -99,6 +99,13 @@ struct MediaSearchView: View {
             focused = true
         }
         .task { await loadRecent() }
+        // The titles on show get their details fetched ahead, so a card opens with its button and
+        // details in place. Starts over (and stops the last batch) whenever the grid changes.
+        .task(id: onShow.map(\.id)) {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            await MediaDetailCache.prefetch(onShow.prefix(9).map(\.pick), api: session.api)
+        }
         .task(id: query) {
             let q = query.trimmingCharacters(in: .whitespaces)
             guard !q.isEmpty else { return }
@@ -123,7 +130,7 @@ struct MediaSearchView: View {
             ForEach(items) { r in
                 Button {
                     focused = false
-                    onPick(MediaPick(id: r.id, mediaType: r.mediaType, title: r.title, posterURL: r.posterURL))
+                    onPick(r.pick)
                 } label: {
                     Poster(url: r.posterURL)
                 }
@@ -330,11 +337,16 @@ final class TitleCardPresenter {
     /// Home's hook to get its shelf in view for a request's flight (it closes the search page).
     @ObservationIgnored var revealShelf: () -> Void = {}
 
-    /// Opens once the poster is in hand (normally cached, so at once), so it slides in with the card.
-    func open(_ p: MediaPick, onChanged: @escaping () -> Void) {
+    /// Opens once the poster is in hand (normally cached, so at once), so it slides in with the
+    /// card; details not stored yet are fetched in the same short wait, so the card opens complete.
+    func open(_ p: MediaPick, api: APIClient, onChanged: @escaping () -> Void) {
         self.onChanged = onChanged
         Task {
-            poster = await PosterLoader.image(p.posterURL)
+            async let image = PosterLoader.image(p.posterURL)
+            if MediaDetailCache.get(p) == nil {
+                await MediaDetailCache.fetch(p, api: api, waitingAtMost: .milliseconds(600))
+            }
+            poster = await image
             withAnimation(.smooth(duration: 0.4)) { pick = p; reveal = 1 }
         }
     }
@@ -393,6 +405,22 @@ enum MediaDetailCache {
     static func set(_ d: MediaDetail?, for p: MediaPick) {
         details[key(p)] = d
         if let data = try? JSONEncoder().encode(details) { try? data.write(to: file, options: .atomic) }
+    }
+
+    /// Fetches and stores one title's details, giving up on the wait (not the fetch) after `limit`.
+    static func fetch(_ p: MediaPick, api: APIClient, waitingAtMost limit: Duration) async {
+        let fetch = Task {
+            if let d: MediaDetail = try? await api.run("mediaDetail", [.string(p.mediaType.rawValue), .int(p.id)]) {
+                set(d, for: p)
+            }
+        }
+        let timeout = Task { try? await Task.sleep(for: limit) }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await fetch.value }
+            group.addTask { await timeout.value }
+            _ = await group.next()
+            timeout.cancel()
+        }
     }
 
     /// Fetches what isn't stored yet, so even the first open of a shelf title is instant.
@@ -547,12 +575,15 @@ struct MediaDetailCard: View {
             } else {
                 primary.padding(.top, 8)
             }
-            Button(available ? "Delete from library" : "Cancel request") { confirmRemove = true }
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.white.opacity(0.6))
-                .frame(maxWidth: .infinity)
-                .opacity(available || isRequested ? 1 : 0)
-                .disabled(working || !(available || isRequested))
+            // Only titles in the library or on their way have this row; without it, Request sits
+            // lower, by the bottom of the card.
+            if available || isRequested {
+                Button(available ? "Delete from library" : "Cancel request") { confirmRemove = true }
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(maxWidth: .infinity)
+                    .disabled(working)
+            }
         }
         .foregroundStyle(.white)
         .opacity(1 - min(shrink * 2.2, 1))

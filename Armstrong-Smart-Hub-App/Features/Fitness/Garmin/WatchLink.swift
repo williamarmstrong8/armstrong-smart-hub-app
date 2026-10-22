@@ -534,6 +534,13 @@ final class WatchLink: NSObject {
             return
         case .configuration:
             send(GFDIMessage.ack(message.type))
+            // The watch lists what it can do and expects the phone's list back; until
+            // it has one it treats the phone as able to do nothing (no phone-asked
+            // syncs, no newer sync, no health files, no web requests).
+            let theirs = Array(message.payload.dropFirst())
+            note("Watch capabilities: \(theirs.map { String(format: "%02x", $0) }.joined()) (\(Garmin.capabilityNames(theirs).joined(separator: ", ")))")
+            send(GFDIMessage.frame(Garmin.Message.configuration.rawValue, [UInt8(Garmin.phoneCapabilities.count)] + Garmin.phoneCapabilities))
+            note("Told the watch the phone's capabilities")
             completeSetup()
             return
         case .synchronization:
