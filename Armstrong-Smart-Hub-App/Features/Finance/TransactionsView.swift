@@ -20,9 +20,10 @@ struct TransactionsView: View {
         let byDay = Dictionary(grouping: filtered) { Calendar.current.startOfDay(for: $0.date) }
             .sorted { $0.key > $1.key }
 
-        List {
-            if let flow = store.dashboard?.cashFlow, flow.count > 1, category == nil, search.isEmpty {
-                Section("Cash flow") {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                header
+                if let flow = store.dashboard?.cashFlow, flow.count > 1, category == nil, search.isEmpty {
                     Chart(flow) { m in
                         BarMark(x: .value("Month", m.month), y: .value("In", m.income)).foregroundStyle(Color.positive).position(by: .value("Kind", "In"))
                         BarMark(x: .value("Month", m.month), y: .value("Out", m.spending)).foregroundStyle(Color.negative.opacity(0.7)).position(by: .value("Kind", "Out"))
@@ -30,43 +31,64 @@ struct TransactionsView: View {
                     .chartYAxis { AxisMarks { v in AxisValueLabel { if let d = v.as(Double.self) { Text(Fmt.axis(d)) } } } }
                     .frame(height: 150)
                 }
-                .listRowBackground(BrickLook.card)
-            }
-            ForEach(byDay, id: \.key) { day, items in
-                Section {
-                    ForEach(items) { t in
-                        TransactionRow(transaction: t) { retagging = t }
-                            .contentShape(.rect)
-                            .onTapGesture { retagging = t }
-                    }
-                    .listRowBackground(BrickLook.card)
-                } header: {
-                    HStack {
-                        Text(day.formatted(.dateTime.weekday(.wide).month().day()))
-                        Spacer()
-                        Text(Fmt.signed(items.filter { !$0.pending }.reduce(0) { $0 + $1.netEffect }, store.currency)).monospacedDigit()
+                ForEach(byDay, id: \.key) { day, items in
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Text(day.formatted(.dateTime.weekday(.wide).month().day()))
+                            Spacer()
+                            Text(Fmt.signed(items.filter { !$0.pending }.reduce(0) { $0 + $1.netEffect }, store.currency)).monospacedDigit()
+                        }
+                        .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        ForEach(items) { t in
+                            TransactionRow(transaction: t) { retagging = t }
+                                .contentShape(.rect)
+                                .onTapGesture { retagging = t }
+                        }
                     }
                 }
+                if filtered.isEmpty {
+                    ContentUnavailableView.search(text: search).frame(maxWidth: .infinity)
+                }
             }
+            .padding(.horizontal, Fit.gutter)
+            .padding(.top, 8)
+            .padding(.bottom, 48)
         }
+        .scrollDismissesKeyboard(.interactively)
         .brickList()
-        .overlay { if filtered.isEmpty { ContentUnavailableView.search(text: search) } }
-        .searchable(text: $search, prompt: "Merchant or account")
-        .navigationTitle(category ?? "Transactions")
-        .toolbar {
-            Menu {
-                Picker("Category", selection: $category) {
-                    Text("All").tag(String?.none)
-                    ForEach(store.categoryOptions + ["Uncategorized"], id: \.self) { Text($0).tag(Optional($0)) }
-                }
-            } label: {
-                Label("Filter", systemImage: category == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-            }
-        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(BrickLook.page, for: .navigationBar)
         .sheet(item: $retagging) { t in
             CategoryPicker(transaction: t, options: store.categoryOptions) { c in
                 Task { await store.retag(t, to: c, api: session.api, toast: toast) }
             }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(category ?? "Transactions").font(.system(size: 34, weight: .light))
+                Spacer()
+                Menu {
+                    Picker("Category", selection: $category) {
+                        Text("All").tag(String?.none)
+                        ForEach(store.categoryOptions + ["Uncategorized"], id: \.self) { Text($0).tag(Optional($0)) }
+                    }
+                } label: {
+                    Image(systemName: category == nil ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                        .font(.system(size: 20, weight: .light))
+                }
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Merchant or account", text: $search).submitLabel(.search)
+                if !search.isEmpty {
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .background(BrickLook.pill, in: .capsule)
         }
     }
 }
