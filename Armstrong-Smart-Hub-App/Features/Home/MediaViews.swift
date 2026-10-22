@@ -629,9 +629,10 @@ struct MediaDetailCard: View {
             .overlay {
                 LinearGradient(stops: [
                     .init(color: .clear, location: 0.3),
-                    .init(color: .black.opacity(0.55), location: 0.6),
-                    .init(color: .black.opacity(0.92), location: 0.85),
-                    .init(color: .black, location: 1),
+                    .init(color: .black.opacity(0.55), location: 0.58),
+                    .init(color: .black.opacity(0.92), location: 0.8),
+                    // Fully black before the bottom, so the corners' curve has no poster left in it.
+                    .init(color: .black, location: 0.9),
                 ], startPoint: .top, endPoint: .bottom)
                 .opacity(1 - shrink)
             }
@@ -649,6 +650,9 @@ struct MediaDetailCard: View {
                 .transition(.opacity)
             }
         }
+        // Flattened first so the corners are cut once: clipping the poster and the gradient as
+        // separate layers left a faint sliver of poster along the curve.
+        .compositingGroup()
         .clipShape(.rect(cornerRadius: Self.screenRadius - Self.inset, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {
