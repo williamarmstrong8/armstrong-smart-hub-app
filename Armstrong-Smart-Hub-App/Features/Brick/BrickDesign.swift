@@ -133,9 +133,9 @@ struct BrickTopBar<Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
     var body: some View {
         HStack {
-            AccountButton()
+            AccountButton().frame(width: 28, height: 28)
             Spacer()
-            trailing
+            trailing.frame(minWidth: 28, minHeight: 28)
         }
         .font(.system(size: 22, weight: .light))
         .foregroundStyle(BrickLook.ink)
