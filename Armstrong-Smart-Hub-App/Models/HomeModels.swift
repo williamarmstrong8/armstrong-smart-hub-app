@@ -179,12 +179,16 @@ struct MediaDetail: Codable, Sendable {
     var canPlay: Bool { jellyfinItemId != nil && (playerOnline || canLaunchPlayer) }
 }
 
-/// What the Home tab opens in a sheet: a title from search, downloads or the shelf.
+/// What the Home tab opens in its title card: a title from search, downloads or the shelf.
 struct MediaPick: Identifiable, Hashable, Sendable {
+    /// What's already known before the details load, so the card's button is there from the start.
+    enum Known: Hashable, Sendable { case available, requested }
+
     let id: Int
     let mediaType: MediaType
     let title: String
     let posterURL: String?
+    var known: Known? = nil
 }
 
 struct HAAutomation: Codable, Identifiable, Equatable, Sendable {

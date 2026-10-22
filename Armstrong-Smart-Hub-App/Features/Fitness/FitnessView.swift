@@ -20,55 +20,38 @@ struct FitnessView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 40) {
+                VStack(spacing: 0) {
+                    sheet
                     VStack(spacing: 0) {
-                        WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil).padding(.horizontal, -20).padding(.top, -12)
-                        if watch.savedWatchID != nil {
-                            Text(watchTitle)
-                                .font(.title3.weight(.semibold))
-                                .frame(maxWidth: .infinity)
-                                .onTapGesture { showingWatch = true }
-                        }
-                    }
-                    if watch.savedWatchID == nil {
-                        welcome
-                        workoutsSection
-                    } else {
-                        if let error = store.error, !store.loaded {
-                            ErrorBanner(message: error)
-                        }
-                        VStack(spacing: 0) {
-                            dayHeader
-                            MorningCheckin(store: checkins).padding(.top, 8)
-                            TodayScores(store: store).padding(.vertical, 20)
+                        if watch.savedWatchID == nil {
+                            workoutsSection
+                        } else {
+                            if let error = store.error, !store.loaded {
+                                ErrorBanner(message: error).padding(.bottom, 24)
+                            }
+                            MorningCheckin(store: checkins)
                             today
                             workoutsSection
-                            FitSection(title: "Body") {
+                            FitSection {
                                 OverviewList(store: store, liveBpm: watch.heartRate?.bpm,
                                              steps: max(watch.steps?.count ?? 0, store.today?.steps ?? 0),
                                              stepGoal: store.today?.stepGoal ?? watch.steps?.goal)
                             }
                             RecentActivities(activities: store.activities)
+                            syncStatus
                         }
-                        syncStatus
                     }
+                    .environment(\.fitnessCards, true)
+                    .padding(.horizontal, Fit.gutter)
+                    .padding(.top, 48)
                 }
-                .padding(.horizontal, Fit.gutter)
-                .padding(.vertical, 16)
-                .padding(.bottom, 24)
+                .padding(.bottom, 40)
                 .animation(.smooth, value: watch.state)
             }
-            .background(Color(.systemBackground))
-            .navigationTitle("Fitness")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { AccountButton() }
-                if watch.savedWatchID != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { showingWatch = true } label: { TablerIcon(name: "device-watch", size: 22) }.accessibilityLabel("Watch")
-                    }
-                }
-            }
+            .background(BrickLook.page.ignoresSafeArea())
+            .foregroundStyle(BrickLook.ink)
+            .tint(BrickLook.ink)
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: workouts) }
@@ -129,7 +112,7 @@ struct FitnessView: View {
             Text("Connect your Garmin").font(.title2.bold())
             Text("The watch talks straight to this phone, and your history goes to the hub. No Garmin Connect, no Garmin cloud.")
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(BrickLook.soft)
             Button { pairing = true } label: {
                 HStack(spacing: 6) { TablerIcon(name: "plus", size: 18); Text("Pair your watch") }
             }
@@ -249,13 +232,38 @@ struct FitnessView: View {
         return ("barbell", name, detail)
     }
 
-    /// "Today" and the date, Oura's page title.
-    private var dayHeader: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Today").font(.system(size: 34, weight: .semibold))
-            Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())).font(.subheadline).foregroundStyle(Fit.muted)
+    /// The top sheet, like Brick's: the watch floating on it, the day, and the three scores.
+    private var sheet: some View {
+        VStack(spacing: 0) {
+            BrickTopBar {
+                if watch.savedWatchID != nil {
+                    Button { showingWatch = true } label: { TablerIcon(name: "device-watch", size: 22) }
+                        .accessibilityLabel("Watch")
+                }
+            }
+            .padding(.top, 12)
+            WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil)
+                .padding(.horizontal, -20).padding(.top, 4)
+            if watch.savedWatchID != nil {
+                BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                    .foregroundStyle(BrickLook.soft).padding(.top, 14)
+                Text(watchTitle).font(.system(size: 34, weight: .light)).padding(.top, 12)
+                    .onTapGesture { showingWatch = true }
+                TodayScores(store: store).padding(.top, 34)
+            } else {
+                welcome.padding(.top, 20)
+            }
+            Spacer(minLength: 0).frame(height: 40)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Fit.gutter + 4)
+        .frame(maxWidth: .infinity)
+        .background {
+            // Reaches up under the status bar and past the top when pulled down.
+            UnevenRoundedRectangle(bottomLeadingRadius: 60, bottomTrailingRadius: 60, style: .continuous)
+                .fill(BrickLook.sheet)
+                .padding(.top, -600)
+                .shadow(color: .black.opacity(0.10), radius: 18, y: 10)
+        }
     }
 
     private var nextWorkoutView: some View {
@@ -264,7 +272,7 @@ struct FitnessView: View {
             TablerIcon(name: next.icon, size: 26).foregroundStyle(Fit.muted).frame(width: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(next.title).font(.system(size: 22, weight: .regular))
-                Text(next.detail).font(.footnote).foregroundStyle(Fit.muted).fixedSize(horizontal: false, vertical: true)
+                Text(next.detail).font(.footnote).foregroundStyle(BrickLook.soft).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
@@ -280,7 +288,7 @@ struct FitnessView: View {
         let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
         let days = workoutDays
         let done = weekDays.filter { days.contains($0) }.count
-        return FitSection(title: "Next workout", trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days this week") {
+        return FitSection(trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days this week") {
             nextWorkoutView
             HStack(spacing: 0) {
                 ForEach(weekDays, id: \.self) { day in
@@ -288,8 +296,8 @@ struct FitnessView: View {
                     let isToday = calendar.isDate(day, inSameDayAs: start)
                     VStack(spacing: 8) {
                         ZStack {
-                            Circle().stroke(isToday ? Color.primary : Fit.track, lineWidth: isToday ? 1.5 : 1)
-                            if worked { Circle().fill(Fit.positive).padding(5) }
+                            Circle().stroke(worked ? Fit.positive : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
+                            if worked { Circle().fill(Fit.positive) }
                         }
                         .frame(width: 26, height: 26)
                         Text(day.formatted(.dateTime.weekday(.narrow)))

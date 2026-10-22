@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0000000000000001500000A1 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = 0000000000000001700000A1 /* onnxruntime */; };
 		0000000000000002500000A1 /* WorkoutWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000220 /* WorkoutWidgets.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0000000000000003500000A1 /* BrickReport.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000320 /* BrickReport.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -19,6 +20,13 @@
 			remoteGlobalIDString = 000000000000000200000000;
 			remoteInfo = WorkoutWidgets;
 		};
+		0000000000000003700000A1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000300000000;
+			remoteInfo = BrickReport;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -28,6 +36,7 @@
 			dstSubfolder = PlugIns;
 			files = (
 				0000000000000002500000A1 /* WorkoutWidgets.appex in Embed Foundation Extensions */,
+				0000000000000003500000A1 /* BrickReport.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 		};
@@ -36,6 +45,7 @@
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Armstrong-Smart-Hub-App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Armstrong-Smart-Hub-App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000220 /* WorkoutWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WorkoutWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000320 /* BrickReport.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BrickReport.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -54,6 +64,11 @@
 			path = WorkoutWidgets;
 			sourceTree = "<group>";
 		};
+		000000000000000000000050 /* BrickReport */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BrickReport;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +83,11 @@
 			files = (
 			);
 		};
+		000000000000000330000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -77,6 +97,7 @@
 				000000000000000000000010 /* Armstrong-Smart-Hub-App */,
 				000000000000000000000030 /* WorkoutActivity */,
 				000000000000000000000040 /* WorkoutWidgets */,
+				000000000000000000000050 /* BrickReport */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,6 +107,7 @@
 			children = (
 				000000000000000000000120 /* Armstrong-Smart-Hub-App.app */,
 				000000000000000000000220 /* WorkoutWidgets.appex */,
+				000000000000000000000320 /* BrickReport.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -106,6 +128,7 @@
 			);
 			dependencies = (
 				0000000000000002600000A1 /* PBXTargetDependency */,
+				0000000000000003600000A1 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* Armstrong-Smart-Hub-App */,
@@ -138,6 +161,24 @@
 			productReference = 000000000000000000000220 /* WorkoutWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		000000000000000300000000 /* BrickReport */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000310000000 /* Build configuration list for PBXNativeTarget "BrickReport" */;
+			buildPhases = (
+				000000000000000320000000 /* Sources */,
+				000000000000000330000000 /* Frameworks */,
+				000000000000000340000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				000000000000000000000050 /* BrickReport */,
+			);
+			name = BrickReport;
+			productName = BrickReport;
+			productReference = 000000000000000000000320 /* BrickReport.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -152,6 +193,9 @@
 						CreatedOnToolsVersion = 26.3;
 					};
 					000000000000000200000000 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					000000000000000300000000 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -175,6 +219,7 @@
 			targets = (
 				000000000000000100000000 /* Armstrong-Smart-Hub-App */,
 				000000000000000200000000 /* WorkoutWidgets */,
+				000000000000000300000000 /* BrickReport */,
 			);
 		};
 /* End PBXProject section */
@@ -186,6 +231,11 @@
 			);
 		};
 		000000000000000240000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		000000000000000340000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -203,6 +253,11 @@
 			files = (
 			);
 		};
+		000000000000000320000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -211,6 +266,12 @@
 			platformFilter = ios;
 			target = 000000000000000200000000 /* WorkoutWidgets */;
 			targetProxy = 0000000000000002700000A1 /* PBXContainerItemProxy */;
+		};
+		0000000000000003600000A1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = 000000000000000300000000 /* BrickReport */;
+			targetProxy = 0000000000000003700000A1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -497,6 +558,66 @@
 			};
 			name = Release;
 		};
+		000000000000000311000000 /* Debug configuration for PBXNativeTarget "BrickReport" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = BrickReport.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 73YJKR29VA;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "BrickReport-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = BrickReport;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paularmstrong.ArmstrongSmartHubApp.BrickReport;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		000000000000000312000000 /* Release configuration for PBXNativeTarget "BrickReport" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = BrickReport.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 73YJKR29VA;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "BrickReport-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = BrickReport;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.paularmstrong.ArmstrongSmartHubApp.BrickReport;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -521,6 +642,14 @@
 			buildConfigurations = (
 				000000000000000211000000 /* Debug configuration for PBXNativeTarget "WorkoutWidgets" */,
 				000000000000000212000000 /* Release configuration for PBXNativeTarget "WorkoutWidgets" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		000000000000000310000000 /* Build configuration list for PBXNativeTarget "BrickReport" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000311000000 /* Debug configuration for PBXNativeTarget "BrickReport" */,
+				000000000000000312000000 /* Release configuration for PBXNativeTarget "BrickReport" */,
 			);
 			defaultConfigurationName = Release;
 		};

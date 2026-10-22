@@ -287,8 +287,7 @@ struct DeviceButton: View {
                     .foregroundStyle(on ? .white : .secondary)
                     .background(on ? tint : Color(.tertiarySystemFill), in: .circle)
                 Spacer()
-                if pending { ProgressView() }
-                else if !compact, entity.hasLightControls || entity.isTV {
+                if !compact, entity.hasLightControls || entity.isTV {
                     Image(systemName: entity.isTV ? "chevron.right" : "slider.horizontal.3")
                         .foregroundStyle(.tertiary)
                 }

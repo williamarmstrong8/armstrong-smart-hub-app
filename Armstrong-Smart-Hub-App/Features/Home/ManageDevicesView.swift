@@ -32,8 +32,10 @@ struct ManageDevicesView: View {
                                 .foregroundStyle(picked.contains(e.id) ? Color.accentColor : .secondary)
                         }
                     }
+                    .listRowBackground(BrickLook.card)
                 }
             }
+            .brickList()
             .searchable(text: $search)
             .navigationTitle("\(picked.count) devices")
             .navigationBarTitleDisplayMode(.inline)

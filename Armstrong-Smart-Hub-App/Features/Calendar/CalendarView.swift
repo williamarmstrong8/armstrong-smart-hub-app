@@ -11,27 +11,34 @@ struct CalendarView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let data {
-                    agenda(data)
-                } else if let error {
-                    MessageView(title: "Couldn't load your calendar", systemImage: "calendar.badge.exclamationmark", message: error,
-                                actionTitle: "Try again") { Task { await load() } }
-                } else {
-                    ProgressView()
-                }
-            }
-            .navigationTitle("Calendar")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { AccountButton() }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Open Google Calendar", systemImage: "arrow.up.forward.app") {
-                        openURL(URL(string: "https://calendar.google.com")!)
+            VStack(spacing: 0) {
+                topBar.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+                Group {
+                    if let data {
+                        agenda(data)
+                    } else if let error {
+                        MessageView(title: "Couldn't load your calendar", systemImage: "calendar.badge.exclamationmark", message: error,
+                                    actionTitle: "Try again") { Task { await load() } }
+                    } else {
+                        ProgressView().frame(maxHeight: .infinity)
                     }
                 }
             }
+            .background(BrickLook.page.ignoresSafeArea())
+            .foregroundStyle(BrickLook.ink)
+            .tint(BrickLook.ink)
+            .toolbar(.hidden, for: .navigationBar)
             .task { if !fetched { await load() } }
             .refreshable { await load(refresh: true) }
+        }
+    }
+
+    private var topBar: some View {
+        BrickTopBar {
+            Button("Open Google Calendar", systemImage: "arrow.up.forward.app") {
+                openURL(URL(string: "https://calendar.google.com")!)
+            }
+            .labelStyle(.iconOnly)
         }
     }
 
@@ -57,6 +64,7 @@ struct CalendarView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
+                        CalendarHero(data: data)
                         ForEach(data.days) { day in
                             HStack(alignment: .top, spacing: 14) {
                                 DateMarker(day: day.day, isToday: day.day == data.today)
@@ -71,9 +79,8 @@ struct CalendarView: View {
                             }
                         }
                     }
-                    .padding(16)
+                    .padding(.horizontal, 16).padding(.bottom, 16)
                 }
-                .background(Color(.systemGroupedBackground))
             }
         }
     }
@@ -95,6 +102,24 @@ struct CalendarView: View {
 
 let calendarCacheName = "calendar"
 
+/// The event coming up next, big.
+private struct CalendarHero: View {
+    let data: CalendarResponse
+
+    var body: some View {
+        let now = Date()
+        let today = data.days.first { $0.day == data.today }?.events ?? []
+        let next = today.first { !$0.allDay && ($0.startDate.map { $0 > now } ?? false) }
+            ?? data.days.lazy.flatMap(\.events).first { !$0.allDay && ($0.startDate.map { $0 > now } ?? false) }
+        if let next, let start = next.startDate {
+            BrickHero(caption: "Next up", title: next.title,
+                      subtitle: start.formatted(.dateTime.weekday(.wide).hour().minute())) {}
+        } else {
+            BrickHero(caption: "Today", title: today.isEmpty ? "Nothing today" : "Done for today") {}
+        }
+    }
+}
+
 /// Google's day marker: weekday over the date, filled blue for today.
 private struct DateMarker: View {
     let day: String
@@ -105,7 +130,7 @@ private struct DateMarker: View {
         VStack(spacing: 4) {
             Text(date.formatted(Date.FormatStyle(timeZone: .gmt).weekday(.abbreviated)).uppercased())
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(isToday ? Color.googleBlue : .secondary)
+                .foregroundStyle(isToday ? Color.googleBlue : BrickLook.soft)
             Text(date.formatted(Date.FormatStyle(timeZone: .gmt).day()))
                 .font(.title3.weight(.medium)).monospacedDigit()
                 .foregroundStyle(isToday ? .white : .primary)
@@ -130,8 +155,8 @@ private struct EventCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
-        .background(Color(hexForWhiteText: event.color), in: .rect(cornerRadius: 16))
-        .contentShape(.rect(cornerRadius: 16))
+        .background(Color(hexForWhiteText: event.color), in: .rect(cornerRadius: 22))
+        .contentShape(.rect(cornerRadius: 22))
     }
 
     /// "6 PM" or "6:30 PM – 8 PM", like Google Calendar.

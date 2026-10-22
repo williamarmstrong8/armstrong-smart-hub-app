@@ -38,21 +38,19 @@ struct RoutineEditor: View {
             Group {
                 if reordering { reorderList } else { editList }
             }
-            .background(Fit.page)
+            .background(BrickLook.page)
             .navigationTitle(isNew ? "Create Routine" : "Edit Routine")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(BrickLook.page, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     if reordering {
-                        Button("Done") { withAnimation(.snappy) { reordering = false } }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Fit.energy)
+                        Button { withAnimation(.snappy) { reordering = false } } label: { WorkoutToolbarLabel(title: "Done") }
                     } else {
-                        Button("Save") { Task { await save() } }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Fit.energy)
+                        Button { Task { await save() } } label: { WorkoutToolbarLabel(title: "Save") }
                             .disabled(!canSave)
+                            .opacity(canSave ? 1 : 0.4)
                     }
                 }
             }
@@ -77,7 +75,9 @@ struct RoutineEditor: View {
                 }
             }
         }
-        .presentationBackground(Fit.page)
+        .presentationBackground(BrickLook.page)
+        .foregroundStyle(BrickLook.ink)
+        .tint(BrickLook.ink)
     }
 
     private func startReordering() {
@@ -89,12 +89,12 @@ struct RoutineEditor: View {
     /// One row per exercise, held and dragged into a new order.
     private var reorderList: some View {
         List {
-            Text("Hold and drag to reorder").font(.footnote).foregroundStyle(Fit.muted)
+            Text("Hold and drag to reorder").font(.footnote).foregroundStyle(BrickLook.soft)
                 .workoutRow(top: 12, bottom: 4)
                 .moveDisabled(true)
             ForEach(items) { item in
                 ReorderRow(exerciseId: item.exerciseId, name: item.name, muscle: item.muscle)
-                    .listRowBackground(Fit.page)
+                    .listRowBackground(BrickLook.page)
                     .deleteDisabled(true)
             }
             .onMove { items.move(fromOffsets: $0, toOffset: $1) }
@@ -107,17 +107,17 @@ struct RoutineEditor: View {
     private var editList: some View {
         List {
             TextField("Routine title", text: $routine.name)
-                .font(.title2.weight(.semibold))
+                .font(.system(size: 26, weight: .regular))
                 .submitLabel(.done)
                 .workoutRow(top: 12, bottom: 4)
-            Rectangle().fill(Fit.hairline).frame(height: 1)
+            BrickDivider()
                 .workoutRow(top: 8, bottom: 8)
 
             if items.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "dumbbell").font(.largeTitle).foregroundStyle(Fit.faint)
+                    Image(systemName: "dumbbell").font(.system(size: 34, weight: .light)).foregroundStyle(BrickLook.soft)
                     Text("Get started by adding an exercise to your routine.")
-                        .font(.subheadline).foregroundStyle(Fit.muted).multilineTextAlignment(.center)
+                        .font(.subheadline).foregroundStyle(BrickLook.soft).multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
                 .workoutRow(top: 32, bottom: 24)
@@ -134,10 +134,10 @@ struct RoutineEditor: View {
             } label: {
                 Label("Add exercise", systemImage: "plus")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(BrickLook.page)
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
-                    .background(Fit.energy, in: .rect(cornerRadius: 12))
+                    .background(BrickLook.bar, in: .rect(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.borderless)
             .workoutRow(top: 20, bottom: 8)
@@ -204,7 +204,7 @@ struct RoutineEditor: View {
         }
 
         Button { item.wrappedValue.addSet() } label: {
-            Label("Add Set", systemImage: "plus").greyButton(.primary)
+            Label("Add Set", systemImage: "plus").greyButton(BrickLook.ink)
         }
         .buttonStyle(.borderless)
         .workoutRow(top: 10, bottom: 8)
@@ -339,7 +339,7 @@ private struct RoutineExerciseHeader: View {
             NavigationLink(value: ExerciseRoute(id: item.exerciseId, name: item.name, store: store)) {
                 HStack(spacing: 12) {
                     ExerciseThumb(exerciseId: item.exerciseId, muscle: item.muscle, size: 48)
-                    Text(item.name).font(.title3.weight(.semibold)).foregroundStyle(Fit.energy)
+                    Text(item.name).font(.system(size: 20, weight: .regular)).foregroundStyle(BrickLook.ink)
                         .multilineTextAlignment(.leading)
                 }
                 .contentShape(.rect)
@@ -356,7 +356,7 @@ private struct RoutineExerciseHeader: View {
                     .frame(width: 36, height: 36).contentShape(.rect)
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(.primary)
+            .foregroundStyle(BrickLook.ink)
         }
     }
 }
@@ -376,8 +376,9 @@ private struct RoutineSetsHeader: View {
                 Text("REPS").frame(width: WorkoutColumns.reps)
             }
         }
-        .font(.footnote.weight(.medium))
-        .foregroundStyle(Fit.muted)
+        .font(.system(size: 12, weight: .medium))
+        .tracking(1.0)
+        .foregroundStyle(BrickLook.soft)
     }
 }
 
@@ -403,10 +404,10 @@ private struct RoutineSetRow: View {
                     .font(.body.weight(.semibold)).monospacedDigit()
                     .foregroundStyle(kindColor)
                     .frame(width: WorkoutColumns.set, height: 40)
-                    .background(Fit.track, in: .rect(cornerRadius: 8))
+                    .background(BrickLook.card, in: .rect(cornerRadius: 8))
             }
             .buttonStyle(.borderless)
-            Text(previous).font(.body).foregroundStyle(Fit.muted).lineLimit(1).minimumScaleFactor(0.7)
+            Text(previous).font(.body).foregroundStyle(BrickLook.soft).lineLimit(1).minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity)
             if isDuration {
                 field(Binding(get: { WorkoutFormat.timer(set.repsText) },
@@ -434,6 +435,6 @@ private struct RoutineSetRow: View {
             .multilineTextAlignment(.center)
             .font(.body.weight(.medium)).monospacedDigit()
             .frame(width: width, height: 40)
-            .background(Fit.track.opacity(0.5), in: .rect(cornerRadius: 8))
+            .background(BrickLook.card, in: .rect(cornerRadius: 8))
     }
 }

@@ -46,7 +46,7 @@ struct ActivitiesView: View {
                     VStack(spacing: 0) {
                         ForEach(items) { activity in
                             NavigationLink(value: activity) { ActivityRow(activity: activity) }.buttonStyle(.plain)
-                            if activity.id != items.last?.id { Rectangle().fill(Fit.hairline).frame(height: 1) }
+                            if activity.id != items.last?.id { FitDivider() }
                         }
                     }
                 }

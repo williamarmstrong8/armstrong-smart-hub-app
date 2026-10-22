@@ -78,6 +78,7 @@ enum CategoryStyle {
         switch category {
         case "Income": return "arrow.down.circle"
         case "Transfers": return "arrow.left.arrow.right"
+        case "Rent": return "house"
         case "Groceries": return "cart"
         case "Food & Drinks": return "fork.knife"
         case "Transport": return "car"
@@ -94,6 +95,7 @@ enum CategoryStyle {
         switch category {
         case "Income": return .green
         case "Transfers": return .gray
+        case "Rent": return .red
         case "Groceries": return .mint
         case "Food & Drinks": return .orange
         case "Transport": return .blue

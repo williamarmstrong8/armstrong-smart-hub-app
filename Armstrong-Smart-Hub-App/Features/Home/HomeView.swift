@@ -15,40 +15,60 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var store = HomeStore()
     @State private var habits = HabitsStore()
+    @State private var fitness = FitnessStore()
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
     @State private var pick: MediaPick?
+    /// How far the title card is up (0–1); the page behind blurs by it.
+    @State private var reveal: CGFloat = 0
     @State private var editingHabit: HabitEditTarget?
     @State private var managing = false
     @State private var display = false
+    @State private var showAutomations = false
+    @State private var searching = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 40) {
+                    topBar.padding(.bottom, -32)
                     content
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 48)
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Home")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { AccountButton() }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu("More", systemImage: "ellipsis") {
-                        Button("Display mode", systemImage: "rectangle.on.rectangle") { display = true }
-                        Button("Choose devices", systemImage: "slider.horizontal.3") { managing = true }
-                            .disabled(store.entities.isEmpty)
-                        Button("Add habit", systemImage: "plus.circle") { editingHabit = .new }
+            .background(BrickLook.page.ignoresSafeArea())
+            .foregroundStyle(BrickLook.ink)
+            .tint(BrickLook.ink)
+            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .overlay {
+                if searching {
+                    MediaSearchView(onPick: open) {
+                        withAnimation(.smooth(duration: 0.3)) { searching = false }
                     }
+                    .transition(.opacity)
                 }
             }
+            // The page behind a title's card blurs as it rises and clears as it goes, in step with it.
+            .blur(radius: 14 * reveal)
+            .overlay {
+                if let p = pick {
+                    MediaDetailCard(pick: p, toast: toast, reveal: $reveal,
+                                    onChanged: { Task { await store.refresh(api: session.api) } },
+                                    onClose: closeTitle)
+                        .id(p.id)
+                        .transition(.move(edge: .bottom))
+                }
+            }
+            .toolbarVisibility(pick == nil ? .visible : .hidden, for: .tabBar)
+            .toolbar(.hidden, for: .navigationBar)
             .refreshable {
                 async let a: Void = store.refresh(api: session.api)
                 async let b: Void = habits.load(api: session.api)
-                _ = await (a, b)
+                async let f: Void = fitness.load(api: session.api)
+                _ = await (a, b, f)
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
@@ -56,6 +76,7 @@ struct HomeView: View {
                 await store.poll(api: session.api)
             }
             .task { if !habits.fetched { await habits.load(api: session.api) } }
+            .task { await fitness.load(api: session.api) }
             .sheet(item: $light) { e in
                 LightSheet(entityID: e.id, store: store, toast: toast)
                     .presentationDetents([.medium, .large])
@@ -64,13 +85,24 @@ struct HomeView: View {
                 RemoteSheet(entity: store.entity(e.id) ?? e)
                     .presentationDetents([.large])
             }
-            .sheet(item: $pick) { p in
-                MediaDetailSheet(pick: p) { Task { await store.refresh(api: session.api) } }
-            }
             .sheet(isPresented: $managing) {
                 ManageDevicesView(entities: store.entities, visible: store.state?.visible) {
                     Task { await store.refresh(api: session.api) }
                 }
+            }
+            .sheet(isPresented: $showAutomations) {
+                NavigationStack {
+                    ScrollView {
+                        if let payload = store.state?.automations {
+                            AutomationsSection(payload: payload, store: store, toast: toast).padding(16)
+                        }
+                    }
+                    .navigationTitle("Automations")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showAutomations = false } } }
+                }
+                .presentationDetents([.medium, .large])
+                .toast(toast)
             }
             .fullScreenCover(isPresented: $display) {
                 DisplayModeView(store: store)
@@ -78,6 +110,63 @@ struct HomeView: View {
             .habitEditor($editingHabit, store: habits)
             .toast(toast)
         }
+    }
+
+    private func open(_ p: MediaPick) {
+        withAnimation(.smooth(duration: 0.4)) { pick = p; reveal = 1 }
+    }
+
+    private func closeTitle() {
+        withAnimation(.smooth(duration: 0.35)) { pick = nil; reveal = 0 }
+    }
+
+    private var topBar: some View {
+        BrickTopBar {
+            Menu("More", systemImage: "ellipsis") {
+                Button("Display mode", systemImage: "rectangle.on.rectangle") { display = true }
+                Button("Choose devices", systemImage: "slider.horizontal.3") { managing = true }
+                    .disabled(store.entities.isEmpty)
+                Button("Automations", systemImage: "bolt") { showAutomations = true }
+                    .disabled(store.state?.automations == nil || store.state?.errors.automations != nil)
+                Button("Add habit", systemImage: "plus.circle") { editingHabit = .new }
+            }
+            .labelStyle(.iconOnly)
+        }
+    }
+
+    /// One word and one sentence on how you're doing, from the watch's readiness, sleep and Body Battery.
+    private var status: (title: String, summary: String)? {
+        let watch = fitness.snapshot?.watch
+        let metrics = fitness.snapshot?.metrics
+        let readiness = watch?.readiness?.score ?? metrics?.readiness.score
+        let sleep = watch?.sleep?.overall ?? fitness.lastNight?.score
+        let energy = fitness.currentBodyBattery ?? metrics?.bodyBattery?.current ?? fitness.snapshot?.insights?.stress.bodyBattery?.current
+        guard readiness != nil || sleep != nil || energy != nil else { return nil }
+        let drained = (energy ?? 100) < 30
+        let slept = (sleep ?? 0) >= 75
+        let ready = readiness ?? 0
+        if drained || ready < 40 {
+            return ("Run down", drained ? "Battery is low. Take it easy and get to bed early." : "Your body is asking for rest today.")
+        }
+        if ready >= 75 && (energy ?? 100) >= 60 {
+            return ("Energized", slept ? "Slept well and ready to push. A good day to train." : "Ready to go, even on a short night.")
+        }
+        if slept { return ("Rested", "Slept well and recovered. Steady day ahead.") }
+        return ("Steady", "A middling night. Fine for an easy day.")
+    }
+
+    /// How you're doing, from the watch, with the rest of the house under it.
+    private var hero: some View {
+        let shown = store.shownEntities
+        let active = shown.filter { $0.isOn && $0.control != .light }.count
+        let status = status
+        return BrickHero(caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
+                         title: status?.title ?? "Home", subtitle: status?.summary) {
+            if active > 0 { BrickPill(text: "\(active) active", icon: "bolt.fill") }
+            if habits.loaded, !habits.habits.isEmpty { BrickPill(text: "\(habits.doneToday) of \(habits.habits.count) habits", icon: "checkmark.circle") }
+            if store.isBusy { BrickPill(text: "Downloading", icon: "arrow.down.circle") }
+        }
+        .animation(.smooth, value: status?.title)
     }
 
     @ViewBuilder
@@ -95,6 +184,8 @@ struct HomeView: View {
                 }
             }
 
+            if store.state != nil { hero }
+
             if store.state == nil {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)
             } else {
@@ -103,41 +194,17 @@ struct HomeView: View {
 
             habitsSection
 
-            if let payload = store.state?.automations, store.state?.errors.automations == nil {
-                AutomationsSection(payload: payload, store: store, toast: toast)
+            if !searching {
+                MediaSearchBar { withAnimation(.smooth(duration: 0.3)) { searching = true } }
+            } else {
+                Color.clear.frame(height: 50)
             }
 
-            if !store.activeDownloads.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(title: "Downloading")
-                    RequestList(requests: store.activeDownloads) { pick = $0 }
-                }
-            }
-
-            if !store.ready.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(title: "Ready to watch")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(store.ready) { r in
-                                Button {
-                                    if let tmdb = r.tmdbId {
-                                        pick = MediaPick(id: tmdb, mediaType: r.mediaType, title: r.title, posterURL: r.posterURL)
-                                    }
-                                } label: {
-                                    Poster(url: r.posterURL, width: 110)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(r.tmdbId == nil)
-                            }
-                        }
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(title: "Find something to watch")
-                MediaSearchView { pick = $0 }
+            if let problem = store.state?.errors.requests {
+                Text("Download status isn't updating: \(problem)")
+                    .font(.footnote).foregroundStyle(BrickLook.soft)
+            } else if !store.activeDownloads.isEmpty || !store.ready.isEmpty {
+                MediaShelf(requests: store.activeDownloads + store.ready, onPick: open)
             }
         }
     }
@@ -148,7 +215,6 @@ struct HomeView: View {
         if habits.loaded, !habits.habits.isEmpty {
             let today = habits.today
             VStack(alignment: .leading, spacing: 14) {
-                SectionHeader(title: "Habits")
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 12)], spacing: 18) {
                     ForEach(habits.habits) { habit in
                         HabitButton(habit: habit, done: habits.isDone(habit.id, today), saving: habits.isSaving(habit.id, today), size: 84) {
@@ -188,7 +254,7 @@ struct DeviceGroups: View {
             let items = shown.filter { group.kinds.contains($0.control) }
             if !items.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(title: group.title)
+                    if large { SectionHeader(title: group.title) }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: large ? 200 : 150), spacing: 10)], spacing: 10) {
                         ForEach(items) { e in
                             DeviceButton(entity: e, pending: store.pending.contains(e.id), compact: !large) {
@@ -209,10 +275,10 @@ struct SectionHeader: View {
     var meta: String?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title).font(.title3.weight(.semibold))
-            Spacer()
-            if let meta { Text(meta).font(.subheadline).foregroundStyle(.secondary).monospacedDigit() }
+        VStack(spacing: 6) {
+            Text(title).font(.system(size: 26, weight: .regular))
+            if let meta { BrickCaps(text: meta).foregroundStyle(BrickLook.soft).monospacedDigit() }
         }
+        .frame(maxWidth: .infinity)
     }
 }

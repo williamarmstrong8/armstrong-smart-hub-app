@@ -25,8 +25,13 @@ struct WorkoutDetailPage: View {
                             actionTitle: "Retry") { Task { await load(refresh: true) } }
             }
         }
+        .environment(\.fitnessCards, true)
+        .background(BrickLook.page.ignoresSafeArea())
+        .foregroundStyle(BrickLook.ink)
+        .tint(BrickLook.ink)
         .navigationTitle(detail?.name ?? "Workout")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(BrickLook.page, for: .navigationBar)
         .toolbar {
             if let detail {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -59,16 +64,18 @@ struct WorkoutDetailPage: View {
 
     private func content(_ detail: WorkoutDetail) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(detail.name).font(.system(size: 30, weight: .semibold))
+            VStack(spacing: 6) {
+                Text(detail.name).font(.system(size: 26, weight: .regular)).multilineTextAlignment(.center)
                 if let start = detail.start {
-                    Text(start.formatted(.dateTime.weekday(.wide).month(.wide).day().hour().minute()))
-                        .font(.subheadline).foregroundStyle(Fit.muted)
+                    BrickCaps(text: start.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().hour().minute()))
+                        .foregroundStyle(BrickLook.soft)
                 }
             }
-            .padding(.bottom, 20)
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 18)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), spacing: 16) {
+            BrickCard(padding: 20) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3), spacing: 18) {
                 stat("Duration", FitnessFormat.duration(duration(detail)))
                 stat("Volume", WorkoutFormat.volume(detail.volumeKg, unit: unit))
                 stat("Sets", "\(detail.exercises.flatMap(\.sets).filter { $0.kind != "warmup" }.count)")
@@ -76,6 +83,8 @@ struct WorkoutDetailPage: View {
                 stat("Max HR", detail.maxHr.map { "\($0)" } ?? "–")
                 stat("PRs", "\(detail.exercises.flatMap(\.sets).filter(\.pr).count)")
             }
+            }
+            .padding(.bottom, 28)
 
             FitSection(title: "Heart rate", trailing: source(detail)) {
                 if detail.points.isEmpty {
@@ -84,7 +93,6 @@ struct WorkoutDetailPage: View {
                     chart(detail)
                 }
             }
-            .padding(.top, 12)
 
             SessionFeedbackSection(kind: "workout", id: detail.id)
 
@@ -98,11 +106,11 @@ struct WorkoutDetailPage: View {
                         HStack(spacing: 12) {
                             ExerciseThumb(exerciseId: group.exerciseId, muscle: store.exercise(group.exerciseId)?.muscle, size: 44)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(group.name).font(.headline).foregroundStyle(Fit.energy).multilineTextAlignment(.leading)
+                                Text(group.name).font(.system(size: 20, weight: .regular)).foregroundStyle(BrickLook.ink).multilineTextAlignment(.leading)
                                 if group.superset != nil { Text("Superset").font(.caption).foregroundStyle(Fit.health) }
                             }
                             Spacer(minLength: 8)
-                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Fit.faint)
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(BrickLook.soft)
                         }
                         .contentShape(.rect)
                     }
@@ -134,8 +142,8 @@ struct WorkoutDetailPage: View {
 
     private func stat(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(Fit.label).foregroundStyle(Fit.muted)
-            Text(value).font(Fit.value)
+            BrickCaps(text: label).foregroundStyle(BrickLook.soft)
+            Text(value).font(.system(size: 24, weight: .light)).monospacedDigit()
         }
     }
 
@@ -154,18 +162,18 @@ struct WorkoutDetailPage: View {
             }
             ForEach(Array(marks.enumerated()), id: \.offset) { _, mark in
                 RuleMark(x: .value("Set", mark.0))
-                    .foregroundStyle(mark.1 ? Fit.faint.opacity(0.5) : Fit.energy.opacity(0.45))
+                    .foregroundStyle(mark.1 ? BrickLook.soft.opacity(0.5) : BrickLook.bar.opacity(0.55))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: mark.1 ? [2, 3] : []))
             }
         }
         .chartYScale(domain: .automatic(includesZero: false))
         .chartXAxis {
             AxisMarks { value in
-                AxisGridLine().foregroundStyle(Fit.hairline)
+                AxisGridLine().foregroundStyle(BrickLook.line)
                 AxisValueLabel { if let m = value.as(Double.self) { Text("\(Int(m))m") } }
             }
         }
-        .chartYAxis { AxisMarks(position: .trailing) { _ in AxisGridLine().foregroundStyle(Fit.hairline); AxisValueLabel() } }
+        .chartYAxis { AxisMarks(position: .trailing) { _ in AxisGridLine().foregroundStyle(BrickLook.line); AxisValueLabel() } }
         .font(Fit.axis)
         .frame(height: 180)
     }
@@ -186,7 +194,7 @@ struct WorkoutDetailPage: View {
                     if set.pr { Image(systemName: "trophy.fill").font(.caption).foregroundStyle(Fit.fair) }
                 }
                 if let e1rm = set.e1rmKg, set.kind != "warmup" {
-                    Text("Est. 1RM \(unit.text(e1rm)) \(unit.rawValue)").font(.caption).foregroundStyle(Fit.muted)
+                    Text("Est. 1RM \(unit.text(e1rm)) \(unit.rawValue)").font(.caption).foregroundStyle(BrickLook.soft)
                 }
             }
             Spacer(minLength: 8)
@@ -202,7 +210,7 @@ struct WorkoutDetailPage: View {
                     if let drop = set.recoveryBpm, drop > 0 { Text("↓\(drop) in 1m") }
                     if let rest = set.restSeconds { Text("rest \(WorkoutFormat.clock(TimeInterval(rest)))") }
                 }
-                .font(.caption).foregroundStyle(Fit.muted).monospacedDigit()
+                .font(.caption).foregroundStyle(BrickLook.soft).monospacedDigit()
             }
         }
     }

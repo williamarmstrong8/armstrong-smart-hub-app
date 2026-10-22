@@ -119,7 +119,7 @@ struct TodayScores: View {
     private func ring(_ page: FitnessPage, _ score: Int?, _ tint: Color, _ label: String) -> some View {
         NavigationLink(value: page) {
             VStack(spacing: 8) {
-                ScoreRing(value: score.map(String.init) ?? "–", fraction: Double(score ?? 0) / 100, tint: tint, size: 92)
+                ScoreRing(value: score.map(String.init) ?? "–", fraction: Double(score ?? 0) / 100, tint: tint, size: 100, track: BrickLook.line)
                 Text(label).font(.subheadline.weight(.medium))
                 Text(score == nil ? " " : Status.word(score)).font(.caption).foregroundStyle(accent(score, Fit.muted))
             }
@@ -245,7 +245,7 @@ struct OverviewList: View {
     private func row<Content: View>(_ page: FitnessPage, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(spacing: 0) {
             NavigationLink(value: page) { content() }.buttonStyle(.plain)
-            Rectangle().fill(Fit.hairline).frame(height: 1)
+            FitDivider()
         }
     }
 
@@ -266,14 +266,14 @@ struct RecentActivities: View {
     var activities: [FitnessActivity]
 
     var body: some View {
-        FitSection(title: "Activities", trailing: activities.isEmpty ? nil : "\(activities.count) synced") {
+        FitSection(trailing: activities.isEmpty ? nil : "\(activities.count) synced") {
             if activities.isEmpty {
                 Takeaway(text: "Workouts from the watch show here after a sync.")
             } else {
                 VStack(spacing: 0) {
                     ForEach(activities.prefix(3)) { activity in
                         NavigationLink(value: activity) { ActivityRow(activity: activity) }.buttonStyle(.plain)
-                        Rectangle().fill(Fit.hairline).frame(height: 1)
+                        FitDivider()
                     }
                     NavigationLink { ActivitiesView(activities: activities) } label: { LinkRow(title: "All activities") }
                         .buttonStyle(.plain)
@@ -861,4 +861,12 @@ struct RangeRow: View {
 extension EnvironmentValues {
     /// FitnessRenderDebug: lay pages out without their scroll view so a renderer captures the full height.
     @Entry var fitnessRenderFlat = false
+    /// The overview's Brick look: sections become centered headings over soft cards.
+    @Entry var fitnessCards = false
+}
+
+/// A hairline between rows, visible on a card when the overview is in its card look.
+struct FitDivider: View {
+    @Environment(\.fitnessCards) private var cards
+    var body: some View { Rectangle().fill(cards ? BrickLook.line : Fit.hairline).frame(height: 1) }
 }

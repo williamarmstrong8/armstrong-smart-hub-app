@@ -144,7 +144,7 @@ struct GoalSettings: Codable, Equatable, Sendable {
 
 /// Built-in tags, in the web picker's order (lib/categories.ts).
 let builtInCategories = [
-    "Income", "Transfers", "Groceries", "Food & Drinks", "Transport", "Lifestyle",
+    "Income", "Transfers", "Rent", "Groceries", "Food & Drinks", "Transport", "Lifestyle",
     "Bills & Utilities", "Subscriptions & Fees", "Travel",
 ]
 
