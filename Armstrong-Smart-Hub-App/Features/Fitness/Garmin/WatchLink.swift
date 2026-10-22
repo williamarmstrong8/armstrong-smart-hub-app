@@ -34,7 +34,11 @@ final class WatchLink: NSObject {
         let text: String
     }
 
-    private(set) var state: State = .idle
+    private(set) var state: State = .idle {
+        didSet { if state != oldValue { stateChangedAt = .now } }
+    }
+    /// When `state` last changed, so a connection attempt that has stalled can be started over.
+    private var stateChangedAt = Date.now
     private(set) var candidates: [Candidate] = []
     private(set) var identity: WatchIdentity?
     private(set) var heartRate: HeartRateReading?
@@ -172,6 +176,22 @@ final class WatchLink: NSObject {
         } else if !adoptSystemWatch() {
             fail("This phone no longer knows the watch. Pair it again.")
         }
+    }
+
+    /// Makes sure the saved watch's link is up or on its way: reconnects if it is
+    /// down, and starts over if an attempt has sat in connecting, pairing or
+    /// opening the channel for 30 seconds (iOS can hand back a restored link
+    /// that never finishes). A fresh attempt while the watch is out of range
+    /// just renews iOS's pending request.
+    func ensureConnected() {
+        guard savedWatchID != nil, central.state == .poweredOn, state != .connected, state != .scanning else { return }
+        if isBusy {
+            guard Date.now.timeIntervalSince(stateChangedAt) > 30, let peripheral else { return }
+            note("No progress for 30 s while \(state); starting over")
+            connect(peripheral)
+            return
+        }
+        connectSaved()
     }
 
     func disconnect() {
@@ -339,7 +359,7 @@ final class WatchLink: NSObject {
     func keepHeartRateFlowing() {
         guard savedWatchID != nil else { return }
         if state != .connected {
-            if !isBusy { connectSaved() }
+            ensureConnected()
             return
         }
         let quiet = heartRateAt.map { Date.now.timeIntervalSince($0) > 20 } ?? true
@@ -546,7 +566,11 @@ extension WatchLink: CBCentralManagerDelegate, CBPeripheralDelegate {
             switch value {
             case .poweredOn:
                 if case .bluetoothOff = state { state = .idle }
-                if peripheral == nil {
+                if let peripheral {
+                    // Restored by iOS, or Bluetooth came back: set the channel up now,
+                    // since calls made before power-on are dropped.
+                    if wantsConnection, rx == nil { connect(peripheral) }
+                } else {
                     if savedWatchID != nil {
                         connectSaved()
                     } else if !UserDefaults.standard.bool(forKey: Self.forgottenKey) {
@@ -571,19 +595,14 @@ extension WatchLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         MainActor.assumeIsolated {
             guard let watch = restored.first(where: { $0.identifier == savedWatchID }) ?? restored.first else { return }
             note("Restored by iOS (\(watch.state == .connected ? "connected" : "waiting for the watch"))")
+            // The app's handles died with the old process. Calls to Bluetooth are
+            // ignored until it reports power-on, so the channel is set up again there.
             reset()
             wantsConnection = true
             peripheral = watch
             watch.delegate = self
-            if watch.state == .connected {
-                // The app's handles died with the old process; set the channel up again.
-                state = .connecting
-                maxWrite = watch.maximumWriteValueLength(for: .withoutResponse)
-                watch.discoverServices(nil)
-            } else {
-                state = .connecting
-                central.connect(watch)
-            }
+            state = .connecting
+            if central.state == .poweredOn { connect(watch) }
         }
     }
 

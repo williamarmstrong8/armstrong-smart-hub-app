@@ -89,6 +89,8 @@ struct FitPage<Content: View>: View {
 struct FitSection<Content: View>: View {
     var title: String?
     var trailing: String?
+    /// The trailing text's color, when it should stand out (a streak).
+    var trailingTint: Color?
     var divider = true
     @ViewBuilder var content: Content
     @Environment(\.fitnessCards) private var cards
@@ -103,7 +105,7 @@ struct FitSection<Content: View>: View {
             if title != nil || trailing != nil {
                 VStack(spacing: 6) {
                     if let title { Text(title).font(.system(size: 26, weight: .regular)).foregroundStyle(BrickLook.ink) }
-                    if let trailing { BrickCaps(text: trailing).foregroundStyle(BrickLook.soft).monospacedDigit() }
+                    if let trailing { BrickCaps(text: trailing).foregroundStyle(trailingTint ?? BrickLook.soft).monospacedDigit() }
                 }
             }
             BrickCard(padding: 20) {
@@ -121,7 +123,7 @@ struct FitSection<Content: View>: View {
                 HStack(alignment: .firstTextBaseline) {
                     if let title { Text(title).font(.headline) }
                     Spacer(minLength: 8)
-                    if let trailing { Text(trailing).font(Fit.label).foregroundStyle(Fit.muted).monospacedDigit() }
+                    if let trailing { Text(trailing).font(Fit.label).foregroundStyle(trailingTint ?? Fit.muted).monospacedDigit() }
                 }
             }
             content

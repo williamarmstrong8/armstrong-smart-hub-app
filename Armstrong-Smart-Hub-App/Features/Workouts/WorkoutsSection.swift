@@ -5,14 +5,26 @@ struct WorkoutRoute: Hashable {
     var id: String
 }
 
-/// The Fitness tab's Workouts section: resume or start a workout, routines, and recent workouts.
+/// The Fitness tab's Workouts section: resume, or the routines (swipe
+/// through them) and Start Empty Workout, straight on the page; then the
+/// last workout on its own card. Routines and history open from the button
+/// at the bottom of the page (RoutinesAndHistoryButton).
 struct WorkoutsSection: View {
     var store: WorkoutStore
     var onStart: (Routine?) -> Void
     var onResume: () -> Void
 
     var body: some View {
-        FitSection(trailing: store.pending.isEmpty ? nil : "\(store.pending.count) waiting to upload") {
+        VStack(spacing: 0) {
+            start
+            if let last = store.workouts.first {
+                LastWorkoutCard(store: store, workout: last)
+            }
+        }
+    }
+
+    private var start: some View {
+        VStack(alignment: .leading, spacing: 16) {
             if let active = store.active {
                 Button(action: onResume) {
                     HStack(spacing: 14) {
@@ -31,34 +43,165 @@ struct WorkoutsSection: View {
                 }
                 .buttonStyle(.plain)
             } else {
+                if !store.routines.isEmpty {
+                    RoutineCarousel(store: store, onStart: onStart)
+                    FitDivider()
+                }
                 Button { onStart(nil) } label: {
-                    Label("Start Empty Workout", systemImage: "plus").greyButton(.primary)
+                    Label("Start Empty Workout", systemImage: "plus").blueButton()
                 }
                 .buttonStyle(.plain)
-                ForEach(store.routines.prefix(3)) { routine in
-                    RoutineCard(store: store, routine: routine, canStart: true, onStart: { onStart(routine) })
-                }
             }
             if let error = store.error, store.home == nil || !store.pending.isEmpty {
                 Text(error).font(.footnote).foregroundStyle(Fit.attention)
             }
-            VStack(spacing: 0) {
-                ForEach(store.workouts.prefix(3)) { workout in
-                    NavigationLink(value: WorkoutRoute(id: workout.id)) { WorkoutRow(workout: workout) }.buttonStyle(.plain)
-                    FitDivider()
+        }
+        .padding(.bottom, 36)
+    }
+}
+
+/// Every routine, one per page, swiped sideways with no end: the list
+/// repeats, and it opens in the middle so it goes both ways.
+struct RoutineCarousel: View {
+    var store: WorkoutStore
+    var onStart: (Routine?) -> Void
+    @State private var position: Int?
+    /// How many times the routines repeat; enough that nobody swipes to an end.
+    private static let laps = 1000
+
+    var body: some View {
+        let routines = store.routines
+        if routines.count == 1, let only = routines.first {
+            card(only)
+        } else if !routines.isEmpty {
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: Fit.gutter * 2) {
+                    ForEach(0..<routines.count * Self.laps, id: \.self) { index in
+                        card(routines[index % routines.count])
+                            .containerRelativeFrame(.horizontal)
+                    }
                 }
-                NavigationLink { WorkoutsPage(store: store, onStart: onStart) } label: {
-                    LinkRow(title: store.routines.count > 3 ? "All \(store.routines.count) routines and history" : "Routines and history",
-                            subtitle: store.routines.isEmpty ? "Build a routine to start from" : nil)
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $position)
+            // The next routine slides in from the screen's edge, not the gutter.
+            .scrollClipDisabled()
+            .onAppear { if position == nil { position = Self.middle(routines.count) } }
+            .onChange(of: routines.count) { _, count in position = Self.middle(count) }
+        }
+    }
+
+    private func card(_ routine: Routine) -> some View {
+        RoutineCard(store: store, routine: routine, canStart: true, onStart: { onStart(routine) })
+    }
+
+    /// The first routine, halfway along.
+    private static func middle(_ count: Int) -> Int { count * (laps / 2) }
+}
+
+/// The newest workout at a glance: name and day, four numbers, its volume
+/// against the workouts before it, and what was in it. Opens the workout.
+struct LastWorkoutCard: View {
+    @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
+    var store: WorkoutStore
+    var workout: WorkoutSummary
+
+    var body: some View {
+        FitSection(title: "Last workout", trailing: store.pending.isEmpty ? nil : "\(store.pending.count) waiting to upload") {
+            NavigationLink(value: WorkoutRoute(id: workout.id)) {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(workout.name).font(.system(size: 22, weight: .regular)).lineLimit(1)
+                            if let start = workout.start {
+                                Text(start.formatted(.relative(presentation: .named)).capitalizedFirst)
+                                    .font(.subheadline).foregroundStyle(BrickLook.soft)
+                            }
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Fit.faint)
+                    }
+                    HStack(alignment: .top, spacing: 0) {
+                        stat(FitnessFormat.duration(workout.duration), "Time")
+                        stat(WorkoutFormat.volume(workout.volumeKg, unit: unit), "Volume")
+                        stat("\(workout.sets)", "Sets")
+                        stat(workout.avgHr.map(String.init) ?? "–", "Avg HR", tint: workout.avgHr == nil ? nil : Fit.heart)
+                    }
+                    volumeBars
+                    if !workout.exercises.isEmpty {
+                        Text(workout.exercises.joined(separator: " · "))
+                            .font(.footnote).foregroundStyle(BrickLook.soft).lineLimit(2)
+                    }
                 }
-                .buttonStyle(.plain)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func stat(_ value: String, _ label: String, tint: Color? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value).font(Fit.value).foregroundStyle(tint ?? BrickLook.ink).lineLimit(1).minimumScaleFactor(0.6)
+            Text(label).font(.caption).foregroundStyle(BrickLook.soft)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Volume of the last few workouts, oldest first, this one in blue.
+    @ViewBuilder private var volumeBars: some View {
+        let recent = Array(store.workouts.prefix(8).reversed())
+        let top = recent.map(\.volumeKg).max() ?? 0
+        if recent.count > 1, top > 0 {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .bottom, spacing: 6) {
+                    ForEach(recent) { item in
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(item.id == workout.id ? Fit.energy : BrickLook.track)
+                            .frame(height: max(4, 56 * item.volumeKg / top))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .frame(height: 56, alignment: .bottom)
+                Text("Volume, last \(recent.count) workouts").font(.caption).foregroundStyle(BrickLook.soft)
             }
         }
     }
 }
 
-/// A routine as Hevy shows it: name and menu, its exercises, and Start Routine.
-/// Tapping the card opens the editor.
+/// Every routine and the full workout history, at the bottom of the Fitness page.
+struct RoutinesAndHistoryButton: View {
+    var store: WorkoutStore
+    var onStart: (Routine?) -> Void
+
+    var body: some View {
+        NavigationLink { WorkoutsPage(store: store, onStart: onStart) } label: {
+            Label("Routines and history", systemImage: "list.bullet").blueButton()
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private extension String {
+    /// "Yesterday", not "yesterday".
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
+extension Label where Title == Text, Icon == Image {
+    /// A full-width button in the Start Routine blue, tinted rather than filled
+    /// so the routines' own Start buttons stay the strongest thing on the page.
+    func blueButton() -> some View {
+        font(.body.weight(.semibold))
+            .foregroundStyle(Fit.energy)
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+            .background(Fit.energy.opacity(0.14), in: .rect(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// A routine as Hevy shows it: name and menu, its exercises, and Start Routine,
+/// flat on whatever it sits on (callers put hairlines between). Tapping it opens the editor.
 struct RoutineCard: View {
     @Environment(AppSession.self) private var session
     var store: WorkoutStore
@@ -67,7 +210,6 @@ struct RoutineCard: View {
     var onStart: () -> Void
     @State private var editing = false
     @State private var confirmDelete = false
-    @Environment(\.fitnessCards) private var cards
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -96,8 +238,7 @@ struct RoutineCard: View {
             .buttonStyle(.plain)
             .disabled(!canStart)
         }
-        .padding(14)
-        .background(cards ? BrickLook.page : Fit.track.opacity(0.5), in: .rect(cornerRadius: 14))
+        .padding(.vertical, 4)
         .contentShape(.rect)
         .onTapGesture { editing = true }
         .sheet(isPresented: $editing) { RoutineEditor(store: store, routine: routine) }
@@ -161,7 +302,7 @@ struct WorkoutsPage: View {
                 FitSection(title: "Quick Start", divider: false) {
                     Button { onStart(nil) } label: {
                         Label(store.active == nil ? "Start Empty Workout" : "Resume Workout",
-                              systemImage: store.active == nil ? "plus" : "play.fill").greyButton(.primary)
+                              systemImage: store.active == nil ? "plus" : "play.fill").blueButton()
                     }
                     .buttonStyle(.plain)
                 }
@@ -175,6 +316,7 @@ struct WorkoutsPage: View {
                         Takeaway(text: "A routine is a list of exercises with their sets, so you can start the same workout again in one tap.")
                     }
                     ForEach(store.routines) { routine in
+                        FitDivider()
                         RoutineCard(store: store, routine: routine, canStart: store.active == nil, onStart: { onStart(routine) })
                     }
                 }

@@ -96,7 +96,7 @@ struct ActiveWorkoutView: View {
             store.finishSetTimer(liveHr: liveBpm)
         }
         .onAppear {
-            if watch.savedWatchID != nil, watch.state != .connected, !watch.isBusy { watch.connectSaved() }
+            watch.ensureConnected()
         }
     }
 

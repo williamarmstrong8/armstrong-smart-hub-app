@@ -25,6 +25,7 @@ struct FitnessView: View {
                     VStack(spacing: 0) {
                         if watch.savedWatchID == nil {
                             workoutsSection
+                            routinesButton
                         } else {
                             if let error = store.error, !store.loaded {
                                 ErrorBanner(message: error).padding(.bottom, 24)
@@ -39,6 +40,7 @@ struct FitnessView: View {
                             }
                             RecentActivities(activities: store.activities)
                             syncStatus
+                            routinesButton.padding(.top, 24)
                         }
                     }
                     .environment(\.fitnessCards, true)
@@ -73,8 +75,19 @@ struct FitnessView: View {
                 await logged
                 await checkedIn
             }
+            // While the page is open, keep the live link up: reconnect a dropped or
+            // stalled one, or reopen a heart rate stream that went quiet.
+            .task {
+                while !Task.isCancelled {
+                    watch.keepHeartRateFlowing()
+                    try? await Task.sleep(for: .seconds(15))
+                }
+            }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { Task { await autoSync() } }
+                if phase == .active {
+                    watch.ensureConnected()
+                    Task { await autoSync() }
+                }
                 // A new day, or answers that waited for the hub.
                 if phase == .active, checkins.page?.day != checkins.day || !checkins.pending.isEmpty {
                     Task { await checkins.load(api: session.api) }
@@ -99,10 +112,16 @@ struct FitnessView: View {
     // MARK: Workouts
 
     private var workoutsSection: some View {
-        WorkoutsSection(store: workouts, onStart: { routine in
-            if workouts.active == nil { workouts.start(routine, unit: unit) }
-            workouts.isPresented = true
-        }, onResume: { workouts.isPresented = true })
+        WorkoutsSection(store: workouts, onStart: startWorkout, onResume: { workouts.isPresented = true })
+    }
+
+    private func startWorkout(_ routine: Routine?) {
+        if workouts.active == nil { workouts.start(routine, unit: unit) }
+        workouts.isPresented = true
+    }
+
+    private var routinesButton: some View {
+        RoutinesAndHistoryButton(store: workouts, onStart: startWorkout)
     }
 
     // MARK: Watch
@@ -153,7 +172,7 @@ struct FitnessView: View {
             let age = Date.now.timeIntervalSince(last.finishedAt)
             if age < (last.failed == nil ? Self.staleAfter : Self.retryAfter) { return }
         }
-        if watch.state != .connected, !watch.isBusy { watch.connectSaved() }
+        watch.ensureConnected()
         var waited = 0.0
         while watch.state != .connected, waited < 20 {
             try? await Task.sleep(for: .milliseconds(500))
@@ -288,7 +307,8 @@ struct FitnessView: View {
         let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
         let days = workoutDays
         let done = weekDays.filter { days.contains($0) }.count
-        return FitSection(trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days this week") {
+        return FitSection(trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days this week",
+                          trailingTint: streak > 1 ? Fit.energy : nil) {
             nextWorkoutView
             HStack(spacing: 0) {
                 ForEach(weekDays, id: \.self) { day in
@@ -296,8 +316,8 @@ struct FitnessView: View {
                     let isToday = calendar.isDate(day, inSameDayAs: start)
                     VStack(spacing: 8) {
                         ZStack {
-                            Circle().stroke(worked ? Fit.positive : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
-                            if worked { Circle().fill(Fit.positive) }
+                            Circle().stroke(worked ? Fit.energy : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
+                            if worked { Circle().fill(Fit.energy) }
                         }
                         .frame(width: 26, height: 26)
                         Text(day.formatted(.dateTime.weekday(.narrow)))

@@ -2,9 +2,9 @@ import SwiftUI
 
 // MARK: Morning check-in
 
-/// One question a morning: sick or not. The hub's guess is said first and
-/// its answer is the filled button; the other is right beside it, so a wrong
-/// guess is one tap to correct. Once answered: one line, a past day to
+/// One question a morning: sick or not, as two tiles, the hub's guess
+/// outlined. Once answered: the answer as one line with its icon. Under both,
+/// the last seven days as dots (fine, sick, or not checked in), a past day to
 /// confirm if there is one, and a way to log sick days the hub missed.
 /// Every answer is a label the hub learns from (checkin-engine.ts).
 struct MorningCheckin: View {
@@ -19,46 +19,38 @@ struct MorningCheckin: View {
 
     var body: some View {
         FitSection {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 20) {
                 if let sick = store.entry(for: day).flatMap(Self.sick), !changing {
-                    answered(sick)
-                    if let stretch = store.suggestions.first {
-                        divider
-                        past(stretch)
-                    }
+                    answered(sick).transition(.opacity)
                 } else {
-                    asking
+                    asking.transition(.opacity)
                 }
-                divider
-                Button { logging = true } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus").font(.caption.weight(.semibold))
-                        Text("Log sick days")
-                    }
-                    .font(.footnote).foregroundStyle(BrickLook.soft)
+                week
+                if let stretch = store.suggestions.first, !changing, store.entry(for: day) != nil {
+                    past(stretch)
                 }
-                .buttonStyle(.plain)
             }
             .animation(.smooth, value: changing)
+            .animation(.smooth, value: store.entry(for: day))
         }
         .sheet(isPresented: $logging) { SickDaysSheet(store: store) }
     }
 
-    private var divider: some View {
-        Rectangle().fill(BrickLook.line).frame(height: 1).padding(.vertical, 16)
-    }
-
-    /// "Looks like you might be sick", then the two answers, the guessed one filled.
+    /// "How are you today?", the guess in a line under it, then the two tiles.
     private var asking: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                BrickCaps(text: store.guess == nil ? "Check in" : "Our guess").foregroundStyle(BrickLook.soft)
-                Text(store.guess == nil ? "How are you today?" : guessedSick ? "Looks like you might be sick" : "Looks like a normal day")
-                    .font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("How are you today?").font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
+                if store.guess != nil {
+                    Text(guessedSick ? "Looks like you might be sick" : "Looks like a normal day")
+                        .font(.subheadline).foregroundStyle(BrickLook.soft)
+                }
             }
             HStack(spacing: 10) {
-                CheckinButton(title: "I'm fine", filled: store.guess != nil && !guessedSick) { answer(false) }
-                CheckinButton(title: "I'm sick", filled: guessedSick) { answer(true) }
+                CheckinChoice(title: "Fine", icon: "face.smiling", tint: Fit.positive,
+                              guessed: store.guess != nil && !guessedSick) { answer(false) }
+                CheckinChoice(title: "Sick", icon: "thermometer.medium", tint: Fit.attention,
+                              guessed: guessedSick) { answer(true) }
             }
             if changing {
                 Button("Cancel") { changing = false }.font(.footnote).foregroundStyle(BrickLook.soft).buttonStyle(.plain)
@@ -66,23 +58,56 @@ struct MorningCheckin: View {
         }
     }
 
+    /// The answer: its icon on a tinted circle and one line. Tap to change it.
     private func answered(_ sick: Bool) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: sick ? "thermometer.medium" : "checkmark")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(sick ? Fit.attention : Fit.positive)
-                .frame(width: 34, height: 34)
-                .background(BrickLook.pill, in: .circle)
+        let tint = sick ? Fit.attention : Fit.positive
+        return HStack(spacing: 14) {
+            Image(systemName: sick ? "thermometer.medium" : "face.smiling")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(tint)
+                .frame(width: 52, height: 52)
+                .background(tint.opacity(0.14), in: .circle)
             VStack(alignment: .leading, spacing: 2) {
-                Text(sick ? "Sick today" : "Feeling fine").font(.body).foregroundStyle(BrickLook.ink)
-                BrickCaps(text: "Checked in").foregroundStyle(BrickLook.soft)
+                Text(sick ? "Sick today" : "Feeling fine").font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
+                Text("Checked in").font(.subheadline).foregroundStyle(BrickLook.soft)
             }
             Spacer(minLength: 8)
             Button("Change") { changing = true }
-                .font(.footnote.weight(.medium)).foregroundStyle(BrickLook.ink)
-                .padding(.horizontal, 14).frame(height: 32)
-                .background(BrickLook.pill, in: .capsule)
+                .font(.footnote).foregroundStyle(BrickLook.soft)
                 .buttonStyle(.plain)
+        }
+    }
+
+    /// The last seven days, today last: green fine, red sick, a ring for no check-in.
+    private var week: some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let days = (0..<7).reversed().compactMap { calendar.date(byAdding: .day, value: -$0, to: today) }
+        return HStack(alignment: .bottom, spacing: 0) {
+            ForEach(days, id: \.self) { date in
+                let sick = store.entry(for: SickDaysSheet.day(date)).flatMap(Self.sick)
+                let isToday = date == today
+                VStack(spacing: 6) {
+                    ZStack {
+                        Circle().strokeBorder(sick == nil ? BrickLook.line : .clear, lineWidth: 1)
+                        if let sick { Circle().fill(sick ? Fit.attention : Fit.positive) }
+                    }
+                    .frame(width: 12, height: 12)
+                    Text(date.formatted(.dateTime.weekday(.narrow)))
+                        .font(.caption2.weight(isToday ? .semibold : .regular))
+                        .foregroundStyle(isToday ? BrickLook.ink : BrickLook.soft)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            Button { logging = true } label: {
+                Image(systemName: "plus").font(.footnote.weight(.semibold))
+                    .foregroundStyle(BrickLook.soft)
+                    .frame(width: 32, height: 32)
+                    .background(BrickLook.pill, in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Log sick days")
+            .padding(.leading, 8)
         }
     }
 
@@ -123,6 +148,32 @@ struct MorningCheckin: View {
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = .current
         return f.date(from: day)
+    }
+}
+
+/// A morning answer: icon over its word on a soft tile. The hub's guess is
+/// outlined in the answer's color, so it is one tap to agree.
+struct CheckinChoice: View {
+    var title: String
+    var icon: String
+    var tint: Color
+    var guessed: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon).font(.system(size: 24, weight: .regular)).foregroundStyle(tint)
+                Text(title).font(.body).foregroundStyle(BrickLook.ink)
+            }
+            .frame(maxWidth: .infinity, minHeight: 92)
+            .background(guessed ? tint.opacity(0.12) : BrickLook.pill, in: .rect(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(guessed ? tint : .clear, lineWidth: 1.5)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 }
 

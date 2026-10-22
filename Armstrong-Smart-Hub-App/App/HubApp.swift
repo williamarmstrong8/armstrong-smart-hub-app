@@ -66,6 +66,8 @@ struct RootView: View {
             }
         }
         .animation(.default, value: session.isSignedIn)
+        // No scroll bars on any page: this reaches every scroll view below it.
+        .scrollIndicators(.hidden)
     }
 }
 
