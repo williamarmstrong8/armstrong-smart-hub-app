@@ -12,7 +12,10 @@ struct CalendarView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                topBar.padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 8)
+                // The agenda scrolls its own top bar away, like every other tab; the other states keep it here.
+                if !showsAgenda {
+                    topBar.padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 8)
+                }
                 Group {
                     if let data {
                         agenda(data)
@@ -31,6 +34,11 @@ struct CalendarView: View {
             .task { if !fetched { await load() } }
             .refreshable { await load(refresh: true) }
         }
+    }
+
+    private var showsAgenda: Bool {
+        guard let data, !["unconfigured", "not_connected", "missing_scope"].contains(data.status) else { return false }
+        return data.error == nil && !data.days.isEmpty
     }
 
     private var topBar: some View {
@@ -64,6 +72,7 @@ struct CalendarView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
+                        topBar.padding(.bottom, -14)
                         CalendarHero(data: data)
                         ForEach(data.days) { day in
                             HStack(alignment: .top, spacing: 14) {
@@ -79,7 +88,7 @@ struct CalendarView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, Fit.gutter).padding(.bottom, 16)
+                    .padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 16)
                 }
             }
         }
