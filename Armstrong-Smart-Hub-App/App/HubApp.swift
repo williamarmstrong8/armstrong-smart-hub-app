@@ -79,6 +79,7 @@ enum HubTab: Hashable {
 struct MainTabView: View {
     @Environment(WatchLink.self) private var watch
     @State private var workouts = WorkoutStore.shared
+    @State private var titles = TitleCardPresenter.shared
     @State private var tab: HubTab = {
         #if DEBUG
         if ProcessInfo.processInfo.environment["BRICK_PREVIEW"] != nil {
@@ -111,6 +112,22 @@ struct MainTabView: View {
         .tabViewBottomAccessory(isEnabled: workouts.active != nil) {
             MiniWorkoutBar(store: workouts)
         }
+        // A title's card (opened from Home) sits over everything, tab bar included, which blurs
+        // behind it in step with it.
+        .blur(radius: 14 * titles.reveal)
+        .overlay {
+            if let p = titles.pick {
+                MediaDetailCard(pick: p, poster: titles.poster, toast: titles.toast, reveal: $titles.reveal,
+                                onChanged: titles.onChanged, onClose: titles.close, onSent: titles.sent)
+                    .id(p.id)
+                    .transition(.move(edge: .bottom))
+            }
+        }
+        .overlay {
+            if let sentAt = titles.sentAt { SendGlow(start: sentAt) }
+        }
+        .sensoryFeedback(.impact(weight: .heavy), trigger: titles.sentAt) { _, now in now != nil }
+        .toast(titles.toast)
         .fullScreenCover(isPresented: $workouts.isPresented) {
             ActiveWorkoutView(store: workouts, maxHr: workouts.maxHr)
         }

@@ -305,10 +305,82 @@ enum PosterLoader {
     }
 }
 
-/// A title's card, drawn over Home rather than as a sheet so the page behind can blur in step with
+/// Shows a title's card above the whole tab view, so the tab bar blurs with the page rather than
+/// hiding (hiding it changed Home's insets and nudged its scroll), and runs the send to the TV.
+@MainActor
+@Observable
+final class TitleCardPresenter {
+    static let shared = TitleCardPresenter()
+
+    private(set) var pick: MediaPick?
+    private(set) var poster: UIImage?
+    /// How far the card is up (0–1); the screen behind blurs by it.
+    var reveal: CGFloat = 0
+    /// When the last title went to the TV, for the send burst; nil once it's over.
+    private(set) var sentAt: Date?
+    let toast = Toast()
+    @ObservationIgnored private(set) var onChanged: () -> Void = {}
+
+    /// Opens once the poster is in hand (normally cached, so at once), so it slides in with the card.
+    func open(_ p: MediaPick, onChanged: @escaping () -> Void) {
+        self.onChanged = onChanged
+        Task {
+            poster = await PosterLoader.image(p.posterURL)
+            withAnimation(.smooth(duration: 0.4)) { pick = p; reveal = 1 }
+        }
+    }
+
+    func close() {
+        withAnimation(.smooth(duration: 0.35)) { pick = nil; reveal = 0 }
+    }
+
+    /// The poster has gone into the island: drop the card where it is (it's already invisible) and
+    /// play the burst while the screen unblurs.
+    func sent() {
+        var t = SwiftUI.Transaction(); t.disablesAnimations = true
+        withTransaction(t) { pick = nil }
+        let now = Date.now
+        sentAt = now
+        withAnimation(.smooth(duration: 0.7)) { reveal = 0 }
+        Task {
+            try? await Task.sleep(for: .seconds(SendGlow.duration + 0.1))
+            if sentAt == now { sentAt = nil }
+        }
+    }
+}
+
+/// Title details kept between opens and launches, so a card shows them at once and only refreshes
+/// them quietly behind.
+@MainActor
+enum MediaDetailCache {
+    private static let file = URL.cachesDirectory.appending(path: "media-details.json")
+    private static var details: [String: MediaDetail] =
+        (try? JSONDecoder().decode([String: MediaDetail].self, from: Data(contentsOf: file))) ?? [:]
+
+    private static func key(_ p: MediaPick) -> String { "\(p.mediaType.rawValue)-\(p.id)" }
+
+    static func get(_ p: MediaPick) -> MediaDetail? { details[key(p)] }
+
+    static func set(_ d: MediaDetail?, for p: MediaPick) {
+        details[key(p)] = d
+        if let data = try? JSONEncoder().encode(details) { try? data.write(to: file, options: .atomic) }
+    }
+
+    /// Fetches what isn't stored yet, so even the first open of a shelf title is instant.
+    static func prefetch(_ picks: [MediaPick], api: APIClient) async {
+        for p in picks where get(p) == nil {
+            guard !Task.isCancelled else { return }
+            if let d: MediaDetail = try? await api.run("mediaDetail", [.string(p.mediaType.rawValue), .int(p.id)]) {
+                set(d, for: p)
+            }
+        }
+    }
+}
+
+/// A title's card, drawn over the tab view rather than as a sheet so the page behind can blur in step with
 /// it: as tall as the poster, which fills it from the top and fades into black under the words.
 /// Drag it down or tap above it to close. On a title that can play, swiping up shrinks the card to
-/// its poster as it rises; let go and the poster drops into the Dynamic Island and plays on the TV.
+/// its poster as it rises, stopping just under the Dynamic Island; let go and it goes in and plays.
 struct MediaDetailCard: View {
     let pick: MediaPick
     /// The poster, already loaded, so it arrives with the card; nil falls back to loading it here.
@@ -321,6 +393,28 @@ struct MediaDetailCard: View {
     /// Called once the poster has gone into the Dynamic Island, for Home to remove the card in place
     /// and play the send burst.
     let onSent: () -> Void
+
+    init(pick: MediaPick, poster: UIImage?, toast: Toast, reveal: Binding<CGFloat>,
+         onChanged: @escaping () -> Void, onClose: @escaping () -> Void, onSent: @escaping () -> Void) {
+        self.pick = pick
+        self.poster = poster
+        self.toast = toast
+        _reveal = reveal
+        self.onChanged = onChanged
+        self.onClose = onClose
+        self.onSent = onSent
+        _detail = State(initialValue: MediaDetailCache.get(pick))
+    }
+
+    /// The screen's own corner radius, so the card's corners run parallel to the display's.
+    private static let screenRadius: CGFloat = {
+        let screen = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
+        return (screen?.value(forKey: "_displayCornerRadius") as? CGFloat).flatMap { $0 > 0 ? $0 : nil } ?? 55
+    }()
+    /// How far the card floats in from the screen's edges.
+    private static let inset: CGFloat = 8
+    /// How small a play swipe shrinks the card before it goes into the island.
+    private static let smallest: CGFloat = 0.3
 
     @Environment(AppSession.self) private var session
     @State private var detail: MediaDetail?
@@ -344,35 +438,40 @@ struct MediaDetailCard: View {
     var body: some View {
         GeometryReader { geo in
             // Floats a little in from the screen's edges so its corners can be round all the way.
-            let width = geo.size.width - 16
+            let width = geo.size.width - 2 * Self.inset
             let height = min(width * 1.5, geo.size.height - 60)
-            // 0 as the full card, 1 once a play swipe has shrunk it down to its poster.
-            let shrink = canPlay ? min(max(-drag, 0) / 300, 1) : 0
+            // Where the card's centre sits at rest and the island's centre, in this view's space
+            // (it starts below the status bar).
+            let rest = geo.size.height - Self.inset - height / 2
+            let island = 29.5 - geo.safeAreaInsets.top
+            // A play swipe can lift the card until, at its smallest, its top is just under the island.
+            let maxLift = max(rest - (island + 18.5 + 14 + Self.smallest * height / 2), 1)
+            let lift = canPlay ? max(-drag, 0) : 0
+            // 0 as the full card, 1 once a play swipe has shrunk it down to its smallest.
+            let shrink = min(lift / maxLift, 1)
+            // Past the stop it barely moves, as if on a short leash.
+            let shown = lift <= maxLift ? lift : maxLift + (lift - maxLift) / 10
+            let y = drag > 0 ? drag : canPlay ? -shown : drag / 6
             ZStack(alignment: .bottom) {
                 Color.clear.contentShape(.rect).onTapGesture(perform: onClose)
                 card(shrink: sending ? 1 : shrink)
                     .frame(width: width, height: height)
-                    .padding(.bottom, 8)
-                    .scaleEffect(sending ? sendScale : 1 - 0.45 * shrink)
-                    .offset(y: sending ? sendY : drag)
+                    .padding(.bottom, Self.inset)
+                    .scaleEffect(sending ? sendScale : 1 - (1 - Self.smallest) * shrink)
+                    .offset(y: sending ? sendY : y)
                     .opacity(sendOpacity)
                     .allowsHitTesting(!sending)
                     .gesture(
                         DragGesture(minimumDistance: 8)
                             .onChanged { v in
                                 let dy = v.translation.height
-                                // Up follows the finger only when there's something to play.
-                                drag = dy > 0 || canPlay ? dy : dy / 6
-                                reveal = 1 - min(max(drag / height, 0), 1)
+                                drag = dy
+                                reveal = 1 - min(max(dy / height, 0), 1)
                                 armed = canPlay && dy < -100
                             }
                             .onEnded { v in
                                 let dy = v.translation.height
                                 if canPlay && (dy < -100 || v.predictedEndTranslation.height < -240) {
-                                    // Where the card's centre sits at rest, and the island's centre, in
-                                    // this view's space (it starts below the status bar).
-                                    let rest = geo.size.height - 8 - height / 2
-                                    let island = 29.5 - geo.safeAreaInsets.top
                                     send(toward: island - rest, posterHeight: height)
                                 } else if dy > 120 || v.predictedEndTranslation.height > 320 {
                                     onClose()
@@ -447,7 +546,7 @@ struct MediaDetailCard: View {
             }
         }
         .background(.black)
-        .clipShape(.rect(cornerRadius: 44, style: .continuous))
+        .clipShape(.rect(cornerRadius: Self.screenRadius - Self.inset, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 14, weight: .bold))
@@ -526,7 +625,9 @@ struct MediaDetailCard: View {
 
     private func load() async {
         do {
-            detail = try await session.api.run("mediaDetail", [.string(pick.mediaType.rawValue), .int(pick.id)])
+            let fresh: MediaDetail? = try await session.api.run("mediaDetail", [.string(pick.mediaType.rawValue), .int(pick.id)])
+            detail = fresh
+            MediaDetailCache.set(fresh, for: pick)
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -539,6 +640,7 @@ struct MediaDetailCard: View {
         do {
             let _: Empty? = try await session.api.run("requestMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
             requested = true
+            MediaDetailCache.set(nil, for: pick)
             toast.show("Requested \(pick.title)")
             onChanged()
         } catch {
@@ -551,6 +653,7 @@ struct MediaDetailCard: View {
         defer { working = false }
         do {
             let _: Empty? = try await session.api.run("removeMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
+            MediaDetailCache.set(nil, for: pick)
             onChanged()
             onClose()
         } catch {

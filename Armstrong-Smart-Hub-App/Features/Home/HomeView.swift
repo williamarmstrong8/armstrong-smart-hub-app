@@ -19,13 +19,6 @@ struct HomeView: View {
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
-    @State private var pick: MediaPick?
-    /// How far the title card is up (0–1); the page behind blurs by it.
-    @State private var reveal: CGFloat = 0
-    @State private var poster: UIImage?
-    /// When the last title went to the TV, for the send burst; nil once it's over.
-    @State private var sentAt: Date?
-    @State private var pulse = false
     @State private var editingHabit: HabitEditTarget?
     @State private var managing = false
     @State private var display = false
@@ -55,24 +48,8 @@ struct HomeView: View {
                     .transition(.opacity)
                 }
             }
-            // The page behind a title's card blurs as it rises and clears as it goes, in step with it.
-            .blur(radius: 14 * reveal)
-            .overlay {
-                if let p = pick {
-                    MediaDetailCard(pick: p, poster: poster, toast: toast, reveal: $reveal,
-                                    onChanged: { Task { await store.refresh(api: session.api) } },
-                                    onClose: closeTitle,
-                                    onSent: sent)
-                        .id(p.id)
-                        .transition(.move(edge: .bottom))
-                }
-            }
-            .scaleEffect(pulse ? 0.965 : 1, anchor: .top)
-            .overlay {
-                if let sentAt { SendGlow(start: sentAt) }
-            }
-            .sensoryFeedback(.impact(weight: .heavy), trigger: sentAt) { _, now in now != nil }
-            .toolbarVisibility(pick == nil ? .visible : .hidden, for: .tabBar)
+            // Shelf titles' details are fetched ahead, so their cards open complete.
+            .task(id: shelf.map(\.id)) { await MediaDetailCache.prefetch(shelf, api: session.api) }
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
                 async let a: Void = store.refresh(api: session.api)
@@ -122,35 +99,16 @@ struct HomeView: View {
         }
     }
 
-    /// Opens a title's card once its poster is in hand (it's normally cached, so this is instant),
-    /// so the image slides in with the card instead of popping in partway.
+    /// Shelf titles as the card opens them.
+    private var shelf: [MediaPick] {
+        (store.activeDownloads + store.ready).compactMap { r in
+            r.tmdbId.map { MediaPick(id: $0, mediaType: r.mediaType, title: r.title, posterURL: r.posterURL,
+                                     known: r.stage == .available ? .available : .requested) }
+        }
+    }
+
     private func open(_ p: MediaPick) {
-        Task {
-            let image = await PosterLoader.image(p.posterURL)
-            poster = image
-            withAnimation(.smooth(duration: 0.4)) { pick = p; reveal = 1 }
-        }
-    }
-
-    /// The poster has gone into the island: drop the card where it is (it's already invisible), and
-    /// play the burst while the page unblurs and gives a little pulse.
-    private func sent() {
-        var t = SwiftUI.Transaction(); t.disablesAnimations = true
-        withTransaction(t) { pick = nil }
-        let now = Date.now
-        sentAt = now
-        withAnimation(.smooth(duration: 0.7)) { reveal = 0 }
-        withAnimation(.easeOut(duration: 0.14)) { pulse = true } completion: {
-            withAnimation(.spring(duration: 0.5, bounce: 0.45)) { pulse = false }
-        }
-        Task {
-            try? await Task.sleep(for: .seconds(SendGlow.duration + 0.1))
-            if sentAt == now { sentAt = nil }
-        }
-    }
-
-    private func closeTitle() {
-        withAnimation(.smooth(duration: 0.35)) { pick = nil; reveal = 0 }
+        TitleCardPresenter.shared.open(p) { Task { await store.refresh(api: session.api) } }
     }
 
     private var topBar: some View {

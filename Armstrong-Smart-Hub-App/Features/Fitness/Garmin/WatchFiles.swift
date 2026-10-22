@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Observation
 import UIKit
@@ -40,8 +41,13 @@ final class WatchFiles {
     // Protobuf requests waiting for their reply, by request id.
     private var pending: [UInt16: [UInt8]] = [:]
     private var inbox: [Protobuf.Fields] = []
-    /// Replies to our requests from services other than file sync, as whole Smart messages.
-    private var smartInbox: [Protobuf.Fields] = []
+    /// Replies to our requests from services other than file sync, as whole Smart messages, by request id.
+    private var smartReplies: [UInt16: Protobuf.Fields] = [:]
+    /// Requests the watch is sending us in several chunks, by request id.
+    private var watchRequests: [UInt16: [UInt8]] = [:]
+    /// Uploads the watch is handing us in place of Garmin's servers, one at a time.
+    private var watchUploads: [(requestID: UInt16, request: WatchHTTP.Request)] = []
+    private var isTakingUploads = false
     /// Files the watch announced with a NewFileNotification during this sync.
     private var announced: [GarminFiles.ListedFile] = []
     private var nextRequestID: UInt16 = 0xC000
@@ -285,7 +291,7 @@ final class WatchFiles {
     private func reset() {
         pending = [:]
         inbox = []
-        smartInbox = []
+        smartReplies = [:]
         legacy = nil
         legacyError = nil
         streamHandle = nil
@@ -320,15 +326,15 @@ final class WatchFiles {
         nextRequestID = 0xC000 + (nextRequestID &+ 1) % 0x3000
         let id = nextRequestID
         pending[id] = []
-        smartInbox = []
+        smartReplies[id] = nil
         let syncRequest = Protobuf.encode([(13, .bytes(Protobuf.encode([(1, .bytes([]))])))])
         link.send(GarminFiles.protobufRequest(.protobufRequest, requestID: id, body: syncRequest))
         let deadline = Date.now.addingTimeInterval(5)
-        while smartInbox.isEmpty, Date.now < deadline, link.state == .connected {
+        while smartReplies[id] == nil, Date.now < deadline, link.state == .connected {
             try? await Task.sleep(for: .milliseconds(100))
         }
         pending[id] = nil
-        if let reply = smartInbox.first {
+        if let reply = smartReplies.removeValue(forKey: id) {
             let core = reply.bytes(13).flatMap(Protobuf.decode)
             let status = core?.bytes(2).flatMap(Protobuf.decode)?.int(1)
             link.note("TODAY core sync request: answered, Smart fields \(reply.values.keys.sorted()), core \(core?.values.keys.sorted() ?? []), status \(status.map(String.init) ?? "-")")
@@ -604,8 +610,22 @@ final class WatchFiles {
     private func handleProtobuf(_ message: GFDIMessage) -> Bool {
         guard let link, let chunk = GarminFiles.ProtobufChunk(message.payload) else { return false }
         let ours = message.type == Garmin.Message.protobufResponse.rawValue && pending[chunk.requestID] != nil
+        let fromWatch = message.type == Garmin.Message.protobufRequest.rawValue
         let body: [UInt8]
-        if ours {
+        if fromWatch, !(chunk.offset == 0 && Int(chunk.total) == chunk.data.count) {
+            // A request in several chunks: ACK each, handle it once whole.
+            if chunk.offset == 0 { watchRequests[chunk.requestID] = [] }
+            guard watchRequests[chunk.requestID]?.count == Int(chunk.offset) else { return true }
+            watchRequests[chunk.requestID]! += chunk.data
+            link.send(GFDIMessage.protobufAck(message.type, requestID: chunk.requestID, offset: chunk.offset))
+            guard watchRequests[chunk.requestID]!.count >= Int(chunk.total) else { return true }
+            let whole = watchRequests.removeValue(forKey: chunk.requestID)!
+            if GarminFiles.fileSyncFields(whole) == nil, let smart = Protobuf.decode(whole) {
+                handleWatchRequest(chunk.requestID, smart)
+                return true
+            }
+            body = whole
+        } else if ours {
             guard Int(chunk.offset) == pending[chunk.requestID]!.count else { return true } // out of order: no ACK
             pending[chunk.requestID]! += chunk.data
             lastProgress = .now
@@ -618,9 +638,18 @@ final class WatchFiles {
             return false
         }
         guard let sync = GarminFiles.fileSyncFields(body) else {
-            // Another service's reply to one of our requests (askForToday).
-            if ours, let smart = Protobuf.decode(body) { smartInbox.append(smart) }
-            return ours
+            guard let smart = Protobuf.decode(body) else { return ours }
+            if ours {
+                // Another service's reply to one of our requests (askForToday, upload chunks).
+                smartReplies[chunk.requestID] = smart
+                return true
+            }
+            if fromWatch {
+                link.send(GFDIMessage.protobufAck(message.type, requestID: chunk.requestID, offset: 0))
+                handleWatchRequest(chunk.requestID, smart)
+                return true
+            }
+            return false
         }
         if !ours { link.send(GFDIMessage.protobufAck(message.type, requestID: chunk.requestID, offset: 0)) }
         if sync.has(5) { // TransferStatusRequest: answer as Gadgetbridge does
@@ -640,6 +669,186 @@ final class WatchFiles {
         }
         inbox.append(sync)
         return true
+    }
+}
+
+// MARK: Requests from the watch
+
+/// The watch's own requests to the phone (Smart services other than file
+/// sync). Garmin Connect answers these; with them answered the watch can make
+/// web requests through the phone, including uploads to Garmin's servers.
+/// Nothing goes to Garmin from here: an upload's data is copied off the watch
+/// and kept (and sent to the hub when it's a FIT file), and the watch is told
+/// the server is unavailable, so it keeps its own copy.
+enum WatchHTTP {
+    struct Form { var name: String?; var filename: String?; var contentType: String?; var transferID: UInt64?; var size: UInt64? }
+
+    struct Request {
+        var url: String
+        var method: UInt64?
+        var headers: [(String, String)]
+        var body: [UInt8]
+        var useDataTransfer: Bool
+        var forms: [Form]
+
+        var summary: String {
+            let methods = [1: "GET", 2: "PUT", 3: "POST", 4: "DELETE", 5: "PATCH", 6: "HEAD"]
+            let name = method.flatMap { methods[Int($0)] } ?? "?"
+            let form = forms.map { "[\($0.name ?? "-") \($0.filename ?? "-") \($0.contentType ?? "-") xfer \($0.transferID.map(String.init) ?? "-") \($0.size.map(String.init) ?? "-") B]" }.joined(separator: " ")
+            return "\(name) \(url) headers \(headers.map(\.0)) body \(body.count) B\(useDataTransfer ? " via data transfer" : "") \(form)"
+        }
+    }
+
+    static func string(_ bytes: [UInt8]?) -> String? { bytes.map { String(decoding: $0, as: UTF8.self) } }
+
+    /// HttpService.RawRequest (field 5).
+    static func rawRequest(_ fields: Protobuf.Fields) -> Request {
+        let headers = fields.all(5).compactMap(\.bytes).compactMap(Protobuf.decode).map { (string($0.bytes(1)) ?? "", string($0.bytes(2)) ?? "") }
+        let forms = fields.all(8).compactMap(\.bytes).compactMap(Protobuf.decode).map { form in
+            let xfer = form.bytes(5).flatMap(Protobuf.decode)
+            return Form(name: string(form.bytes(1)), filename: string(form.bytes(2)), contentType: string(form.bytes(3)),
+                        transferID: xfer?.int(1), size: xfer?.int(2))
+        }
+        return Request(url: string(fields.bytes(1)) ?? "", method: fields.int(3), headers: headers,
+                       body: fields.bytes(7) ?? fields.bytes(4) ?? [], useDataTransfer: fields.int(6) == 1, forms: forms)
+    }
+
+    /// HttpService.WebRequest (field 1), used by Connect IQ apps.
+    static func webRequest(_ fields: Protobuf.Fields) -> Request {
+        Request(url: string(fields.bytes(1)) ?? "", method: fields.int(2), headers: [], body: fields.bytes(4) ?? [],
+                useDataTransfer: false, forms: [])
+    }
+
+    static let smartNames: [UInt64: String] = [
+        1: "calendar", 2: "http", 3: "installed apps", 4: "app config", 7: "data transfer", 8: "device status",
+        12: "find my watch", 13: "core", 16: "sms", 22: "explore sync", 24: "push notifications",
+        27: "authentication", 39: "ecg", 42: "settings", 43: "file sync", 49: "notifications",
+    ]
+}
+
+extension WatchFiles {
+    /// Answers or logs one request from the watch.
+    fileprivate func handleWatchRequest(_ requestID: UInt16, _ smart: Protobuf.Fields) {
+        guard let link else { return }
+        let services = smart.values.keys.sorted()
+        let names = services.map { WatchHTTP.smartNames[$0] ?? "service \($0)" }
+        let raw = Protobuf.encode(smart.values.sorted { $0.key < $1.key }.flatMap { entry in entry.value.map { (entry.key, $0) } })
+        link.note("WATCH ASKS \(names.joined(separator: ", ")): \(raw.prefix(48).map { String(format: "%02x", $0) }.joined())")
+
+        if let auth = smart.bytes(27).flatMap(Protobuf.decode), auth.has(1) {
+            // OAuthRequest: the watch wants keys before it makes web requests. Give it
+            // throwaway ones (as Gadgetbridge's fake OAuth does) so it goes ahead.
+            func random(_ count: Int) -> [UInt8] {
+                let chars = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".utf8)
+                return (0..<count).map { _ in chars.randomElement()! }
+            }
+            let keys = Protobuf.encode([(1, .bytes(Array(UUID().uuidString.lowercased().utf8))), (2, .bytes(random(35))),
+                                        (3, .bytes(Array(UUID().uuidString.lowercased().utf8))), (4, .bytes(random(35)))])
+            let response = Protobuf.encode([(1, .bytes(keys)), (2, .varint(0))])
+            reply(requestID, Protobuf.encode([(27, .bytes(Protobuf.encode([(2, .bytes(response))])))]))
+            link.note("WATCH OAuth: gave it throwaway keys")
+            return
+        }
+
+        if let http = smart.bytes(2).flatMap(Protobuf.decode) {
+            if let raw = http.bytes(5).flatMap(Protobuf.decode) {
+                let request = WatchHTTP.rawRequest(raw)
+                link.note("WATCH HTTP \(request.summary)")
+                watchUploads.append((requestID, request))
+                Task { await takeUploads() }
+                return
+            }
+            if let web = http.bytes(1).flatMap(Protobuf.decode) {
+                let request = WatchHTTP.webRequest(web)
+                link.note("WATCH WEB \(request.summary)")
+                save(request, data: request.body)
+                // WebResponse: status NETWORK_REQUEST_TIMED_OUT.
+                reply(requestID, Protobuf.encode([(2, .bytes(Protobuf.encode([(2, .bytes(Protobuf.encode([(1, .varint(200))])))])))]))
+                return
+            }
+        }
+    }
+
+    private func reply(_ requestID: UInt16, _ body: [UInt8]) {
+        link?.send(GarminFiles.protobufRequest(.protobufResponse, requestID: requestID, body: body))
+    }
+
+    /// Copies each upload's data off the watch, keeps it, then answers the
+    /// request with a 503 so the watch holds on to its copy.
+    private func takeUploads() async {
+        guard !isTakingUploads else { return }
+        isTakingUploads = true
+        defer { isTakingUploads = false }
+        while !watchUploads.isEmpty {
+            let (requestID, request) = watchUploads.removeFirst()
+            var data = request.body
+            for form in request.forms {
+                guard let id = form.transferID else { continue }
+                do {
+                    let part = try await pullTransfer(id: id, size: form.size)
+                    link?.note("WATCH upload part \(form.name ?? "-"): \(part.count) bytes, FIT \(GarminFiles.isFIT(part) ? "valid" : "no")")
+                    save(request, data: part, filename: form.filename)
+                    if GarminFiles.isFIT(part) { keepFIT(part, from: request) }
+                    data += part
+                } catch {
+                    link?.note("WATCH upload part \(form.name ?? "-") failed: \(error.localizedDescription)")
+                }
+            }
+            if request.forms.isEmpty { save(request, data: data) }
+            // RawResponse: the proxy worked, the "server" said 503.
+            reply(requestID, Protobuf.encode([(2, .bytes(Protobuf.encode([(6, .bytes(Protobuf.encode([(1, .varint(100)), (2, .varint(503))])))])))]))
+        }
+    }
+
+    /// DataTransferService: asks for the item in chunks until it's all here.
+    private func pullTransfer(id: UInt64, size: UInt64?) async throws(FileError) -> [UInt8] {
+        var data: [UInt8] = []
+        for _ in 0..<4000 {
+            nextRequestID = 0xC000 + (nextRequestID &+ 1) % 0x3000
+            let requestID = nextRequestID
+            pending[requestID] = []
+            defer { pending[requestID] = nil; smartReplies[requestID] = nil }
+            let ask = Protobuf.encode([(1, .varint(id)), (2, .varint(UInt64(data.count))), (3, .varint(3000))])
+            link?.send(GarminFiles.protobufRequest(.protobufRequest, requestID: requestID, body: Protobuf.encode([(7, .bytes(Protobuf.encode([(1, .bytes(ask))])))])))
+            var reply: Protobuf.Fields?
+            try await wait("upload data") {
+                reply = smartReplies[requestID]
+                return reply != nil
+            }
+            guard let response = reply?.bytes(7).flatMap(Protobuf.decode)?.bytes(2).flatMap(Protobuf.decode) else {
+                throw .protocolError("data transfer reply didn't decode")
+            }
+            guard response.int(1) == 1 else { throw .refused("data transfer status \(response.int(1) ?? 0)") }
+            let payload = response.bytes(4) ?? []
+            data += payload
+            if payload.isEmpty || (size.map { data.count >= Int($0) } ?? false) { return data }
+            if data.count > maxFileBytes { throw .tooLarge }
+        }
+        return data
+    }
+
+    /// Keeps the request and its data in Application Support/Fitness/watch-http for a look later.
+    private func save(_ request: WatchHTTP.Request, data: [UInt8], filename: String? = nil) {
+        let folder = URL.applicationSupportDirectory.appending(path: "Fitness/watch-http")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let stamp = Date.now.formatted(.iso8601).replacingOccurrences(of: ":", with: "")
+        let base = "\(stamp)-\(UUID().uuidString.prefix(6))"
+        try? Data("\(request.summary)\n".utf8).write(to: folder.appending(path: "\(base).txt"))
+        if !data.isEmpty { try? Data(data).write(to: folder.appending(path: "\(base)-\(filename ?? "body").bin")) }
+    }
+
+    /// A FIT file the watch tried to upload goes to the hub like any file from a sync.
+    private func keepFIT(_ data: [UInt8], from request: WatchHTTP.Request) {
+        let id = SHA256.hash(data: Data(data)).map { String(format: "%02x", $0) }.joined().prefix(32)
+        let file = GarminFiles.ListedFile(entry: [], id: String(id), kind: "watch_upload", size: data.count, date: .now, page: nil)
+        guard store.saved[file.id] == nil else { return }
+        do {
+            try store.save(file, data: data)
+            link?.note("WATCH upload kept for the hub (\(data.count) bytes)")
+            if let api = link?.api, !isSyncing { Task { await sync(api: api) } }
+        } catch {
+            link?.note("WATCH upload not kept: \(error.localizedDescription)")
+        }
     }
 }
 
