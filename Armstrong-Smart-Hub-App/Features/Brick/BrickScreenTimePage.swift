@@ -20,7 +20,8 @@ private func screenTimeFilter(week: Bool) -> DeviceActivityFilter {
 }
 
 /// The Brick page's Screen Time block: today's total and top apps, then a link to the rest.
-/// The report is drawn by another process and swallows taps, so the link sits under it.
+/// The report is drawn by another process and swallows touches (and scrolling), so it ignores them
+/// and the card is the link to the rest.
 struct BrickScreenTimeSection: View {
     let store: BrickStore
 
@@ -32,10 +33,15 @@ struct BrickScreenTimeSection: View {
             }
             .padding(.bottom, 22)
             if store.authorized {
-                DeviceActivityReport(.brickSummary, filter: screenTimeFilter(week: false))
-                    .frame(height: 250)
-                    .clipShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
-                    .padding(.horizontal, Fit.gutter)
+                NavigationLink(value: BrickRoute.screenTime) {
+                    DeviceActivityReport(.brickSummary, filter: screenTimeFilter(week: false))
+                        .frame(height: 250)
+                        .clipShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                        .allowsHitTesting(false)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, Fit.gutter)
                 NavigationLink(value: BrickRoute.screenTime) {
                     HStack(spacing: 6) {
                         Text("All screen time")
