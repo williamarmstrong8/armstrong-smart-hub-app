@@ -358,9 +358,9 @@ final class TitleCardPresenter {
         }
     }
 
-    /// Gathers speed as it goes, so the card doesn't linger along the bottom edge on its way out.
+    /// A plain ease-in, so the card drops straight out rather than lingering along the bottom edge.
     func close() {
-        withAnimation(.timingCurve(0.3, 0, 0.75, 0.5, duration: 0.42)) { pick = nil; reveal = 0 }
+        withAnimation(.easeIn(duration: 0.3)) { pick = nil; reveal = 0 }
     }
 
     /// A request is about to fly to the shelf: close search so the shelf shows, and open an empty
