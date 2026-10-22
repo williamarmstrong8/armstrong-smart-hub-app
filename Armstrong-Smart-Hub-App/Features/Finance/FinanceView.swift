@@ -18,6 +18,8 @@ struct FinanceView: View {
                 .padding(.horizontal, Fit.gutter)
                 .padding(.top, 12)
                 .padding(.bottom, 16)
+                // Pinned to the screen's width and the left edge, so a wide child can't push the page sideways.
+                .containerRelativeFrame(.horizontal, alignment: .leading)
                 .animation(.smooth(duration: 0.35), value: store.tagQueue.map(\.id))
             }
             .background(BrickLook.page.ignoresSafeArea())
