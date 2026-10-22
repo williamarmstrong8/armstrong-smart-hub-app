@@ -98,20 +98,22 @@ struct FinanceView: View {
             .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
         }
 
-        MonthBars(month: month, items: d.monthSpending.byCategory, currency: d.currency)
+        MonthBars(items: d.monthSpending.byCategory, currency: d.currency)
 
         AccountsCard(accounts: d.accounts)
 
         NavigationLink {
             TransactionsView(store: store, toast: toast)
         } label: {
-            HStack {
-                Text("All transactions").font(.subheadline.weight(.medium))
-                Spacer()
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+            VStack(spacing: 16) {
+                Divider()
+                HStack {
+                    Text("All transactions").font(.subheadline.weight(.medium))
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }
             }
-            .padding(16)
-            .background(BrickLook.card, in: .rect(cornerRadius: BrickLook.cardRadius))
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
     }
@@ -148,13 +150,13 @@ private struct TagCard: View {
                 ForEach(likely, id: \.self) { c in
                     Button { onTag(c) } label: {
                         VStack(spacing: 6) {
-                            Image(systemName: CategoryStyle.symbol(c)).font(.title3)
+                            Image(systemName: CategoryStyle.symbol(c)).font(.title3).foregroundStyle(.secondary)
                             Text(c).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
                         }
-                        .foregroundStyle(CategoryStyle.color(c))
+                        .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(CategoryStyle.color(c).opacity(0.12), in: .rect(cornerRadius: 14))
+                        .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 14))
                     }
                     .buttonStyle(CardPressStyle())
                 }
@@ -180,7 +182,6 @@ private struct TagCard: View {
 /// Where the month went, as the web's bars: income, each category against its
 /// budget, and what's left to invest.
 private struct MonthBars: View {
-    let month: String
     let items: [CategoryAmount]
     let currency: String
 
@@ -207,8 +208,7 @@ private struct MonthBars: View {
         let sheet = [Row(category: "Income", amount: Self.income, kind: .income)] + rows
             + [Row(category: "Invest", amount: max(Self.income - spent, 0), kind: .invest)]
 
-        return VStack(alignment: .leading, spacing: 16) {
-            Text("Where \(month) went").font(.system(size: 22))
+        return VStack(alignment: .leading, spacing: 18) {
             if items.isEmpty {
                 Text("No spending yet this month.").font(.subheadline).foregroundStyle(.secondary)
             } else {
@@ -217,13 +217,12 @@ private struct MonthBars: View {
                     let fill: Double = row.kind == .income || (row.budget == nil && (row.category == "Rent" || row.category == "Bills & Utilities"))
                         ? 1 : row.budget.map { row.amount / $0 } ?? row.amount / Self.income
                     let color: Color = row.kind == .income ? .positive : over ? .negative : .accentColor
-                    HStack(spacing: 12) {
+                    HStack(spacing: 14) {
                         Image(systemName: row.kind == .invest ? "chart.line.uptrend.xyaxis" : CategoryStyle.symbol(row.category))
-                            .font(.subheadline)
-                            .foregroundStyle(row.kind == .invest ? Color.accentColor : CategoryStyle.color(row.category))
-                            .frame(width: 32, height: 32)
-                            .background((row.kind == .invest ? Color.accentColor : CategoryStyle.color(row.category)).opacity(0.13), in: .circle)
-                        VStack(spacing: 6) {
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24)
+                        VStack(spacing: 7) {
                             HStack(alignment: .firstTextBaseline) {
                                 Text(row.category).font(.subheadline.weight(.medium)).lineLimit(1)
                                 Spacer()
@@ -239,14 +238,12 @@ private struct MonthBars: View {
                                     Capsule().fill(color).frame(width: geo.size.width * min(max(fill, 0.02), 1))
                                 }
                             }
-                            .frame(height: 6)
+                            .frame(height: 4)
                         }
                     }
                 }
             }
         }
-        .padding(16)
-        .background(BrickLook.card, in: .rect(cornerRadius: BrickLook.cardRadius))
     }
 }
 
@@ -255,10 +252,11 @@ private struct AccountsCard: View {
     let accounts: [Account]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Accounts").font(.system(size: 22))
+        VStack(alignment: .leading, spacing: 16) {
+            Divider()
+            Text("Accounts").font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 2)
             ForEach(accounts) { a in
-                HStack(spacing: 12) {
+                HStack(spacing: 14) {
                     BankLogo(institution: a.institution, kind: a.kind)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(a.name).font(.subheadline.weight(.medium)).lineLimit(1)
@@ -271,8 +269,6 @@ private struct AccountsCard: View {
                 }
             }
         }
-        .padding(16)
-        .background(BrickLook.card, in: .rect(cornerRadius: BrickLook.cardRadius))
     }
 }
 
@@ -315,10 +311,9 @@ struct BankLogo: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(.tertiarySystemFill), in: .circle)
             }
         }
-        .frame(width: 36, height: 36)
+        .frame(width: 28, height: 28)
     }
 
     private var symbol: String {
@@ -339,9 +334,9 @@ struct TransactionRow: View {
         let t = transaction
         HStack(spacing: 12) {
             Image(systemName: CategoryStyle.symbol(t.category))
-                .frame(width: 34, height: 34)
-                .foregroundStyle(CategoryStyle.color(t.category))
-                .background(CategoryStyle.color(t.category).opacity(0.14), in: .circle)
+                .font(.body)
+                .frame(width: 24)
+                .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(t.payee).font(.subheadline.weight(.medium)).lineLimit(1)
                 HStack(spacing: 4) {
