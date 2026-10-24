@@ -2,6 +2,7 @@ import Foundation
 
 #if os(iOS)
 import DeviceActivity
+import FamilyControls
 import ManagedSettings
 
 /// Starting and ending modes, for the app and the BrickMonitor extension alike. The saved state in the
