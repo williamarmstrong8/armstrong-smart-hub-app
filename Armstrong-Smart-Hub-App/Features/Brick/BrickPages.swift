@@ -5,7 +5,7 @@ import FamilyControls
 
 // MARK: Modes
 
-/// Every mode as a card. Tap a card to edit it; the circle makes it the mode the next Brick uses.
+/// Every mode as a card. Tap a card to edit it; which tag starts it is set on the tag.
 struct BrickModesPage: View {
     let store: BrickStore
     @Binding var path: [BrickRoute]
@@ -13,37 +13,21 @@ struct BrickModesPage: View {
     var body: some View {
         BrickPage(title: "Modes") {
             ForEach(store.profiles) { p in
-                let chosen = store.selectedID == p.id
-                ZStack(alignment: .leading) {
-                    NavigationLink(value: BrickRoute.mode(p.id)) {
-                        HStack(spacing: 14) {
-                            // Room for the circle, which sits on top as its own button.
-                            Color.clear.frame(width: 26, height: 26)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(p.name).font(.system(size: 19, weight: .medium))
-                                Text(modeSummary(p)).font(.system(size: 15)).foregroundStyle(BrickLook.soft)
-                            }
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(BrickLook.soft)
+                NavigationLink(value: BrickRoute.mode(p.id)) {
+                    HStack(spacing: 14) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(p.name).font(.system(size: 19, weight: .medium))
+                            Text(modeSummary(p)).font(.system(size: 15)).foregroundStyle(BrickLook.soft)
                         }
-                        .padding(20)
-                        .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(BrickLook.soft)
                     }
-                    .buttonStyle(.plain)
-                    Button { if !store.isBlocking { store.selectedID = p.id } } label: {
-                        Image(systemName: chosen ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 22, weight: .light))
-                            .foregroundStyle(chosen ? BrickLook.bar : BrickLook.soft)
-                            .frame(width: 26, height: 26)
-                            .padding(10)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 10)
-                    .accessibilityLabel(chosen ? "\(p.name), selected" : "Use \(p.name)")
+                    .padding(20)
+                    .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
                 }
+                .buttonStyle(.plain)
             }
             if store.isBlocking {
                 Text("Modes can't change while bricked.").font(.footnote).foregroundStyle(BrickLook.soft)
@@ -68,7 +52,7 @@ struct BrickModesPage: View {
         if p.strict { parts.append("Strict") }
         if let m = p.timerMinutes { parts.append("\(m) min") }
         let tags = store.tags.filter { $0.profileID == p.id }.map(\.name)
-        if !tags.isEmpty { parts.append(tags.joined(separator: ", ")) }
+        parts.append(tags.isEmpty ? "No tag" : tags.joined(separator: ", "))
         return parts.joined(separator: " · ")
     }
 }
@@ -382,6 +366,7 @@ struct BrickActivityPage: View {
 /// Every tag that locks and unlocks, one row each. Each can start its own mode, so a tag by the bed and one on the desk block different things.
 struct BrickTagPage: View {
     let store: BrickStore
+    @Binding var path: [BrickRoute]
 
     var body: some View {
         BrickPage(title: "My Bricks") {
@@ -391,21 +376,22 @@ struct BrickTagPage: View {
             BrickCard(padding: 0) {
                 VStack(spacing: 0) {
                     ForEach(store.tags) { tag in
+                        let mode = store.profile(for: tag)
                         NavigationLink(value: BrickRoute.tagDetail(tag.id)) {
                             BrickRow(icon: store.isKey(tag) ? "lock.fill" : "wave.3.right", title: tag.name,
-                                     value: store.profiles.first { $0.id == tag.profileID }?.name ?? "Any")
+                                     value: mode?.name ?? "Pick a mode", dot: mode == nil)
                         }
                         .buttonStyle(.plain)
                         BrickDivider()
                     }
-                    Button { store.registerTag() } label: {
+                    Button { store.registerTag { path.append(.tagDetail($0)) } } label: {
                         BrickRow(icon: "plus.viewfinder", title: store.hasTag ? "Add another tag" : "Register tag", value: nil)
                     }
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 24)
             }
-            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes a key: tap it once to start its mode, again to end it.")
+            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Each tag runs one mode: tap it to start that mode, tap it again to end it. Only that mode's tag can end it.")
                 .padding(.horizontal, 4)
             Takeaway(text: "To use a tag without opening the app: in Shortcuts, add an Automation \u{2192} NFC, scan the tag, set it to Run Immediately, and add Tap Brick tag with this tag.")
                 .padding(.horizontal, 4)
@@ -434,11 +420,14 @@ struct BrickTagDetailPage: View {
                     }
                     .padding(.horizontal, 24)
                 }
-                BrickCaps(text: "Starts").foregroundStyle(BrickLook.soft).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12).padding(.leading, 4)
-                choice(tag, nil, "Any", "Whichever mode is selected. Ends the running Brick, and lockdowns with no tag of their own.")
+                BrickCaps(text: "Mode").foregroundStyle(BrickLook.soft).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12).padding(.leading, 4)
                 ForEach(store.profiles) { p in
-                    choice(tag, p.id, p.name, p.lockdown ? "Lockdown · only this tag ends it" : "Brick · counts as Brick time")
+                    choice(tag, p.id, p.name, p.lockdown ? "Lockdown · doesn't count as Brick time" : "Brick · counts as Brick time")
                 }
+                NavigationLink(value: BrickRoute.modes) {
+                    Text("Edit modes").font(.system(size: 16)).foregroundStyle(BrickLook.soft)
+                }
+                .buttonStyle(.plain)
                 if store.isKey(tag) {
                     Text("\(tag.name) would end something that's on, so it can't change until that's off.")
                         .font(.footnote).foregroundStyle(BrickLook.soft)
@@ -454,8 +443,8 @@ struct BrickTagDetailPage: View {
         .disabled(tag.map(store.isKey) ?? true)
     }
 
-    /// A mode as a card with a circle, like the Modes page; the filled one is what this tag starts.
-    private func choice(_ tag: BrickTag, _ profileID: UUID?, _ title: String, _ detail: String) -> some View {
+    /// A mode as a card with a circle; the filled one is what this tag starts and ends.
+    private func choice(_ tag: BrickTag, _ profileID: UUID, _ title: String, _ detail: String) -> some View {
         let chosen = tag.profileID == profileID
         return Button { var t = tag; t.profileID = profileID; store.update(t) } label: {
             HStack(spacing: 14) {

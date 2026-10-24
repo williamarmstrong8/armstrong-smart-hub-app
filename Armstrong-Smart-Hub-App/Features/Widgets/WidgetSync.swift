@@ -99,10 +99,10 @@ enum WidgetSync {
         }
         let next = BrickGlance(
             isBlocking: store.isBlocking,
-            profileName: store.blockingProfile?.name ?? store.selected?.name,
+            profileName: store.blockingProfile?.name,
             startedAt: store.current?.start,
             endsAt: store.endsAt,
-            strict: store.blockingProfile?.strict ?? store.selected?.strict ?? true,
+            strict: store.blockingProfile?.strict ?? true,
             // Whole minutes, so the 15-second check doesn't rewrite it every time.
             finishedTodaySeconds: (finished / 60).rounded(.down) * 60,
             day: localDay(now),

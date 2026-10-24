@@ -95,7 +95,7 @@ struct BrickTag: Codable, Identifiable, Hashable {
     /// The tag's UID in hex.
     var id: String
     var name: String
-    /// The mode this tag starts and ends. nil: starts the selected mode and ends whichever Brick is running (not lockdowns).
+    /// The one mode this tag starts and ends. nil until one is picked (or after its mode is deleted).
     var profileID: UUID?
 }
 
@@ -133,9 +133,6 @@ final class BrickStore: NSObject {
     static let emergencyAllowance = 5
 
     private(set) var profiles: [BrickProfile] = []
-    var selectedID: UUID? {
-        didSet { defaults.set(selectedID?.uuidString, forKey: "brick.selected") }
-    }
     private(set) var schedules: [BrickSchedule] = []
     private(set) var tags: [BrickTag] = [] {
         // Shortcuts offers tags by name in its phrases; keep that list current.
@@ -163,14 +160,18 @@ final class BrickStore: NSObject {
         super.init()
         profiles = load([BrickProfile].self, "brick.profiles") ?? []
         if profiles.isEmpty { profiles = [BrickProfile(name: "Focus")] }
-        let saved = defaults.string(forKey: "brick.selected").flatMap(UUID.init(uuidString:))
-        selectedID = profiles.contains { $0.id == saved } ? saved : profiles.first?.id
         sessions = load([BrickSession].self, "brick.sessions") ?? []
         schedules = load([BrickSchedule].self, "brick.schedules") ?? []
         tags = load([BrickTag].self, "brick.tags") ?? []
-        // The single tag from before tags had names and modes.
+        // Tags used to be able to start "whichever mode is selected"; now each has its own,
+        // so those take the mode that was selected. The single tag from before tags had names comes along too.
+        let wasSelected = defaults.string(forKey: "brick.selected").flatMap(UUID.init(uuidString:))
+        let fallback = profiles.first { $0.id == wasSelected }?.id ?? profiles.first?.id
         if tags.isEmpty, let old = defaults.string(forKey: "brick.tag") {
             tags = [BrickTag(id: old, name: "My Brick")]
+        }
+        if tags.contains(where: { $0.profileID == nil }) {
+            for i in tags.indices where tags[i].profileID == nil { tags[i].profileID = fallback }
             save(tags, "brick.tags")
         }
         if defaults.object(forKey: "brick.emergencyLeft") != nil {
@@ -193,7 +194,6 @@ final class BrickStore: NSObject {
     func isOn(_ id: UUID) -> Bool { blockingProfileID == id || lockdowns.contains { $0.profileID == id } }
     var activeLockdowns: [BrickProfile] { lockdowns.compactMap { l in profiles.first { $0.id == l.profileID } } }
     var hasTag: Bool { !tags.isEmpty }
-    var selected: BrickProfile? { profiles.first { $0.id == selectedID } }
     var blockingProfile: BrickProfile? { profiles.first { $0.id == blockingProfileID } }
     /// The session running now, if bricked.
     var current: BrickSession? { sessions.last { $0.end == nil } }
@@ -218,7 +218,6 @@ final class BrickStore: NSObject {
     func addProfile() -> UUID {
         let p = BrickProfile(name: "Mode \(profiles.count + 1)")
         profiles.append(p)
-        selectedID = p.id
         save(profiles, "brick.profiles")
         return p.id
     }
@@ -226,11 +225,10 @@ final class BrickStore: NSObject {
     func delete(_ profile: BrickProfile) {
         guard !isOn(profile.id) else { message = "Turn it off first."; return }
         profiles.removeAll { $0.id == profile.id }
-        // Its tags go back to starting whichever mode is selected.
+        // Its tags have no mode until another is picked.
         for i in tags.indices where tags[i].profileID == profile.id { tags[i].profileID = nil }
         save(tags, "brick.tags")
         if profiles.isEmpty { profiles = [BrickProfile(name: "Focus")] }
-        if selectedID == profile.id { selectedID = profiles.first?.id }
         save(profiles, "brick.profiles")
     }
 
@@ -238,7 +236,7 @@ final class BrickStore: NSObject {
 
     @discardableResult
     func addSchedule() -> UUID {
-        let s = BrickSchedule(name: "\(selected?.name ?? "Brick") schedule", profileID: selectedID)
+        let s = BrickSchedule(name: "\(profiles.first?.name ?? "Brick") schedule", profileID: profiles.first?.id)
         schedules.append(s)
         save(schedules, "brick.schedules")
         return s.id
@@ -276,7 +274,7 @@ final class BrickStore: NSObject {
             let end = endDate(of: s, on: now)
             guard now >= at, now < (end ?? at.addingTimeInterval(3600)),
                   !(s.lastFired.map { cal.isDate($0, inSameDayAs: now) } ?? false),
-                  let p = profiles.first(where: { $0.id == s.profileID }) ?? selected,
+                  let p = profiles.first(where: { $0.id == s.profileID }),
                   !isOn(p.id), p.lockdown || !isBlocking else { continue }
             var fired = s
             fired.lastFired = now
@@ -298,17 +296,18 @@ final class BrickStore: NSObject {
 
     // MARK: Tag
 
-    /// Tap a new tag to add it as another key.
-    func registerTag() {
+    /// Tap a new tag to add it as another key. It starts on the first mode; `added` gets its ID so its page can open.
+    func registerTag(added: @escaping (String) -> Void = { _ in }) {
         scan("Hold your phone to the new tag.") { [weak self] id in
             guard let self else { return }
             if let known = self.tags.first(where: { $0.id == id }) {
                 self.message = "That tag is already registered as \(known.name)."
                 return
             }
-            self.tags.append(BrickTag(id: id, name: self.tags.isEmpty ? "My Brick" : "Tag \(self.tags.count + 1)"))
+            self.tags.append(BrickTag(id: id, name: self.tags.isEmpty ? "My Brick" : "Tag \(self.tags.count + 1)",
+                                      profileID: self.profiles.first?.id))
             self.save(self.tags, "brick.tags")
-            self.message = "Tag registered."
+            added(id)
         }
     }
 
@@ -325,16 +324,14 @@ final class BrickStore: NSObject {
         save(tags, "brick.tags")
     }
 
-    /// The mode a tag starts: its own, or the selected one.
+    /// The mode a tag starts and ends.
     func profile(for tag: BrickTag) -> BrickProfile? {
-        profiles.first { $0.id == tag.profileID } ?? selected
+        profiles.first { $0.id == tag.profileID }
     }
 
-    /// Whether a tag ends a mode: its own mode, or for Any tags, the running Brick and any lockdown with no tag of its own.
+    /// Only a mode's own tags end it.
     func canEnd(_ id: UUID, with tag: BrickTag) -> Bool {
-        if tag.profileID == id { return true }
-        guard tag.profileID == nil else { return false }
-        return id == blockingProfileID || !tags.contains { $0.profileID == id }
+        tag.profileID == id
     }
 
     /// The tags that end a mode, by name.
@@ -368,14 +365,11 @@ final class BrickStore: NSObject {
         guard let tag = tags.first(where: { $0.id == id }) else {
             return (false, "That is not one of your registered tags.")
         }
-        // Its own mode; for an Any tag the running Brick, else a lockdown that has no tag of its own.
-        let target = tag.profileID ?? blockingProfileID ?? lockdowns.first { canEnd($0.profileID, with: tag) }?.profileID
-        if let on = target, isOn(on), canEnd(on, with: tag) {
-            let name = profiles.first { $0.id == on }?.name ?? "Brick"
-            end(on)
-            return (true, "Ended \(name).")
+        guard let p = profile(for: tag) else { return (false, "Pick a mode for \(tag.name) first.") }
+        if isOn(p.id) {
+            end(p.id)
+            return (true, "Ended \(p.name).")
         }
-        guard let p = profile(for: tag) else { return (false, "No mode to start.") }
         guard !p.isEmpty else { return (false, "Pick apps or restrictions for \(p.name) first.") }
         if !p.lockdown, isBlocking {
             return (false, "\(blockingProfile?.name ?? "A Brick") is on. End it with \(keys(for: blockingProfileID!)) first.")
@@ -510,7 +504,6 @@ final class BrickStore: NSObject {
             BrickSession(profileName: "Mindfulness", start: at(0, 13.5), end: at(0, 16)),
         ]
         profiles = [BrickProfile(name: "Mindfulness"), BrickProfile(name: "Deep work", strict: false, timerMinutes: 90)]
-        selectedID = profiles.first?.id
         schedules = [BrickSchedule(name: "Mindfulness schedule", hour: 13, minute: 30, profileID: profiles.first?.id, enabled: false)]
         tags = [BrickTag(id: "04a3b2c1d4e580", name: "Desk", profileID: profiles.last?.id),
                 BrickTag(id: "04f1e2d3c4b5a6", name: "Bedroom", profileID: profiles.first?.id)]

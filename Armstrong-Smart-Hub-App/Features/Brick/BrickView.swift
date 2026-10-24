@@ -40,7 +40,7 @@ struct BrickView: View {
                 case .schedule(let id): BrickSchedulePage(store: store, id: id)
                 case .activity: BrickActivityPage(store: store)
                 case .screenTime: BrickScreenTimePage(store: store)
-                case .tag: BrickTagPage(store: store)
+                case .tag: BrickTagPage(store: store, path: $path)
                 case .tagDetail(let id): BrickTagDetailPage(store: store, id: id)
                 case .emergency: BrickEmergencyPage(store: store)
                 }
@@ -120,7 +120,7 @@ private struct BrickSheet: View {
     private static let cornerRadius = buttonHeight / 2 + Fit.gutter
 
     var body: some View {
-        let p = store.blockingProfile ?? store.selected
+        let p = store.blockingProfile
         VStack(spacing: 0) {
             HStack {
                 Button { path.append(.schedules) } label: { Image(systemName: "calendar.badge.clock") }
@@ -133,7 +133,7 @@ private struct BrickSheet: View {
             .foregroundStyle(BrickLook.ink)
             .padding(.top, 12).padding(.horizontal, -20)
             device.padding(.top, 20)
-            Text(p?.name ?? "Focus").font(.system(size: 34, weight: .light)).padding(.top, 24)
+            Text(p?.name ?? "Unbricked").font(.system(size: 34, weight: .light)).padding(.top, 24)
             Group {
                 if store.isBlocking, let s = store.current {
                     if let end = store.endsAt {
@@ -142,9 +142,7 @@ private struct BrickSheet: View {
                         Text("Bricked for \(Text(s.start, style: .timer))")
                     }
                 } else {
-                    let n = p?.blockedCount ?? 0
-                    let r = p?.restrictions.count ?? 0
-                    Text((n == 1 ? "Blocks 1 app" : "Blocks \(n) apps") + (r > 0 ? " · \(r) restrictions" : ""))
+                    Text(store.hasTag ? "Tap a tag to start its mode" : "Register a tag to start")
                 }
             }
             .font(.system(size: 18)).monospacedDigit().foregroundStyle(BrickLook.soft).padding(.top, 14)

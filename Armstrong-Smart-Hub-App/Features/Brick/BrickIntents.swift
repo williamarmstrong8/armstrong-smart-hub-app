@@ -20,7 +20,7 @@ struct BrickTagEntity: AppEntity {
     @MainActor init(_ tag: BrickTag, store: BrickStore) {
         id = tag.id
         name = tag.name
-        mode = tag.profileID == nil ? "Any mode" : store.profile(for: tag)?.name ?? "Any mode"
+        mode = store.profile(for: tag)?.name ?? "No mode"
     }
 }
 
