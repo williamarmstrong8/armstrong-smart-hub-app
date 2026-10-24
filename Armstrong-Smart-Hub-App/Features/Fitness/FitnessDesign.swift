@@ -76,7 +76,16 @@ struct FitPage<Content: View>: View {
             .padding(.bottom, 40)
             .frame(maxWidth: .infinity)
         Group {
-            if flat { stack } else { ScrollView { stack } }
+            if flat {
+                stack
+            } else {
+                // Up and down only. The content is held to exactly the screen's
+                // width, so nothing on a page (a wide bar, a long line) can make
+                // it wider and let it drag sideways, and it doesn't bounce when
+                // it already fits.
+                ScrollView(.vertical) { stack.containerRelativeFrame(.horizontal) }
+                    .scrollBounceBehavior(.basedOnSize)
+            }
         }
         // Fill the screen from the first frame: a page still loading would otherwise
         // shrink to its content, showing the background as a strip that then grows.
