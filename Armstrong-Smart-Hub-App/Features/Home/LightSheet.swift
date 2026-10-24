@@ -1,16 +1,36 @@
 import SwiftUI
 
-private let swatches: [(name: String, rgb: [Int])] = [
-    ("Warm white", [255, 197, 143]),
-    ("Daylight", [255, 244, 229]),
-    ("Red", [255, 59, 48]),
-    ("Orange", [255, 149, 0]),
-    ("Yellow", [255, 214, 10]),
-    ("Green", [52, 199, 89]),
-    ("Cyan", [50, 173, 230]),
-    ("Blue", [0, 122, 255]),
-    ("Purple", [175, 82, 222]),
-    ("Pink", [255, 45, 85]),
+private struct LightSwatch: Identifiable {
+    let name: String
+    let rgb: [Int]
+    var id: String { name }
+}
+
+private let swatches: [LightSwatch] = [
+    .init(name: "Red", rgb: [255, 45, 45]),
+    .init(name: "Coral", rgb: [255, 92, 72]),
+    .init(name: "Orange", rgb: [255, 145, 35]),
+    .init(name: "Amber", rgb: [255, 190, 35]),
+    .init(name: "Yellow", rgb: [255, 230, 50]),
+    .init(name: "Lime", rgb: [185, 235, 45]),
+    .init(name: "Green", rgb: [45, 205, 85]),
+    .init(name: "Mint", rgb: [45, 215, 145]),
+    .init(name: "Teal", rgb: [35, 195, 180]),
+    .init(name: "Cyan", rgb: [35, 195, 235]),
+    .init(name: "Sky blue", rgb: [45, 145, 255]),
+    .init(name: "Blue", rgb: [45, 85, 255]),
+    .init(name: "Indigo", rgb: [85, 65, 235]),
+    .init(name: "Violet", rgb: [125, 65, 240]),
+    .init(name: "Purple", rgb: [170, 65, 235]),
+    .init(name: "Magenta", rgb: [220, 55, 215]),
+    .init(name: "Pink", rgb: [255, 65, 165]),
+    .init(name: "Rose", rgb: [255, 65, 110]),
+    .init(name: "Soft red", rgb: [255, 125, 115]),
+    .init(name: "Peach", rgb: [255, 175, 120]),
+    .init(name: "Soft yellow", rgb: [255, 225, 135]),
+    .init(name: "Soft green", rgb: [145, 225, 155]),
+    .init(name: "Soft blue", rgb: [135, 195, 255]),
+    .init(name: "Lavender", rgb: [195, 155, 255]),
 ]
 
 /// Brightness, white temperature and color for one light.
@@ -26,67 +46,76 @@ struct LightSheet: View {
     var body: some View {
         if let entity = store.entity(entityID) {
             NavigationStack {
-                Form {
-                    Section {
-                        Toggle(isOn: Binding(get: { entity.isOn }, set: { on in send(entity, .init(on: on)) })) {
-                            Label(entity.stateLabel, systemImage: entity.symbol)
-                        }
-                    }
-                    .listRowBackground(BrickLook.card)
-                    if entity.supportsBrightness {
-                        Section("Brightness") {
-                            HStack {
-                                Image(systemName: "sun.min")
-                                Slider(value: $brightness, in: 1...100, step: 1) { editing in
-                                    if !editing { send(entity, .init(on: true, brightnessPct: Int(brightness))) }
-                                }
-                                Image(systemName: "sun.max")
-                                Text("\(Int(brightness))%").monospacedDigit().frame(width: 44, alignment: .trailing)
+                ScrollView {
+                    VStack(spacing: 22) {
+                        if entity.supportsBrightness {
+                            LightControlBar(
+                                value: $brightness,
+                                range: 1...100,
+                                colors: [Color.black.opacity(0.72), .white],
+                                thumb: .white,
+                                accessibilityName: "Brightness",
+                                accessibilityValue: "\(Int(brightness)) percent"
+                            ) {
+                                send(entity, .init(on: true, brightnessPct: Int(brightness.rounded())))
                             }
                         }
-                        .listRowBackground(BrickLook.card)
-                    }
-                    if entity.supportsColorTemp {
-                        let minK = Double(entity.minKelvin ?? 2000)
-                        let maxK = Double(entity.maxKelvin ?? 6500)
-                        Section("White") {
-                            HStack {
-                                Slider(value: $kelvin, in: minK...max(maxK, minK + 1), step: 50) { editing in
-                                    if !editing { send(entity, .init(on: true, kelvin: Int(kelvin))) }
-                                }
-                                .tint(LinearGradient(colors: [.orange, .white, .cyan], startPoint: .leading, endPoint: .trailing))
-                                Text("\(Int(kelvin))K").monospacedDigit().frame(width: 56, alignment: .trailing)
+
+                        if entity.supportsColorTemp {
+                            let minK = Double(entity.minKelvin ?? 2000)
+                            let maxK = Double(max(entity.maxKelvin ?? 6500, Int(minK) + 1))
+                            LightControlBar(
+                                value: $kelvin,
+                                range: minK...maxK,
+                                colors: temperatureGradient(from: Int(minK), through: Int(maxK)),
+                                thumb: temperatureColor(Int(kelvin)),
+                                accessibilityName: "White temperature",
+                                accessibilityValue: "\(Int(kelvin)) kelvin"
+                            ) {
+                                send(entity, .init(on: true, kelvin: Int(kelvin.rounded())))
                             }
                         }
-                        .listRowBackground(BrickLook.card)
-                    }
-                    if entity.supportsColor {
-                        Section("Color") {
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 14) {
-                                ForEach(swatches, id: \.name) { s in
-                                    let active = entity.rgbColor == s.rgb
+
+                        if entity.supportsColor {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 12) {
+                                ForEach(swatches) { swatch in
+                                    let active = entity.rgbColor == swatch.rgb
                                     Button {
-                                        send(entity, .init(on: true, rgb: s.rgb))
+                                        send(entity, .init(on: true, rgb: swatch.rgb))
                                     } label: {
-                                        Circle()
-                                            .fill(Color(rgb: s.rgb))
-                                            .frame(width: 40, height: 40)
-                                            .overlay(Circle().strokeBorder(.primary.opacity(active ? 0.9 : 0.1), lineWidth: active ? 3 : 1))
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .fill(Color(rgb: swatch.rgb))
+                                            .aspectRatio(1, contentMode: .fit)
+                                            .overlay {
+                                                if active {
+                                                    Image(systemName: "checkmark")
+                                                        .font(.system(size: 16, weight: .bold))
+                                                        .foregroundStyle(.white)
+                                                        .shadow(color: .black.opacity(0.45), radius: 2)
+                                                }
+                                            }
+                                            .overlay {
+                                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                    .strokeBorder(.white.opacity(active ? 0.95 : 0.15), lineWidth: active ? 3 : 1)
+                                            }
                                     }
                                     .buttonStyle(.plain)
-                                    .accessibilityLabel(s.name)
+                                    .accessibilityLabel(swatch.name)
                                     .accessibilityAddTraits(active ? .isSelected : [])
                                 }
                             }
-                            .padding(.vertical, 6)
                         }
-                        .listRowBackground(BrickLook.card)
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 28)
                 }
-                .brickList()
+                .background(BrickLook.page)
                 .navigationTitle(entity.name)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(BrickLook.page, for: .navigationBar)
             }
+            .presentationBackground(BrickLook.page)
             .onAppear {
                 brightness = Double(max(entity.brightnessPct, 1))
                 if entity.brightnessPct == 0 { brightness = 100 }
@@ -99,5 +128,88 @@ struct LightSheet: View {
 
     private func send(_ entity: HAEntity, _ change: HomeStore.LightChange) {
         Task { await store.setLight(entity, change, api: session.api, toast: toast) }
+    }
+}
+
+/// A large custom gradient track. Dragging previews continuously and sends once released.
+private struct LightControlBar: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let colors: [Color]
+    let thumb: Color
+    let accessibilityName: String
+    let accessibilityValue: String
+    let onCommit: () -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = max(geometry.size.width, 1)
+            let progress = (value - range.lowerBound) / max(range.upperBound - range.lowerBound, 1)
+
+            Capsule()
+                .fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing))
+                .overlay { Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1) }
+                .overlay(alignment: .leading) {
+                    Circle()
+                        .fill(thumb)
+                        .frame(width: 38, height: 38)
+                        .overlay(Circle().strokeBorder(.white, lineWidth: 3))
+                        .shadow(color: .black.opacity(0.28), radius: 5, y: 2)
+                        .offset(x: max(0, min(width - 38, progress * (width - 38))))
+                        .allowsHitTesting(false)
+                }
+                .contentShape(.rect)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { gesture in
+                            let progress = max(0, min(1, gesture.location.x / width))
+                            value = range.lowerBound + progress * (range.upperBound - range.lowerBound)
+                        }
+                        .onEnded { _ in onCommit() }
+                )
+        }
+        .frame(height: 54)
+        .accessibilityElement()
+        .accessibilityLabel(accessibilityName)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityAdjustableAction { direction in
+            let step = (range.upperBound - range.lowerBound) / 20
+            switch direction {
+            case .increment: value = min(value + step, range.upperBound)
+            case .decrement: value = max(value - step, range.lowerBound)
+            @unknown default: return
+            }
+            onCommit()
+        }
+    }
+}
+
+/// Approximate black-body color, so each point looks like the white temperature it sends.
+private func temperatureColor(_ kelvin: Int) -> Color {
+    let temperature = Double(max(1000, min(kelvin, 40_000))) / 100
+    let red: Double
+    let green: Double
+    let blue: Double
+
+    if temperature <= 66 {
+        red = 255
+        green = 99.4708025861 * log(temperature) - 161.1195681661
+        blue = temperature <= 19 ? 0 : 138.5177312231 * log(temperature - 10) - 305.0447927307
+    } else {
+        red = 329.698727446 * pow(temperature - 60, -0.1332047592)
+        green = 288.1221695283 * pow(temperature - 60, -0.0755148492)
+        blue = 255
+    }
+
+    return Color(
+        red: max(0, min(red, 255)) / 255,
+        green: max(0, min(green, 255)) / 255,
+        blue: max(0, min(blue, 255)) / 255
+    )
+}
+
+private func temperatureGradient(from minimum: Int, through maximum: Int) -> [Color] {
+    (0...8).map { step in
+        temperatureColor(minimum + (maximum - minimum) * step / 8)
     }
 }

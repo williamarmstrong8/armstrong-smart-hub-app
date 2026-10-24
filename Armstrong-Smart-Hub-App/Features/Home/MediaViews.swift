@@ -316,6 +316,13 @@ enum PosterLoader {
             return first
         }
     }
+
+    /// The same TMDB poster at full resolution; lists get small ones, too soft for a card the
+    /// screen's width.
+    static func fullSize(_ url: String?) -> String? {
+        guard let url, let range = url.range(of: #"/t/p/w\d+/"#, options: .regularExpression) else { return nil }
+        return url.replacingCharacters(in: range, with: "/t/p/original/")
+    }
 }
 
 /// Shows a title's card above the whole tab view, so the tab bar blurs with the page rather than
@@ -487,6 +494,7 @@ struct MediaDetailCard: View {
 
     @Environment(AppSession.self) private var session
     @State private var detail: MediaDetail?
+    @State private var sharp: UIImage?
     @State private var error: String?
     @State private var working = false
     @State private var requested = false
@@ -572,6 +580,11 @@ struct MediaDetailCard: View {
         .ignoresSafeArea(edges: .bottom)
         .preferredColorScheme(.dark)
         .task { await load() }
+        .task {
+            let image = await PosterLoader.image(PosterLoader.fullSize(pick.posterURL ?? detail?.posterURL),
+                                                 waitingAtMost: .seconds(20))
+            withAnimation(.easeOut(duration: 0.3)) { sharp = image }
+        }
         // Finished downloading while open: fetch the details again for Play.
         .onChange(of: live?.stage) { _, stage in
             if stage == .available { Task { await load() } }
@@ -613,15 +626,18 @@ struct MediaDetailCard: View {
         .padding(.bottom, 44)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .background {
-            // One image for the card's whole life: swapping to the details' poster URL reloaded it,
-            // which is what flashed.
-            Group {
+            // The small poster stays underneath for the card's whole life: swapping its URL reloaded
+            // it, which is what flashed. The full-size one fades in over it once downloaded.
+            ZStack {
                 if let poster {
                     Image(uiImage: poster).resizable().scaledToFill()
                 } else {
                     AsyncImage(url: (pick.posterURL ?? detail?.posterURL).flatMap(URL.init(string:))) { phase in
                         if let image = phase.image { image.resizable().scaledToFill() } else { Color.white.opacity(0.06) }
                     }
+                }
+                if let sharp {
+                    Image(uiImage: sharp).resizable().scaledToFill().transition(.opacity)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

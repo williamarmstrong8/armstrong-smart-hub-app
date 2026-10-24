@@ -274,7 +274,8 @@ struct DeviceButton: View {
     let onTap: () -> Void
     let onAdjust: () -> Void
 
-    @State private var pressed = false
+    @GestureState private var pressed = false
+    @State private var held = false
 
     var body: some View {
         let on = entity.isOn
@@ -306,10 +307,19 @@ struct DeviceButton: View {
         .animation(.spring(duration: 0.2), value: pressed)
         .opacity(entity.isUnavailable ? 0.5 : 1)
         // A quick tap toggles; holding adjusts instead, without also toggling.
-        .onTapGesture { if !entity.isUnavailable { onTap() } }
-        .onLongPressGesture(minimumDuration: 0.4) {
-            if !entity.isUnavailable { onAdjust() }
-        } onPressingChanged: { pressed = $0 }
+        // Both run side by side so neither waits on the other; the release after a hold is swallowed.
+        .onTapGesture {
+            if held { held = false } else if !entity.isUnavailable { onTap() }
+        }
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.4)
+                .updating($pressed) { value, state, _ in state = value }
+                .onEnded { _ in
+                    held = true
+                    if !entity.isUnavailable { onAdjust() }
+                }
+        )
+        .onChange(of: pressed) { _, down in if down { held = false } }
         .sensoryFeedback(.impact(weight: .medium), trigger: on)
         .animation(.easeOut(duration: 0.2), value: on)
         .accessibilityElement(children: .ignore)
