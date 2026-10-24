@@ -53,14 +53,20 @@ struct ExerciseDetailPage: View {
         VStack(spacing: 0) {
             tabs
             ScrollView {
-                switch tab {
-                case .summary: summary
-                case .history: historyList
-                case .howTo: howTo
+                Group {
+                    switch tab {
+                    case .summary: summary
+                    case .history: historyList
+                    case .howTo: howTo
+                    }
                 }
+                .frame(maxWidth: .infinity)
             }
             .refreshable { await load() }
         }
+        // Fill the screen from the first frame: a page still loading would otherwise
+        // shrink to its content, showing the background as a strip that then grows.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)

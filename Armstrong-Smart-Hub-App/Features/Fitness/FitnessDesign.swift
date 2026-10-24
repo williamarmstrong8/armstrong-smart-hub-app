@@ -74,9 +74,13 @@ struct FitPage<Content: View>: View {
         let stack = VStack(spacing: 0) { content }
             .padding(.horizontal, Fit.gutter)
             .padding(.bottom, 40)
+            .frame(maxWidth: .infinity)
         Group {
             if flat { stack } else { ScrollView { stack } }
         }
+        // Fill the screen from the first frame: a page still loading would otherwise
+        // shrink to its content, showing the background as a strip that then grows.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)

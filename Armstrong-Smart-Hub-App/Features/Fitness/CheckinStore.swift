@@ -182,6 +182,15 @@ final class CheckinStore {
         }
     }
 
+    /// The local calendar day, as the hub keys check-ins.
+    static func dayString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = .current
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: date)
+    }
+
     /// Today's answer: the one waiting to send, else the hub's.
     func entry(for day: String) -> Checkin? {
         for case let .checkin(c, _) in pending.reversed() where c.day == day { return c }

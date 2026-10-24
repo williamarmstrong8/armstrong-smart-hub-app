@@ -12,24 +12,34 @@ struct MorningCheckin: View {
     @Environment(AppSession.self) private var session
     var store: CheckinStore
     @State private var changing = false
+    /// The card just tapped, shown at once: the saved answer only arrives after
+    /// the save, and waiting for it flashed the old answer in between.
+    @State private var picked: String?
 
     private var day: String { store.day }
+    /// What the day's answer is now, as far as this view knows.
+    private var feeling: String? { picked ?? store.entry(for: day).flatMap(Feeling.of) }
+
+    /// Swaps between the question and the answer: fade, with a slight settle.
+    private static let swap = AnyTransition.opacity.combined(with: .scale(scale: 0.97, anchor: .top))
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            if let feeling = store.entry(for: day).flatMap(Feeling.of), !changing {
-                answered(feeling).transition(.opacity)
+            if let feeling, !changing {
+                answered(feeling).transition(Self.swap)
             } else {
-                asking.transition(.opacity)
+                asking.transition(Self.swap)
             }
-            if let stretch = store.suggestions.first, !changing, store.entry(for: day) != nil {
+            if let stretch = store.suggestions.first, !changing, feeling != nil {
                 past(stretch)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.smooth, value: changing)
-        .animation(.smooth, value: store.entry(for: day))
         .padding(.bottom, 36)
+        .onChange(of: store.entry(for: day)) { _, entry in
+            if let entry, Feeling.of(entry) == picked { picked = nil }
+        }
+        .onChange(of: day) { picked = nil }
     }
 
     /// "How are you today?", then the three guesses as cards, the likeliest first.
@@ -48,9 +58,17 @@ struct MorningCheckin: View {
                     }
                 }
             }
-            if changing {
-                Button("Cancel") { changing = false }.font(.footnote).foregroundStyle(BrickLook.soft).buttonStyle(.plain)
+            // The feelings the cards don't show, for a morning the guesses missed.
+            Menu {
+                ForEach(Feeling.all.filter { key in !options.contains { $0.key == key } }, id: \.self) { key in
+                    Button { answer(key, offered: options.map(\.key)) } label: { Label(Feeling.label(key), systemImage: Feeling.icon(key)) }
+                }
+            } label: {
+                Text("Other").font(.footnote).foregroundStyle(BrickLook.soft)
+                    .padding(.horizontal, 16).padding(.vertical, 4)
+                    .contentShape(.rect)
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -68,7 +86,7 @@ struct MorningCheckin: View {
                 Text("Checked in").font(.subheadline).foregroundStyle(BrickLook.soft)
             }
             Spacer(minLength: 8)
-            Button("Change") { changing = true }
+            Button("Change") { withAnimation(.snappy) { changing = true } }
                 .font(.footnote).foregroundStyle(BrickLook.soft)
                 .buttonStyle(.plain)
         }
@@ -94,7 +112,10 @@ struct MorningCheckin: View {
 
     private func answer(_ feeling: String, offered: [String]) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        changing = false
+        withAnimation(.snappy) {
+            picked = feeling
+            changing = false
+        }
         Task { await store.answer(day: day, feeling: feeling, offered: offered, api: session.api) }
     }
 
@@ -116,15 +137,13 @@ struct MorningCheckin: View {
 
 /// This week, Monday to Sunday, one column a day: a circle filled blue for a
 /// workout, and under the letter a dot in the color of that morning's
-/// check-in (none when there wasn't one). Ends with a button to log sick days
-/// the hub missed.
+/// check-in (none when there wasn't one).
 struct WeekStrip: View {
     var store: CheckinStore
     /// Local midnights of the days with a workout.
     var workoutDays: Set<Date>
     var trailing: String
     var trailingTint: Color?
-    @State private var logging = false
 
     var body: some View {
         let calendar = Calendar.current
@@ -141,7 +160,7 @@ struct WeekStrip: View {
                 ForEach(days, id: \.self) { date in
                     let worked = workoutDays.contains(date)
                     let isToday = date == today
-                    let feeling = date > today ? nil : store.entry(for: SickDaysSheet.day(date)).flatMap(Feeling.of)
+                    let feeling = date > today ? nil : store.entry(for: CheckinStore.dayString(date)).flatMap(Feeling.of)
                     VStack(spacing: 7) {
                         ZStack {
                             Circle().stroke(worked ? Fit.action : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
@@ -155,19 +174,9 @@ struct WeekStrip: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                Button { logging = true } label: {
-                    Image(systemName: "plus").font(.footnote.weight(.semibold))
-                        .foregroundStyle(BrickLook.soft)
-                        .frame(width: 30, height: 30)
-                        .background(BrickLook.pill, in: .circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Log sick days")
-                .padding(.leading, 6)
             }
             .animation(.smooth, value: workoutDays.count)
         }
-        .sheet(isPresented: $logging) { SickDaysSheet(store: store) }
     }
 }
 
@@ -273,48 +282,6 @@ struct CheckinButton: View {
         }
         .buttonStyle(.plain)
         .sensoryFeedback(.selection, trigger: filled)
-    }
-}
-
-/// "I was sick from … to …": just the days.
-struct SickDaysSheet: View {
-    @Environment(AppSession.self) private var session
-    @Environment(\.dismiss) private var dismiss
-    var store: CheckinStore
-    @State private var from = Date.now
-    @State private var to = Date.now
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                DatePicker("From", selection: $from, in: ...Date.now, displayedComponents: .date)
-                DatePicker("To", selection: $to, in: from...Date.now, displayedComponents: .date)
-            }
-            .navigationTitle("Sick days")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { save() } }
-            }
-            .onChange(of: from) { if to < from { to = from } }
-        }
-        .presentationDetents([.height(260)])
-    }
-
-    private func save() {
-        let first = Self.day(from), last = max(Self.day(to), Self.day(from))
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        Task { await store.log(from: first, to: last, tags: ["sick"], note: nil, api: session.api) }
-        dismiss()
-    }
-
-    /// The local calendar day, as the hub keys check-ins.
-    static func day(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = .current
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f.string(from: date)
     }
 }
 
