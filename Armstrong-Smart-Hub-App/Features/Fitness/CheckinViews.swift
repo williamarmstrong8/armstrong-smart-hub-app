@@ -5,35 +5,31 @@ import SwiftUI
 /// One question a morning: how you feel, as the hub's three best guesses on
 /// cards (from last night's numbers and what you said the days before), the
 /// likeliest outlined. Once answered: the answer as one line with its icon.
-/// Under both, the last seven days as dots (colored by the answer, a ring for
-/// no check-in), a past day to confirm if there is one, and a way to log sick
-/// days the hub missed. Every answer is a label the hub learns from
-/// (checkin-engine.ts).
+/// Under both, a past day to confirm if there is one. Straight on the page;
+/// the days' answers show in the week strip (WeekStrip). Every answer is a
+/// label the hub learns from (checkin-engine.ts).
 struct MorningCheckin: View {
     @Environment(AppSession.self) private var session
     var store: CheckinStore
     @State private var changing = false
-    @State private var logging = false
 
     private var day: String { store.day }
 
     var body: some View {
-        FitSection {
-            VStack(alignment: .leading, spacing: 20) {
-                if let feeling = store.entry(for: day).flatMap(Feeling.of), !changing {
-                    answered(feeling).transition(.opacity)
-                } else {
-                    asking.transition(.opacity)
-                }
-                week
-                if let stretch = store.suggestions.first, !changing, store.entry(for: day) != nil {
-                    past(stretch)
-                }
+        VStack(alignment: .leading, spacing: 20) {
+            if let feeling = store.entry(for: day).flatMap(Feeling.of), !changing {
+                answered(feeling).transition(.opacity)
+            } else {
+                asking.transition(.opacity)
             }
-            .animation(.smooth, value: changing)
-            .animation(.smooth, value: store.entry(for: day))
+            if let stretch = store.suggestions.first, !changing, store.entry(for: day) != nil {
+                past(stretch)
+            }
         }
-        .sheet(isPresented: $logging) { SickDaysSheet(store: store) }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.smooth, value: changing)
+        .animation(.smooth, value: store.entry(for: day))
+        .padding(.bottom, 36)
     }
 
     /// "How are you today?", then the three guesses as cards, the likeliest first.
@@ -78,39 +74,6 @@ struct MorningCheckin: View {
         }
     }
 
-    /// The last seven days, today last: a dot in the answer's color, a ring for no check-in.
-    private var week: some View {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: .now)
-        let days = (0..<7).reversed().compactMap { calendar.date(byAdding: .day, value: -$0, to: today) }
-        return HStack(alignment: .bottom, spacing: 0) {
-            ForEach(days, id: \.self) { date in
-                let feeling = store.entry(for: SickDaysSheet.day(date)).flatMap(Feeling.of)
-                let isToday = date == today
-                VStack(spacing: 6) {
-                    ZStack {
-                        Circle().strokeBorder(feeling == nil ? BrickLook.line : .clear, lineWidth: 1)
-                        if let feeling { Circle().fill(Feeling.tint(feeling)) }
-                    }
-                    .frame(width: 12, height: 12)
-                    Text(date.formatted(.dateTime.weekday(.narrow)))
-                        .font(.caption2.weight(isToday ? .semibold : .regular))
-                        .foregroundStyle(isToday ? BrickLook.ink : BrickLook.soft)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            Button { logging = true } label: {
-                Image(systemName: "plus").font(.footnote.weight(.semibold))
-                    .foregroundStyle(BrickLook.soft)
-                    .frame(width: 32, height: 32)
-                    .background(BrickLook.pill, in: .circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Log sick days")
-            .padding(.leading, 8)
-        }
-    }
-
     /// "Were you sick around July 15–17?" with yes, no and not sure.
     private func past(_ stretch: PastStretch) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -148,6 +111,63 @@ struct MorningCheckin: View {
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = .current
         return f.date(from: day)
+    }
+}
+
+/// This week, Monday to Sunday, one column a day: a circle filled blue for a
+/// workout, and under the letter a dot in the color of that morning's
+/// check-in (none when there wasn't one). Ends with a button to log sick days
+/// the hub missed.
+struct WeekStrip: View {
+    var store: CheckinStore
+    /// Local midnights of the days with a workout.
+    var workoutDays: Set<Date>
+    var trailing: String
+    var trailingTint: Color?
+    @State private var logging = false
+
+    var body: some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? today
+        let days = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                BrickCaps(text: "This week").foregroundStyle(BrickLook.soft)
+                Spacer()
+                BrickCaps(text: trailing).foregroundStyle(trailingTint ?? BrickLook.soft).monospacedDigit()
+            }
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(days, id: \.self) { date in
+                    let worked = workoutDays.contains(date)
+                    let isToday = date == today
+                    let feeling = date > today ? nil : store.entry(for: SickDaysSheet.day(date)).flatMap(Feeling.of)
+                    VStack(spacing: 7) {
+                        ZStack {
+                            Circle().stroke(worked ? Fit.action : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
+                            if worked { Circle().fill(Fit.action) }
+                        }
+                        .frame(width: 26, height: 26)
+                        Text(date.formatted(.dateTime.weekday(.narrow)))
+                            .font(.caption.weight(isToday ? .semibold : .regular))
+                            .foregroundStyle(isToday ? BrickLook.ink : Fit.muted)
+                        Circle().fill(feeling.map(Feeling.tint) ?? .clear).frame(width: 7, height: 7)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                Button { logging = true } label: {
+                    Image(systemName: "plus").font(.footnote.weight(.semibold))
+                        .foregroundStyle(BrickLook.soft)
+                        .frame(width: 30, height: 30)
+                        .background(BrickLook.pill, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Log sick days")
+                .padding(.leading, 6)
+            }
+            .animation(.smooth, value: workoutDays.count)
+        }
+        .sheet(isPresented: $logging) { SickDaysSheet(store: store) }
     }
 }
 

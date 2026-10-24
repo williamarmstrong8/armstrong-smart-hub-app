@@ -295,36 +295,19 @@ struct FitnessView: View {
         .onTapGesture { pplOffset += 1 }
     }
 
-    /// Next workout, then this week as seven dots, one per day.
+    /// Next workout, then this week: workouts and check-ins in one strip. Straight on the page.
     private var today: some View {
         let calendar = Calendar.current
-        let start = calendar.startOfDay(for: .now)
-        let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? start
-        let weekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
+        let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? calendar.startOfDay(for: .now)
         let days = workoutDays
-        let done = weekDays.filter { days.contains($0) }.count
-        return FitSection(trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days this week",
-                          trailingTint: streak > 1 ? Fit.action : nil) {
+        let done = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }.filter { days.contains($0) }.count
+        return VStack(alignment: .leading, spacing: 24) {
             nextWorkoutView
-            HStack(spacing: 0) {
-                ForEach(weekDays, id: \.self) { day in
-                    let worked = days.contains(day)
-                    let isToday = calendar.isDate(day, inSameDayAs: start)
-                    VStack(spacing: 8) {
-                        ZStack {
-                            Circle().stroke(worked ? Fit.action : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
-                            if worked { Circle().fill(Fit.action) }
-                        }
-                        .frame(width: 26, height: 26)
-                        Text(day.formatted(.dateTime.weekday(.narrow)))
-                            .font(.caption.weight(isToday ? .semibold : .regular))
-                            .foregroundStyle(isToday ? Color.primary : Fit.muted)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            .animation(.smooth, value: days.count)
+            WeekStrip(store: checkins, workoutDays: days,
+                      trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days",
+                      trailingTint: streak > 1 ? Fit.action : nil)
         }
+        .padding(.bottom, 36)
     }
 
 }
