@@ -1,4 +1,5 @@
 import Toybox.ActivityMonitor;
+import Toybox.Complications;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
@@ -24,8 +25,13 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
     private var _lastSec as Number = -1;
     private var _secStart as Number = 0;
 
-    // The hub's readiness counts for 36 hours after a push, the same rule as the Training glance.
+    // Training readiness comes from the watch's own complication. The SDK has no
+    // named type for it, so it's found by label among everything the watch offers;
+    // the search repeats every 5 minutes until one turns up. The hub's pushed value
+    // (36 hours, the Training glance's rule) covers a watch without it.
     private const HUB_TRAINING_AGE = 36 * 3600;
+    private var _readyId as Complications.Id? = null;
+    private var _searchedAt as Number = -1;
 
     function initialize() {
         WatchFace.initialize();
@@ -96,7 +102,7 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         // Stat circles, Meridian's four positions.
         var off = (r * 0.42).toNumber();
         var disc = (r * 0.21).toNumber();
-        var ready = Pushed.fresh("at", HUB_TRAINING_AGE) ? Pushed.number("ready") : null;
+        var ready = readinessScore();
         stat(dc, cx, cy - off, disc, :readiness, Draw.orDash(ready), ready != null && ready < 50 ? Draw.ORANGE : Draw.GREEN);
         stat(dc, cx - off, cy, disc, :heart, Draw.orDash(HubData.heartRate()), Draw.RED);
         stat(dc, cx + off, cy, disc, :calories, Draw.orDash(caloriesToday()), Draw.ORANGE);
@@ -194,6 +200,40 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
 
         dc.setColor(Draw.WHITE, Graphics.COLOR_TRANSPARENT);
         dc.drawText(x, iconY + 12, font, value, Graphics.TEXT_JUSTIFY_CENTER);
+    }
+
+    private function readinessScore() as Number? {
+        var id = readinessId();
+        if (id != null) {
+            try {
+                var value = Complications.getComplication(id).value;
+                if (value instanceof Number || value instanceof Float || value instanceof Double || value instanceof Long) {
+                    return (value as Numeric).toNumber();
+                }
+                if (value instanceof String) { return (value as String).toNumber(); }
+            } catch (e) {}
+        }
+        return Pushed.fresh("at", HUB_TRAINING_AGE) ? Pushed.number("ready") : null;
+    }
+
+    private function readinessId() as Complications.Id? {
+        if (_readyId != null || !(Complications has :getComplications)) { return _readyId; }
+        var now = System.getTimer();
+        if (_searchedAt >= 0 && now - _searchedAt < 300000) { return null; }
+        _searchedAt = now;
+        try {
+            var iter = Complications.getComplications();
+            var c = iter.next();
+            while (c != null) {
+                var label = (c.longLabel != null ? c.longLabel : c.shortLabel) as String?;
+                if (label != null && label.toUpper().find("READI") != null) {
+                    _readyId = c.complicationId;
+                    return _readyId;
+                }
+                c = iter.next();
+            }
+        } catch (e) {}
+        return null;
     }
 
     private function caloriesToday() as Number? {
