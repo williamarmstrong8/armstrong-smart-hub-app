@@ -30,6 +30,15 @@ struct BrickSession: Codable, Identifiable, Hashable {
     var byTimer = false
 }
 
+/// One NFC tag. Its UID is the key; it can be tied to a mode so each tag starts its own kind of block.
+struct BrickTag: Codable, Identifiable, Hashable {
+    /// The tag's UID in hex.
+    var id: String
+    var name: String
+    /// The mode this tag starts, and the only sessions it can end. nil: starts the selected mode and ends any.
+    var profileID: UUID?
+}
+
 /// Bricks the phone at a time of day on chosen weekdays. The tag still ends it.
 struct BrickSchedule: Codable, Identifiable, Hashable {
     var id = UUID()
@@ -59,7 +68,7 @@ final class BrickStore: NSObject {
         didSet { defaults.set(selectedID?.uuidString, forKey: "brick.selected") }
     }
     private(set) var schedules: [BrickSchedule] = []
-    private(set) var tagID: String?
+    private(set) var tags: [BrickTag] = []
     private(set) var blockingProfileID: UUID?
     private(set) var endsAt: Date?
     private(set) var authorized = false
@@ -83,7 +92,12 @@ final class BrickStore: NSObject {
         selectedID = profiles.contains { $0.id == saved } ? saved : profiles.first?.id
         sessions = load([BrickSession].self, "brick.sessions") ?? []
         schedules = load([BrickSchedule].self, "brick.schedules") ?? []
-        tagID = defaults.string(forKey: "brick.tag")
+        tags = load([BrickTag].self, "brick.tags") ?? []
+        // The single tag from before tags had names and modes.
+        if tags.isEmpty, let old = defaults.string(forKey: "brick.tag") {
+            tags = [BrickTag(id: old, name: "My Brick")]
+            save(tags, "brick.tags")
+        }
         if defaults.object(forKey: "brick.emergencyLeft") != nil {
             emergencyLeft = defaults.integer(forKey: "brick.emergencyLeft")
         }
@@ -98,6 +112,7 @@ final class BrickStore: NSObject {
     }
 
     var isBlocking: Bool { blockingProfileID != nil }
+    var hasTag: Bool { !tags.isEmpty }
     var selected: BrickProfile? { profiles.first { $0.id == selectedID } }
     var blockingProfile: BrickProfile? { profiles.first { $0.id == blockingProfileID } }
     /// The session running now, if bricked.
@@ -131,6 +146,9 @@ final class BrickStore: NSObject {
     func delete(_ profile: BrickProfile) {
         guard profile.id != blockingProfileID else { message = "Unbrick first."; return }
         profiles.removeAll { $0.id == profile.id }
+        // Its tags go back to starting whichever mode is selected.
+        for i in tags.indices where tags[i].profileID == profile.id { tags[i].profileID = nil }
+        save(tags, "brick.tags")
         if profiles.isEmpty { profiles = [BrickProfile(name: "Focus")] }
         if selectedID == profile.id { selectedID = profiles.first?.id }
         save(profiles, "brick.profiles")
@@ -188,27 +206,62 @@ final class BrickStore: NSObject {
 
     // MARK: Tag
 
-    /// Tap a tag to make it the only key. Replaces any earlier tag.
+    /// Tap a new tag to add it as another key.
     func registerTag() {
-        guard !isBlocking else { message = "Unbrick before changing the tag."; return }
-        scan("Hold your phone to the Brick tag to register it.") { [weak self] id in
-            self?.tagID = id
-            self?.defaults.set(id, forKey: "brick.tag")
-            self?.message = "Tag registered."
+        guard !isBlocking else { message = "Unbrick before changing tags."; return }
+        scan("Hold your phone to the new tag.") { [weak self] id in
+            guard let self else { return }
+            if let known = self.tags.first(where: { $0.id == id }) {
+                self.message = "That tag is already registered as \(known.name)."
+                return
+            }
+            self.tags.append(BrickTag(id: id, name: self.tags.isEmpty ? "My Brick" : "Tag \(self.tags.count + 1)"))
+            self.save(self.tags, "brick.tags")
+            self.message = "Tag registered."
         }
     }
 
-    /// The main gesture: tap the tag to start or stop blocking.
+    func update(_ tag: BrickTag) {
+        guard let i = tags.firstIndex(where: { $0.id == tag.id }) else { return }
+        tags[i] = tag
+        save(tags, "brick.tags")
+    }
+
+    func delete(_ tag: BrickTag) {
+        guard !isBlocking else { message = "Unbrick before changing tags."; return }
+        tags.removeAll { $0.id == tag.id }
+        save(tags, "brick.tags")
+    }
+
+    /// The mode a tag starts: its own, or the selected one.
+    func profile(for tag: BrickTag) -> BrickProfile? {
+        profiles.first { $0.id == tag.profileID } ?? selected
+    }
+
+    /// Whether a tag can end the running session: tags without a mode end any, the rest only their own.
+    func canUnbrick(with tag: BrickTag) -> Bool {
+        tag.profileID == nil || tag.profileID == blockingProfileID
+    }
+
+    /// The main gesture: tap a tag to start its mode, or to stop blocking.
     func tapTag() {
         guard authorized else { message = "Allow Screen Time access first."; return }
-        guard tagID != nil else { message = "Register your Brick first."; return }
-        let prompt = isBlocking ? "Tap your Brick to unbrick." : "Tap your Brick to start blocking."
+        guard hasTag else { message = "Register your Brick first."; return }
+        let prompt = isBlocking ? "Tap your Brick to unbrick." : "Tap a Brick to start blocking."
         scan(prompt) { [weak self] id in
             guard let self else { return }
-            guard id == self.tagID else { self.message = "That is not your registered Brick."; return }
+            guard let tag = self.tags.first(where: { $0.id == id }) else {
+                self.message = "That is not one of your registered tags."
+                return
+            }
             if self.isBlocking {
-                self.stop()
-            } else if let p = self.selected {
+                if self.canUnbrick(with: tag) {
+                    self.stop()
+                } else {
+                    let keys = self.tags.filter { self.canUnbrick(with: $0) }.map(\.name).joined(separator: " or ")
+                    self.message = "\(tag.name) can't end \(self.blockingProfile?.name ?? "this Brick"). Use \(keys)."
+                }
+            } else if let p = self.profile(for: tag) {
                 self.start(p)
             }
         }
@@ -299,7 +352,8 @@ final class BrickStore: NSObject {
         profiles = [BrickProfile(name: "Mindfulness"), BrickProfile(name: "Deep work", strict: false, timerMinutes: 90)]
         selectedID = profiles.first?.id
         schedules = [BrickSchedule(name: "Mindfulness schedule", hour: 13, minute: 30, profileID: profiles.first?.id, enabled: false)]
-        tagID = "04a3b2c1d4e580"
+        tags = [BrickTag(id: "04a3b2c1d4e580", name: "Desk", profileID: profiles.last?.id),
+                BrickTag(id: "04f1e2d3c4b5a6", name: "Bedroom", profileID: profiles.first?.id)]
         emergencyLeft = 4
     }
     #endif

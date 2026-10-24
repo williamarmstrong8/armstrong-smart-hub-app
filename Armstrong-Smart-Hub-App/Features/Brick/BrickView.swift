@@ -57,8 +57,9 @@ struct BrickView: View {
             BrickCard(padding: 0) {
                 VStack(spacing: 0) {
                     NavigationLink(value: BrickRoute.tag) {
-                        BrickRow(icon: "wave.3.right", title: "My Brick", value: store.tagID == nil ? "Set up" : "Paired",
-                                 dot: store.tagID == nil)
+                        BrickRow(icon: "wave.3.right", title: "My Bricks",
+                                 value: store.tags.isEmpty ? "Set up" : store.tags.count == 1 ? "1 tag" : "\(store.tags.count) tags",
+                                 dot: store.tags.isEmpty)
                     }
                     BrickDivider()
                     NavigationLink(value: BrickRoute.emergency) {

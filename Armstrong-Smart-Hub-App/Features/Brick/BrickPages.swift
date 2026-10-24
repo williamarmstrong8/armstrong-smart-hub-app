@@ -65,6 +65,8 @@ struct BrickModesPage: View {
         var parts = [p.blockedCount == 1 ? "Blocks 1 app" : "Blocks \(p.blockedCount) apps"]
         if p.strict { parts.append("Strict") }
         if let m = p.timerMinutes { parts.append("\(m) min") }
+        let tags = store.tags.filter { $0.profileID == p.id }.map(\.name)
+        if !tags.isEmpty { parts.append(tags.joined(separator: ", ")) }
         return parts.joined(separator: " · ")
     }
 }
@@ -289,30 +291,69 @@ struct BrickActivityPage: View {
 
 // MARK: Settings pages
 
-/// The tag that locks and unlocks: register or replace it.
+/// Every tag that locks and unlocks. Each can start its own mode, so a tag by the bed and one on the desk block different things.
 struct BrickTagPage: View {
     let store: BrickStore
 
     var body: some View {
-        BrickPage(title: "My Brick") {
+        BrickPage(title: "My Bricks") {
             Image("BrickDevice").resizable().scaledToFit().frame(width: 140, height: 140)
                 .shadow(color: .black.opacity(0.16), radius: 18, y: 12)
                 .padding(.vertical, 28)
+            ForEach(store.tags) { tag in
+                BrickTagCard(store: store, tag: tag)
+            }
             BrickCard(padding: 0) {
-                VStack(spacing: 0) {
-                    BrickRow(icon: "wave.3.right", title: "Tag",
-                             value: store.tagID.map { String($0.prefix(8)).uppercased() } ?? "Not set", chevron: false)
-                    BrickDivider()
-                    Button { store.registerTag() } label: {
-                        BrickRow(icon: "plus.viewfinder", title: store.tagID == nil ? "Register tag" : "Replace tag", value: nil)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(store.isBlocking)
+                Button { store.registerTag() } label: {
+                    BrickRow(icon: "plus.viewfinder", title: store.hasTag ? "Add another tag" : "Register tag", value: nil)
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, 24)
             }
-            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes the key: tap it to Brick, tap it again to unbrick. Replacing it makes the old one stop working.")
+            if store.isBlocking {
+                Text("Tags can't change while bricked.").font(.footnote).foregroundStyle(BrickLook.soft)
+            }
+            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes a key. A tag with a mode starts that mode and only it can end it; a tag set to Any starts the selected mode and ends any Brick.")
                 .padding(.horizontal, 4)
+        }
+        .disabled(store.isBlocking)
+    }
+}
+
+/// One tag: its name, the mode it starts, and a way to remove it.
+private struct BrickTagCard: View {
+    let store: BrickStore
+    var tag: BrickTag
+    @State private var confirming = false
+
+    var body: some View {
+        BrickCard(padding: 0) {
+            VStack(spacing: 0) {
+                HStack(spacing: 16) {
+                    Image(systemName: "wave.3.right").font(.system(size: 20, weight: .light)).frame(width: 26)
+                    TextField("Name", text: Binding(get: { tag.name }, set: { var t = tag; t.name = $0; store.update(t) }))
+                        .font(.system(size: 18))
+                    Text(String(tag.id.prefix(8)).uppercased())
+                        .font(.system(size: 15).monospacedDigit()).foregroundStyle(BrickLook.soft)
+                }
+                .padding(.vertical, 20)
+                BrickDivider()
+                Picker(selection: Binding(get: { tag.profileID }, set: { var t = tag; t.profileID = $0; store.update(t) })) {
+                    Text("Any (selected mode)").tag(UUID?.none)
+                    ForEach(store.profiles) { p in Text(p.name).tag(Optional(p.id)) }
+                } label: {
+                    Text("Mode").font(.system(size: 18))
+                }
+                .padding(.vertical, 14)
+                BrickDivider()
+                Button("Remove tag", role: .destructive) { confirming = true }
+                    .font(.system(size: 17)).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 18)
+                    .confirmationDialog("Remove \(tag.name)? It will stop working as a key.", isPresented: $confirming,
+                                        titleVisibility: .visible) {
+                        Button("Remove", role: .destructive) { store.delete(tag) }
+                    }
+            }
+            .padding(.horizontal, 24)
         }
     }
 }

@@ -106,7 +106,7 @@ enum WidgetSync {
             // Whole minutes, so the 15-second check doesn't rewrite it every time.
             finishedTodaySeconds: (finished / 60).rounded(.down) * 60,
             day: localDay(now),
-            hasTag: store.tagID != nil)
+            hasTag: store.hasTag)
         guard BrickGlance.read() != next else { return }
         next.write()
         WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.brick)
