@@ -315,6 +315,8 @@ struct BrickTagPage: View {
             }
             Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes a key. A tag with a mode starts that mode and only it can end it; a tag set to Any starts the selected mode and ends any Brick.")
                 .padding(.horizontal, 4)
+            Takeaway(text: "To use a tag without opening the app: in Shortcuts, add an Automation \u{2192} NFC, scan the tag, set it to Run Immediately, and add Tap Brick tag with this tag.")
+                .padding(.horizontal, 4)
         }
         .disabled(store.isBlocking)
     }

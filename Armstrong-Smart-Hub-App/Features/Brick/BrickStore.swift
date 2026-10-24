@@ -68,7 +68,10 @@ final class BrickStore: NSObject {
         didSet { defaults.set(selectedID?.uuidString, forKey: "brick.selected") }
     }
     private(set) var schedules: [BrickSchedule] = []
-    private(set) var tags: [BrickTag] = []
+    private(set) var tags: [BrickTag] = [] {
+        // Shortcuts offers tags by name in its phrases; keep that list current.
+        didSet { BrickShortcuts.updateAppShortcutParameters() }
+    }
     private(set) var blockingProfileID: UUID?
     private(set) var endsAt: Date?
     private(set) var authorized = false
@@ -250,21 +253,33 @@ final class BrickStore: NSObject {
         let prompt = isBlocking ? "Tap your Brick to unbrick." : "Tap a Brick to start blocking."
         scan(prompt) { [weak self] id in
             guard let self else { return }
-            guard let tag = self.tags.first(where: { $0.id == id }) else {
-                self.message = "That is not one of your registered tags."
-                return
-            }
-            if self.isBlocking {
-                if self.canUnbrick(with: tag) {
-                    self.stop()
-                } else {
-                    let keys = self.tags.filter { self.canUnbrick(with: $0) }.map(\.name).joined(separator: " or ")
-                    self.message = "\(tag.name) can't end \(self.blockingProfile?.name ?? "this Brick"). Use \(keys)."
-                }
-            } else if let p = self.profile(for: tag) {
-                self.start(p)
-            }
+            let (ok, text) = self.handleTag(id)
+            if !ok { self.message = text }
         }
+    }
+
+    /// What a tag does, from the in-app scan or a Shortcuts automation: start its mode, or end the Brick.
+    /// Returns whether it did something, and a line saying what.
+    @discardableResult
+    func handleTag(_ id: String) -> (ok: Bool, text: String) {
+        check()
+        guard authorized else { return (false, "Allow Screen Time access first.") }
+        guard let tag = tags.first(where: { $0.id == id }) else {
+            return (false, "That is not one of your registered tags.")
+        }
+        if isBlocking {
+            guard canUnbrick(with: tag) else {
+                let keys = tags.filter { canUnbrick(with: $0) }.map(\.name).joined(separator: " or ")
+                return (false, "\(tag.name) can't end \(blockingProfile?.name ?? "this Brick"). Use \(keys).")
+            }
+            let name = blockingProfile?.name ?? "Brick"
+            stop()
+            return (true, "Unbricked \(name).")
+        }
+        guard let p = profile(for: tag) else { return (false, "No mode to start.") }
+        guard p.blockedCount > 0 else { return (false, "Pick apps to block in \(p.name) first.") }
+        start(p)
+        return (true, "Bricked \(p.name).")
     }
 
     /// Non-strict modes can be unlocked without the tag.
