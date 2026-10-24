@@ -4,7 +4,7 @@ import ManagedSettingsUI
 import UIKit
 
 /// The screen iOS shows over a blocked app or site: black and white, today's Brick time,
-/// and a different line about what these apps cost each time it appears.
+/// and a different hard line about what these apps cost you each time it appears.
 /// iOS only lets this pick colors, an icon and text; it can't draw its own views.
 class BrickShield: ShieldConfigurationDataSource {
     override func configuration(shielding application: Application) -> ShieldConfiguration { screen() }
@@ -28,7 +28,8 @@ class BrickShield: ShieldConfigurationDataSource {
             backgroundColor: .black,
             icon: icon,
             title: ShieldConfiguration.Label(text: headline(), color: .white),
-            subtitle: ShieldConfiguration.Label(text: Self.lines.randomElement() ?? "", color: UIColor(white: 0.7, alpha: 1)),
+            // iOS sets the spacing and alignment itself; a blank line is the only way to push the quote down.
+            subtitle: ShieldConfiguration.Label(text: "\n" + (Self.lines.randomElement() ?? ""), color: UIColor(white: 0.75, alpha: 1)),
             primaryButtonLabel: ShieldConfiguration.Label(text: "Close", color: .black),
             primaryButtonBackgroundColor: .white)
     }
@@ -48,22 +49,32 @@ class BrickShield: ShieldConfigurationDataSource {
         return "\(text) saved today"
     }
 
-    /// A different one each time. Two are real, attributed quotes; the rest are plain statements.
+    /// A different one each time. Harsh on purpose.
     private static let lines = [
-        "\u{201C}The short-term, dopamine-driven feedback loops that we have created are destroying how society works.\u{201D} \u{2014} Chamath Palihapitiya, former Facebook VP of user growth",
-        "\u{201C}God only knows what it's doing to our children's brains.\u{201D} \u{2014} Sean Parker, Facebook's first president",
-        "This app was built by thousands of engineers to keep you scrolling. You're one person. Don't play their game.",
-        "The feed never ends. That's the point. Your day does.",
-        "You're not the customer here. Your attention is what's being sold.",
-        "Every notification is a slot machine pull. The house always wins.",
-        "Endless scrolling trains your brain to crave novelty and lose patience for anything that takes real focus.",
-        "It takes a long time to get back into deep work after a single check. Is this worth that?",
-        "Comparing your life to everyone's highlight reel is a reliable way to feel worse.",
-        "Late-night scrolling costs you sleep, and poor sleep costs you tomorrow.",
-        "The U.S. Surgeon General has warned that social media can pose a profound risk to young people's mental health.",
-        "Nothing in there is urgent. If it were, someone would call.",
-        "An hour a day of scrolling is more than two weeks a year. Spend it on something you'll remember.",
-        "You opened this out of habit, not because you needed it.",
-        "Boredom is where ideas start. Don't hand it to an algorithm.",
+        "The best version of you doesn't open this app. You know that.",
+        "You're trading the person you could be for a feed that forgets you in a second.",
+        "Comfort is killing you slowly. This is the most comfortable thing you do all day.",
+        "Every scroll is a vote for staying exactly who you are right now.",
+        "The people you love are getting the leftovers of your attention. This app gets the best of it.",
+        "No one at the end of their life wishes they'd scrolled more.",
+        "You keep saying you'll start tomorrow. This is why tomorrow never comes.",
+        "This app is making your decisions for you. What you want, what you buy, how you feel. Take it back.",
+        "Your relationships don't fade in one big moment. They fade one ignored conversation at a time, while you're on this.",
+        "Someone with half your talent is outworking you right now because they put the phone down.",
+        "You're not relaxing. You're numbing yourself so you don't have to face what you're avoiding.",
+        "Hours of your life, gone, and you can't name a single thing you saw.",
+        "The algorithm knows you better than your friends do now. That should scare you.",
+        "Discipline is choosing what you want most over what you want now. This is what you want now.",
+        "You are becoming what you consume. Look at what you consume.",
+        "Every minute here is a minute you'll never get back. You're spending your life on this.",
+        "Average is comfortable. This app is how you stay average.",
+        "You'd be embarrassed if anyone saw how much of your life goes into this screen.",
+        "Your value isn't likes and views. Stop letting an app tell you what you're worth.",
+        "The work that changes your life is hard and boring. This is the escape from it. Don't escape.",
+        "You already know what you should be doing. Go do it.",
+        "Your phone is not your life. But it's becoming your life. Stop it here.",
+        "Nobody is coming to make you better. You have to do it, and you can't do it from in here.",
+        "You opened this without thinking. That's exactly the problem.",
+        "Close it. Go be the person you keep promising yourself you'll become.",
     ]
 }
