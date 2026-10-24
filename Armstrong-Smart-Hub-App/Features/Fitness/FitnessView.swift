@@ -12,7 +12,6 @@ struct FitnessView: View {
     @State private var store = FitnessStore()
     @State private var checkins = CheckinStore.shared
     @State private var showingWatch = false
-    @AppStorage("fitness.pplOffset") private var pplOffset = 0
     @State private var pairing = false
     @State private var workouts = WorkoutStore.shared
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
@@ -218,35 +217,6 @@ struct FitnessView: View {
         return count
     }
 
-    // MARK: Next workout
-
-    /// Push / pull / legs rotation. The watch doesn't label strength sessions, so the
-    /// cycle is counted from the order of logged strength sessions, and tapping the
-    /// suggestion shifts it by one when it is off (stored in `pplOffset`).
-    private static let split = ["Push day", "Pull day", "Leg day"]
-
-    private var nextWorkout: (icon: String, title: String, detail: String) {
-        let calendar = Calendar.current
-        let all = store.activities.sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
-        let strength = all.filter { $0.subSport == "strength_training" || $0.sport == "training" || $0.sport == "fitness_equipment" }
-        let todayStart = calendar.startOfDay(for: .now)
-        let doneToday = workoutDays.contains(todayStart)
-        let lastDate = all.last?.start
-        let daysSince = lastDate.map { calendar.dateComponents([.day], from: calendar.startOfDay(for: $0), to: todayStart).day ?? 0 }
-        guard let last = all.last, let gap = daysSince else {
-            return ("walk", "Start easy", "Log a first workout to begin the streak")
-        }
-        if gap >= 5 {
-            return ("walk", "Ease back in", "Easy 30 minutes, nothing heavy. Last workout \(gap) days ago")
-        }
-        let index = ((strength.count + pplOffset) % 3 + 3) % 3
-        let name = Self.split[index]
-        let lastWhen = gap == 0 ? "today" : gap == 1 ? "yesterday" : "\(gap) days ago"
-        let detail = doneToday ? "Tomorrow. Last: \(last.title.lowercased()) \(lastWhen)"
-                               : "Today. Last: \(last.title.lowercased()) \(lastWhen)"
-        return ("barbell", name, detail)
-    }
-
     /// The top sheet, like Brick's: the watch floating on it, the day, and the three scores.
     private var sheet: some View {
         VStack(spacing: 0) {
@@ -281,33 +251,16 @@ struct FitnessView: View {
         }
     }
 
-    private var nextWorkoutView: some View {
-        let next = nextWorkout
-        return HStack(spacing: 14) {
-            TablerIcon(name: next.icon, size: 26).foregroundStyle(Fit.muted).frame(width: 32)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(next.title).font(.system(size: 22, weight: .regular))
-                Text(next.detail).font(.footnote).foregroundStyle(BrickLook.soft).fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .contentShape(.rect)
-        .onTapGesture { pplOffset += 1 }
-    }
-
-    /// Next workout, then this week: workouts and check-ins in one strip. Straight on the page.
+    /// This week: workouts and check-ins in one strip. Straight on the page.
     private var today: some View {
         let calendar = Calendar.current
         let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? calendar.startOfDay(for: .now)
         let days = workoutDays
         let done = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }.filter { days.contains($0) }.count
-        return VStack(alignment: .leading, spacing: 24) {
-            nextWorkoutView
-            WeekStrip(store: checkins, workoutDays: days,
-                      trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days",
-                      trailingTint: streak > 1 ? Fit.action : nil)
-        }
-        .padding(.bottom, 36)
+        return WeekStrip(store: checkins, workoutDays: days,
+                         trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days",
+                         trailingTint: streak > 1 ? Fit.action : nil)
+            .padding(.bottom, 36)
     }
 
 }

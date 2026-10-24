@@ -61,7 +61,6 @@ struct ExerciseDetailPage: View {
             }
             .refreshable { await load() }
         }
-        .environment(\.fitnessCards, true)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)

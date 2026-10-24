@@ -25,7 +25,6 @@ struct WorkoutDetailPage: View {
                             actionTitle: "Retry") { Task { await load(refresh: true) } }
             }
         }
-        .environment(\.fitnessCards, true)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)

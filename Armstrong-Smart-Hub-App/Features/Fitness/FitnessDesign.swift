@@ -77,7 +77,6 @@ struct FitPage<Content: View>: View {
         Group {
             if flat { stack } else { ScrollView { stack } }
         }
-        .environment(\.fitnessCards, true)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)
@@ -292,13 +291,15 @@ struct StatStrip: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .center, spacing: 3) {
                     Text(item.value).font(Fit.value).lineLimit(1).minimumScaleFactor(0.6)
                     Text(item.label).font(Fit.label).foregroundStyle(Fit.muted).lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if index < items.count - 1 {
-                    Rectangle().fill(Fit.hairline).frame(width: 1, height: 36).padding(.trailing, 14)
+                .padding(.horizontal, 6)
+                .frame(maxWidth: .infinity)
+                // The hairline sits on the column's edge, so every column is the same width.
+                .overlay(alignment: .leading) {
+                    if index > 0 { Rectangle().fill(Fit.hairline).frame(width: 1, height: 36) }
                 }
             }
         }
