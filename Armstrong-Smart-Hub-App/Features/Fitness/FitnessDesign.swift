@@ -475,13 +475,31 @@ private func axisText(_ value: Double, _ format: (Double) -> String) -> String {
     return value == value.rounded() && text.contains(".") ? String(Int(value)) : text
 }
 
-/// Day labels for a run of days: every day up to a week, then evenly spaced
-/// so they never crowd, each centered under its bar.
+/// The middle of a day: where a day-wide bar or a day's point is drawn, so
+/// a label centered here sits right under it.
+private func midday(_ date: Date) -> Date {
+    Calendar.current.date(byAdding: .hour, value: 12, to: Calendar.current.startOfDay(for: date)) ?? date
+}
+
+/// Day labels for a run of days: every day up to a week, then a whole number
+/// of days apart counting back from the last, so they're evenly spaced in
+/// time even where days are missing. Each is at its day's middle.
 private func dayTicks(_ dates: [Date], maxLabels: Int = 7) -> [Date] {
-    guard dates.count > maxLabels else { return dates }
-    let stride = Int((Double(dates.count) / Double(maxLabels)).rounded(.up))
-    let last = dates.count - 1
-    return dates.enumerated().filter { ($0.offset - last) % stride == 0 }.map(\.element)
+    let calendar = Calendar.current
+    guard let first = dates.min(), let last = dates.max() else { return [] }
+    let span = calendar.dateComponents([.day], from: calendar.startOfDay(for: first), to: calendar.startOfDay(for: last)).day ?? 0
+    let step = max(1, Int((Double(span + 1) / Double(maxLabels)).rounded(.up)))
+    return stride(from: 0, through: span, by: step).reversed()
+        .compactMap { calendar.date(byAdding: .day, value: -$0, to: last) }.map(midday)
+}
+
+/// Week labels: the bars' own weeks, evenly picked, at the middle of each week.
+private func weekTicks(_ dates: [Date], maxLabels: Int = 7) -> [Date] {
+    let sorted = dates.sorted()
+    let step = max(1, Int((Double(sorted.count) / Double(maxLabels)).rounded(.up)))
+    let last = sorted.count - 1
+    return sorted.enumerated().filter { (last - $0.offset) % step == 0 }
+        .map { $0.element.addingTimeInterval(3.5 * 86400) }
 }
 
 private func dayLabel(_ date: Date, count: Int) -> String {
@@ -535,8 +553,9 @@ struct DailyBarChart: View {
             }
             .chartXSelection(value: $selected)
             .chartXAxis {
-                AxisMarks(values: dayTicks(days.map(\.date))) { value in
-                    AxisValueLabel(centered: true) {
+                AxisMarks(values: unit == .day ? dayTicks(days.map(\.date)) : weekTicks(days.map(\.date))) { value in
+                    // Ticks sit at the bars' middles; the label centers on its tick.
+                    AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
                         if let date = value.as(Date.self) { Text(dayLabel(date, count: unit == .day ? days.count : 99)).font(Fit.axis).foregroundStyle(Fit.muted) }
                     }
                 }
@@ -577,16 +596,16 @@ struct TrendLineChart: View {
                         .foregroundStyle(tint.opacity(0.1))
                 }
                 ForEach(sorted) { point in
-                    LineMark(x: .value("Day", point.date, unit: .day), y: .value("Value", point.value))
+                    LineMark(x: .value("Day", midday(point.date)), y: .value("Value", point.value))
                         .interpolationMethod(.monotone)
                         .foregroundStyle(tint)
                         .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                 }
                 if let point = chosen ?? sorted.last {
-                    PointMark(x: .value("Day", point.date, unit: .day), y: .value("Value", point.value))
+                    PointMark(x: .value("Day", midday(point.date)), y: .value("Value", point.value))
                         .foregroundStyle(tint).symbolSize(44)
                     if chosen != nil {
-                        RuleMark(x: .value("Day", point.date, unit: .day)).foregroundStyle(Fit.hairline).lineStyle(StrokeStyle(lineWidth: 1))
+                        RuleMark(x: .value("Day", midday(point.date))).foregroundStyle(Fit.hairline).lineStyle(StrokeStyle(lineWidth: 1))
                     }
                 }
             }
@@ -594,8 +613,8 @@ struct TrendLineChart: View {
             .chartXScale(range: .plotDimension(padding: 18))
             .chartXAxis {
                 AxisMarks(values: evenDates(sorted.map(\.date))) { value in
-                    // Plotted on whole days, so a centered label sits right under its point.
-                    AxisValueLabel(centered: true, collisionResolution: .disabled) {
+                    // Points sit at their days' middles, and so do the ticks; the label centers on its tick.
+                    AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
                         if let date = value.as(Date.self) { Text(date.formatted(.dateTime.month(.abbreviated).day())).font(Fit.axis).foregroundStyle(Fit.muted) }
                     }
                 }
@@ -606,14 +625,16 @@ struct TrendLineChart: View {
         }
     }
 
-    /// Up to four of the data's own days, first and last included, so no
-    /// label repeats and each sits under a point.
+    /// Up to four days evenly spaced in time from the first to the last, so
+    /// the labels are even however the readings are spread.
     private func evenDates(_ dates: [Date]) -> [Date] {
         let calendar = Calendar.current
-        var days: [Date] = []
-        for date in dates where !days.contains(where: { calendar.isDate($0, inSameDayAs: date) }) { days.append(date) }
-        guard days.count > 4 else { return days }
-        return (0..<4).map { days[Int((Double($0) * Double(days.count - 1) / 3).rounded())] }
+        guard let first = dates.min(), let last = dates.max() else { return [] }
+        let span = calendar.dateComponents([.day], from: calendar.startOfDay(for: first), to: calendar.startOfDay(for: last)).day ?? 0
+        let count = min(4, span + 1)
+        guard count > 1 else { return [midday(last)] }
+        let offsets = (0..<count).map { Int((Double(span) * Double(count - 1 - $0) / Double(count - 1)).rounded()) }
+        return offsets.compactMap { calendar.date(byAdding: .day, value: -$0, to: last) }.map(midday)
     }
 }
 
@@ -857,17 +878,23 @@ struct ScaleBar: View {
     var labels: (String, String)?
 
     var body: some View {
-        let low = stops.first ?? 0, high = stops.last ?? 1
-        let share = max(0, min(1, (value - low) / max(high - low, 1)))
+        let low = stops.first ?? 0, high = max(stops.last ?? 1, low + 1)
+        // The watch's band ends can come out of order or past the ends; kept
+        // in order and inside the bar, the segments can't run wider than it
+        // (which let the page scroll sideways).
+        let ends = stops.map { min(max($0, low), high) }.sorted()
+        let at = { (v: Double) in (v - low) / (high - low) }
+        let share = max(0, min(1, at(value)))
         VStack(spacing: 6) {
             GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(0..<max(stops.count - 1, 0), id: \.self) { i in
+                ZStack(alignment: .leading) {
+                    ForEach(0..<max(ends.count - 1, 0), id: \.self) { i in
                         Capsule().fill(colors[min(i, colors.count - 1)])
-                            .frame(width: max(1, geo.size.width * (stops[i + 1] - stops[i]) / max(high - low, 1) - 2))
+                            .frame(width: max(1, geo.size.width * (at(ends[i + 1]) - at(ends[i])) - 2), height: 4)
+                            .offset(x: geo.size.width * at(ends[i]))
                     }
                 }
-                .frame(height: 4)
+                .frame(width: geo.size.width, alignment: .leading)
                 .frame(maxHeight: .infinity)
                 .overlay(alignment: .leading) {
                     Circle().fill(Color(.systemBackground)).frame(width: 14, height: 14)
