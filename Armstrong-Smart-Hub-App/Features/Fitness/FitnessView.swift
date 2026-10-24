@@ -33,11 +33,9 @@ struct FitnessView: View {
                             MorningCheckin(store: checkins)
                             today
                             workoutsSection
-                            FitSection {
-                                OverviewList(store: store, liveBpm: watch.heartRate?.bpm,
-                                             steps: max(watch.steps?.count ?? 0, store.today?.steps ?? 0),
-                                             stepGoal: store.today?.stepGoal ?? watch.steps?.goal)
-                            }
+                            // Straight on the page, not on a card. It reads the watch's live
+                            // numbers itself, so a heartbeat redraws one row, not this page.
+                            OverviewList(store: store).padding(.bottom, 28)
                             RecentActivities(activities: store.activities)
                             syncStatus
                             routinesButton.padding(.top, 24)
@@ -48,7 +46,6 @@ struct FitnessView: View {
                     .padding(.top, 48)
                 }
                 .padding(.bottom, 40)
-                .animation(.smooth, value: watch.state)
             }
             .background(BrickLook.page.ignoresSafeArea())
             .foregroundStyle(BrickLook.ink)
@@ -308,7 +305,7 @@ struct FitnessView: View {
         let days = workoutDays
         let done = weekDays.filter { days.contains($0) }.count
         return FitSection(trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days this week",
-                          trailingTint: streak > 1 ? Fit.energy : nil) {
+                          trailingTint: streak > 1 ? Fit.action : nil) {
             nextWorkoutView
             HStack(spacing: 0) {
                 ForEach(weekDays, id: \.self) { day in
@@ -316,8 +313,8 @@ struct FitnessView: View {
                     let isToday = calendar.isDate(day, inSameDayAs: start)
                     VStack(spacing: 8) {
                         ZStack {
-                            Circle().stroke(worked ? Fit.energy : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
-                            if worked { Circle().fill(Fit.energy) }
+                            Circle().stroke(worked ? Fit.action : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
+                            if worked { Circle().fill(Fit.action) }
                         }
                         .frame(width: 26, height: 26)
                         Text(day.formatted(.dateTime.weekday(.narrow)))

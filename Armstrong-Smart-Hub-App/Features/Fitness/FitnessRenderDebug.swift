@@ -39,9 +39,7 @@ enum FitnessRenderDebug {
         }
         let overview = VStack(spacing: 0) {
             TodayScores(store: store)
-            FitSection(title: "Body") {
-                OverviewList(store: store, liveBpm: nil, steps: store.today?.steps ?? 0, stepGoal: store.today?.stepGoal)
-            }
+            OverviewList(store: store)
             RecentActivities(activities: store.activities)
         }.padding(20)
         for scheme in [ColorScheme.dark, .light] {

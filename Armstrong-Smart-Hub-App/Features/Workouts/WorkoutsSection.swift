@@ -28,7 +28,7 @@ struct WorkoutsSection: View {
             if let active = store.active {
                 Button(action: onResume) {
                     HStack(spacing: 14) {
-                        Image(systemName: "figure.strengthtraining.traditional").font(.title2).foregroundStyle(Fit.energy).frame(width: 32)
+                        Image(systemName: "figure.strengthtraining.traditional").font(.title2).foregroundStyle(Fit.action).frame(width: 32)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(active.name).font(.system(size: 20))
                             TimelineView(.periodic(from: active.startedAt, by: 1)) { context in
@@ -37,7 +37,7 @@ struct WorkoutsSection: View {
                             }
                         }
                         Spacer()
-                        Text("Resume").font(.subheadline.weight(.semibold)).foregroundStyle(Fit.energy)
+                        Text("Resume").font(.subheadline.weight(.semibold)).foregroundStyle(Fit.action)
                     }
                     .contentShape(.rect)
                 }
@@ -66,8 +66,9 @@ struct RoutineCarousel: View {
     var store: WorkoutStore
     var onStart: (Routine?) -> Void
     @State private var position: Int?
-    /// How many times the routines repeat; enough that nobody swipes to an end.
-    private static let laps = 1000
+    /// How many times the routines repeat; enough that nobody swipes to an end,
+    /// few enough that the lazy stack doesn't have to estimate thousands of pages.
+    private static let laps = 40
 
     var body: some View {
         let routines = store.routines
@@ -101,7 +102,7 @@ struct RoutineCarousel: View {
     private static func middle(_ count: Int) -> Int { count * (laps / 2) }
 }
 
-/// The newest workout at a glance: name and day, four numbers, its volume
+/// The newest workout at a glance: its kind's icon, name and day, three numbers, its volume
 /// against the workouts before it, and what was in it. Opens the workout.
 struct LastWorkoutCard: View {
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
@@ -112,7 +113,11 @@ struct LastWorkoutCard: View {
         FitSection(title: "Last workout", trailing: store.pending.isEmpty ? nil : "\(store.pending.count) waiting to upload") {
             NavigationLink(value: WorkoutRoute(id: workout.id)) {
                 VStack(alignment: .leading, spacing: 20) {
-                    HStack(alignment: .firstTextBaseline) {
+                    HStack(alignment: .center, spacing: 14) {
+                        TablerIcon(name: WorkoutFormat.icon(name: workout.name), size: 24)
+                            .foregroundStyle(Fit.action)
+                            .frame(width: 48, height: 48)
+                            .background(Fit.action.opacity(0.14), in: .circle)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(workout.name).font(.system(size: 22, weight: .regular)).lineLimit(1)
                             if let start = workout.start {
@@ -123,10 +128,9 @@ struct LastWorkoutCard: View {
                         Spacer(minLength: 8)
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Fit.faint)
                     }
-                    HStack(alignment: .top, spacing: 0) {
+                    HStack(alignment: .top, spacing: 12) {
                         stat(FitnessFormat.duration(workout.duration), "Time")
-                        stat(WorkoutFormat.volume(workout.volumeKg, unit: unit), "Volume")
-                        stat("\(workout.sets)", "Sets")
+                        stat(WorkoutFormat.volumeNumber(workout.volumeKg, unit: unit), "Volume (\(unit.rawValue))")
                         stat(workout.avgHr.map(String.init) ?? "–", "Avg HR", tint: workout.avgHr == nil ? nil : Fit.heart)
                     }
                     volumeBars
@@ -158,7 +162,7 @@ struct LastWorkoutCard: View {
                 HStack(alignment: .bottom, spacing: 6) {
                     ForEach(recent) { item in
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(item.id == workout.id ? Fit.energy : BrickLook.track)
+                            .fill(item.id == workout.id ? Fit.action : BrickLook.track)
                             .frame(height: max(4, 56 * item.volumeKg / top))
                             .frame(maxWidth: .infinity)
                     }
@@ -193,10 +197,10 @@ extension Label where Title == Text, Icon == Image {
     /// so the routines' own Start buttons stay the strongest thing on the page.
     func blueButton() -> some View {
         font(.body.weight(.semibold))
-            .foregroundStyle(Fit.energy)
+            .foregroundStyle(Fit.action)
             .frame(maxWidth: .infinity)
             .frame(height: 46)
-            .background(Fit.energy.opacity(0.14), in: .rect(cornerRadius: 12, style: .continuous))
+            .background(Fit.action.opacity(0.14), in: .rect(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -233,7 +237,7 @@ struct RoutineCard: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 42)
-                    .background(canStart ? Fit.energy : Fit.faint, in: .rect(cornerRadius: 10))
+                    .background(canStart ? Fit.action : Fit.faint, in: .rect(cornerRadius: 10))
             }
             .buttonStyle(.plain)
             .disabled(!canStart)
@@ -261,7 +265,7 @@ struct WorkoutRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            TablerIcon(name: "barbell", size: 24).foregroundStyle(Fit.muted).frame(width: 32)
+            TablerIcon(name: WorkoutFormat.icon(name: workout.name), size: 24).foregroundStyle(Fit.muted).frame(width: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(workout.name).font(.subheadline.weight(.medium))
                 Text(subtitle).font(.caption).foregroundStyle(Fit.muted).lineLimit(1)

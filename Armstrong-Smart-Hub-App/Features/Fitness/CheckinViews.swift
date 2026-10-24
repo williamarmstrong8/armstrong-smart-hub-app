@@ -2,11 +2,13 @@ import SwiftUI
 
 // MARK: Morning check-in
 
-/// One question a morning: sick or not, as two tiles, the hub's guess
-/// outlined. Once answered: the answer as one line with its icon. Under both,
-/// the last seven days as dots (fine, sick, or not checked in), a past day to
-/// confirm if there is one, and a way to log sick days the hub missed.
-/// Every answer is a label the hub learns from (checkin-engine.ts).
+/// One question a morning: how you feel, as the hub's three best guesses on
+/// cards (from last night's numbers and what you said the days before), the
+/// likeliest outlined. Once answered: the answer as one line with its icon.
+/// Under both, the last seven days as dots (colored by the answer, a ring for
+/// no check-in), a past day to confirm if there is one, and a way to log sick
+/// days the hub missed. Every answer is a label the hub learns from
+/// (checkin-engine.ts).
 struct MorningCheckin: View {
     @Environment(AppSession.self) private var session
     var store: CheckinStore
@@ -14,14 +16,12 @@ struct MorningCheckin: View {
     @State private var logging = false
 
     private var day: String { store.day }
-    /// The hub thinks today looks like being sick.
-    private var guessedSick: Bool { store.likely.contains { $0.state == "sick" } }
 
     var body: some View {
         FitSection {
             VStack(alignment: .leading, spacing: 20) {
-                if let sick = store.entry(for: day).flatMap(Self.sick), !changing {
-                    answered(sick).transition(.opacity)
+                if let feeling = store.entry(for: day).flatMap(Feeling.of), !changing {
+                    answered(feeling).transition(.opacity)
                 } else {
                     asking.transition(.opacity)
                 }
@@ -36,21 +36,21 @@ struct MorningCheckin: View {
         .sheet(isPresented: $logging) { SickDaysSheet(store: store) }
     }
 
-    /// "How are you today?", the guess in a line under it, then the two tiles.
+    /// "How are you today?", then the three guesses as cards, the likeliest first.
     private var asking: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let options = store.options
+        return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("How are you today?").font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
-                if store.guess != nil {
-                    Text(guessedSick ? "Looks like you might be sick" : "Looks like a normal day")
-                        .font(.subheadline).foregroundStyle(BrickLook.soft)
-                }
+                Text(store.guess == nil ? "Pick the closest" : "Our three best guesses from your data")
+                    .font(.subheadline).foregroundStyle(BrickLook.soft)
             }
-            HStack(spacing: 10) {
-                CheckinChoice(title: "Fine", icon: "face.smiling", tint: Fit.positive,
-                              guessed: store.guess != nil && !guessedSick) { answer(false) }
-                CheckinChoice(title: "Sick", icon: "thermometer.medium", tint: Fit.attention,
-                              guessed: guessedSick) { answer(true) }
+            HStack(alignment: .top, spacing: 10) {
+                ForEach(options) { option in
+                    CheckinChoice(option: option, guessed: store.guess != nil && option.id == options.first?.id) {
+                        answer(option.key, offered: options.map(\.key))
+                    }
+                }
             }
             if changing {
                 Button("Cancel") { changing = false }.font(.footnote).foregroundStyle(BrickLook.soft).buttonStyle(.plain)
@@ -59,16 +59,16 @@ struct MorningCheckin: View {
     }
 
     /// The answer: its icon on a tinted circle and one line. Tap to change it.
-    private func answered(_ sick: Bool) -> some View {
-        let tint = sick ? Fit.attention : Fit.positive
+    private func answered(_ feeling: String) -> some View {
+        let tint = Feeling.tint(feeling)
         return HStack(spacing: 14) {
-            Image(systemName: sick ? "thermometer.medium" : "face.smiling")
+            Image(systemName: Feeling.icon(feeling))
                 .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(tint)
                 .frame(width: 52, height: 52)
                 .background(tint.opacity(0.14), in: .circle)
             VStack(alignment: .leading, spacing: 2) {
-                Text(sick ? "Sick today" : "Feeling fine").font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
+                Text(Feeling.answer(feeling)).font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
                 Text("Checked in").font(.subheadline).foregroundStyle(BrickLook.soft)
             }
             Spacer(minLength: 8)
@@ -78,19 +78,19 @@ struct MorningCheckin: View {
         }
     }
 
-    /// The last seven days, today last: green fine, red sick, a ring for no check-in.
+    /// The last seven days, today last: a dot in the answer's color, a ring for no check-in.
     private var week: some View {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: .now)
         let days = (0..<7).reversed().compactMap { calendar.date(byAdding: .day, value: -$0, to: today) }
         return HStack(alignment: .bottom, spacing: 0) {
             ForEach(days, id: \.self) { date in
-                let sick = store.entry(for: SickDaysSheet.day(date)).flatMap(Self.sick)
+                let feeling = store.entry(for: SickDaysSheet.day(date)).flatMap(Feeling.of)
                 let isToday = date == today
                 VStack(spacing: 6) {
                     ZStack {
-                        Circle().strokeBorder(sick == nil ? BrickLook.line : .clear, lineWidth: 1)
-                        if let sick { Circle().fill(sick ? Fit.attention : Fit.positive) }
+                        Circle().strokeBorder(feeling == nil ? BrickLook.line : .clear, lineWidth: 1)
+                        if let feeling { Circle().fill(Feeling.tint(feeling)) }
                     }
                     .frame(width: 12, height: 12)
                     Text(date.formatted(.dateTime.weekday(.narrow)))
@@ -124,15 +124,15 @@ struct MorningCheckin: View {
         .transition(.opacity)
     }
 
-    /// Yes for sick, no for not, nil when the day's check-in didn't say.
+    /// Yes for sick, no for any other answer, nil when the day's check-in didn't say how it felt.
     static func sick(_ c: Checkin) -> Bool? {
-        c.tags.contains("sick") ? true : c.rejected.contains("sick") ? false : nil
+        c.tags.contains("sick") ? true : c.rejected.contains("sick") || Feeling.of(c) != nil ? false : nil
     }
 
-    private func answer(_ sick: Bool) {
+    private func answer(_ feeling: String, offered: [String]) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         changing = false
-        Task { await store.answer(day: day, sick: sick, api: session.api) }
+        Task { await store.answer(day: day, feeling: feeling, offered: offered, api: session.api) }
     }
 
     static func range(_ s: PastStretch) -> String {
@@ -151,22 +151,26 @@ struct MorningCheckin: View {
     }
 }
 
-/// A morning answer: icon over its word on a soft tile. The hub's guess is
-/// outlined in the answer's color, so it is one tap to agree.
+/// A morning card: icon, the feeling and a few words why, on a soft tile.
+/// The hub's likeliest guess is outlined in its color, so it is one tap to agree.
 struct CheckinChoice: View {
-    var title: String
-    var icon: String
-    var tint: Color
+    var option: CheckinOption
     var guessed: Bool
     var action: () -> Void
 
     var body: some View {
+        let tint = Feeling.tint(option.key)
         Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon).font(.system(size: 24, weight: .regular)).foregroundStyle(tint)
-                Text(title).font(.body).foregroundStyle(BrickLook.ink)
+            VStack(spacing: 6) {
+                Image(systemName: Feeling.icon(option.key)).font(.system(size: 24, weight: .regular)).foregroundStyle(tint)
+                    .frame(height: 30)
+                Text(option.label).font(.body).foregroundStyle(BrickLook.ink).lineLimit(1).minimumScaleFactor(0.8)
+                Text(option.reason ?? " ")
+                    .font(.caption2).foregroundStyle(BrickLook.soft)
+                    .multilineTextAlignment(.center).lineLimit(2, reservesSpace: true)
             }
-            .frame(maxWidth: .infinity, minHeight: 92)
+            .padding(.horizontal, 8).padding(.vertical, 14)
+            .frame(maxWidth: .infinity)
             .background(guessed ? tint.opacity(0.12) : BrickLook.pill, in: .rect(cornerRadius: 20, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(guessed ? tint : .clear, lineWidth: 1.5)
@@ -174,6 +178,61 @@ struct CheckinChoice: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// How each morning answer looks and reads. The keys are the hub's states
+/// (checkin-engine.ts) plus "fine" for a normal day.
+enum Feeling {
+    static let all = ["fine", "energized", "run_down", "stressed", "hungover", "sick"]
+
+    static func icon(_ key: String) -> String {
+        switch key {
+        case "sick": "thermometer.medium"
+        case "hungover": "wineglass"
+        case "run_down": "battery.25"
+        case "stressed": "bolt.heart"
+        case "energized": "bolt.fill"
+        default: "face.smiling"
+        }
+    }
+
+    static func tint(_ key: String) -> Color {
+        switch key {
+        case "sick": Fit.attention
+        case "hungover": Fit.health
+        case "run_down": Fit.fair
+        case "stressed": Fit.adaptive(0xD6336C, 0xFF6B9A)
+        case "energized": Fit.energy
+        default: Fit.positive
+        }
+    }
+
+    static func label(_ key: String) -> String {
+        switch key {
+        case "sick": "Sick"
+        case "hungover": "Hungover"
+        case "run_down": "Run down"
+        case "stressed": "Stressed"
+        case "energized": "Energized"
+        default: "Normal"
+        }
+    }
+
+    /// The line once answered.
+    static func answer(_ key: String) -> String {
+        switch key {
+        case "sick": "Sick today"
+        case "energized": "Full of energy"
+        case "fine": "Feeling normal"
+        default: label(key)
+        }
+    }
+
+    /// A day's answer: the worst state it has, else "fine" for a check-in that named none.
+    static func of(_ c: Checkin) -> String? {
+        if let state = all.reversed().first(where: { $0 != "fine" && c.tags.contains($0) }) { return state }
+        return c.tags.contains("fine") || !c.rejected.isEmpty ? "fine" : nil
     }
 }
 
@@ -296,7 +355,7 @@ struct SessionFeedbackSection: View {
         }
         HStack(spacing: 8) {
             ForEach(1...5, id: \.self) { value in
-                Chip(title: Self.feelWords[value - 1], selected: feel == value, tint: Fit.energy) { feel = value }
+                Chip(title: Self.feelWords[value - 1], selected: feel == value, tint: Fit.action) { feel = value }
             }
         }
         VStack(alignment: .leading, spacing: 8) {
