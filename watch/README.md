@@ -2,7 +2,7 @@
 
 Two faces that share code in `shared/`:
 
-- **Armstrong Minimal** (`ArmstrongFace/`): date, big time, the workout week with the next split and streak, steps bar, heart rate and resting heart rate.
+- **Armstrong Minimal** (`ArmstrongFace/`): an analog dial in the style of Apple's Meridian, with hollow hands, a red seconds hand and four stat circles: sleep score (the watch's sleep-score complication), heart rate, calories and watch battery.
 - **Armstrong Data** (`ArmstrongData/`): the same, plus bezel gauges (left = steps toward the goal, right = body battery), stress, this week's intensity minutes and watch battery.
 
 Everything comes from the watch itself (activity history, ActivityMonitor, SensorHistory), because the app doesn't relay web requests from the watch the way Garmin Connect does. The workout rules match the hub's glance feed: a day counts when any activity started on it, push / pull / legs follows the number of strength sessions in the watch's history, and five days without a workout means "Ease back in".
