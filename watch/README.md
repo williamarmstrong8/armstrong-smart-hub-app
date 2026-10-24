@@ -2,7 +2,7 @@
 
 Two faces that share code in `shared/`:
 
-- **Armstrong Minimal** (`ArmstrongFace/`): an analog dial in the style of Apple's Meridian, with hollow hands, a red seconds hand that sweeps while the screen is awake, and four stat circles: training readiness (a watch complication labelled readiness when there is one, else pushed from the hub), heart rate, calories and watch battery.
+- **Armstrong Minimal** (`ArmstrongFace/`): an analog dial in the style of Apple's Meridian, with hollow hands, a red seconds hand that sweeps while the screen is awake, and four stat circles: current weather (temperature with a sun, cloud, rain or snow icon), heart rate, calories and watch battery.
 - **Armstrong Data** (`ArmstrongData/`): the same, plus bezel gauges (left = steps toward the goal, right = body battery), stress, this week's intensity minutes and watch battery.
 
 Everything comes from the watch itself (activity history, ActivityMonitor, SensorHistory), because the app doesn't relay web requests from the watch the way Garmin Connect does. The workout rules match the hub's glance feed: a day counts when any activity started on it, push / pull / legs follows the number of strength sessions in the watch's history, and five days without a workout means "Ease back in".
@@ -52,7 +52,6 @@ The watch first answers with a RESPONSE (5000): `5043 LE16 | status | requestId 
 | --- | --- | --- |
 | Last Night | `at`, `sStart`, `sEnd` (epoch s), `score`, `deep` / `light` / `rem` / `awake` (min), `hrv`, `hrvWk` (ms), `hrvSt` | `sEnd` is under 20 h old: score in the row, stage bar, HRV and status, and the overnight charts use the detected sleep instead of the bed/wake setting |
 | Training | `at`, `ready`, `readyLv`, `acute`, `chronic`, `loadSt`, `recH` (h), `vo2` (VO2max × 10) | `at` is under 36 h old: readiness in the row, a readiness / load line, and the hub's recovery and VO2max instead of the watch's |
-| Armstrong Minimal (face) | the Training keys | `at` is under 36 h old: readiness in the top circle |
 
 Sleep score is the watch's own when its sleep file has one, else the hub's; overnight HRV is the watch's hrv_status summary when there is one for that morning, else the hub's estimate.
 

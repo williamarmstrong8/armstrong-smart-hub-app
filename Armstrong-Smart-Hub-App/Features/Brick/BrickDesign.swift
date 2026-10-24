@@ -15,6 +15,9 @@ enum BrickLook {
     static let live = Fit.adaptive(0x5E7D6A, 0x7FB08F)
 
     static let cardRadius: CGFloat = 26
+    /// The top sheet's bottom corners on Brick and Fitness: Brick's 64-point button's
+    /// radius plus the gap around it, so the two curves run parallel.
+    static let sheetRadius: CGFloat = 64 / 2 + Fit.gutter
 }
 
 // MARK: Pieces

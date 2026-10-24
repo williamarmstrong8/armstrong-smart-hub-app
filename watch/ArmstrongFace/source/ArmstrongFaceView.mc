@@ -1,15 +1,16 @@
 import Toybox.ActivityMonitor;
-import Toybox.Complications;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
 import Toybox.System;
+import Toybox.Time;
 import Toybox.Timer;
+import Toybox.Weather;
 import Toybox.WatchUi;
 
 // Armstrong Minimal: an analog dial in the style of Apple's Meridian. Hour bars
 // out to the bezel, hollow capsule hands with a red seconds hand that sweeps while
-// the screen is awake, and four stat circles: training readiness on top, heart rate left,
+// the screen is awake, and four stat circles: current weather on top, heart rate left,
 // calories right, watch battery at the bottom.
 class ArmstrongFaceView extends WatchUi.WatchFace {
 
@@ -25,13 +26,12 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
     private var _lastSec as Number = -1;
     private var _secStart as Number = 0;
 
-    // Training readiness comes from the watch's own complication. The SDK has no
-    // named type for it, so it's found by label among everything the watch offers;
-    // the search repeats every 5 minutes until one turns up. The hub's pushed value
-    // (36 hours, the Training glance's rule) covers a watch without it.
-    private const HUB_TRAINING_AGE = 36 * 3600;
-    private var _readyId as Complications.Id? = null;
-    private var _searchedAt as Number = -1;
+    // Current weather from the watch (synced from the phone), read at most once a minute.
+    private const SUN   = 0xFFD60A;
+    private const CLOUD = 0xAEAEB2;
+    private var _weatherAt as Number = -1;
+    private var _temp as String = "--";
+    private var _sky as Symbol = :cloud;
 
     function initialize() {
         WatchFace.initialize();
@@ -102,8 +102,8 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         // Stat circles, Meridian's four positions.
         var off = (r * 0.42).toNumber();
         var disc = (r * 0.21).toNumber();
-        var ready = readinessScore();
-        stat(dc, cx, cy - off, disc, :readiness, Draw.orDash(ready), ready != null && ready < 50 ? Draw.ORANGE : Draw.GREEN);
+        readWeather();
+        stat(dc, cx, cy - off, disc, _sky, _temp, skyColor(_sky));
         stat(dc, cx - off, cy, disc, :heart, Draw.orDash(HubData.heartRate()), Draw.RED);
         stat(dc, cx + off, cy, disc, :calories, Draw.orDash(caloriesToday()), Draw.ORANGE);
         var charge = HubData.battery();
@@ -172,13 +172,30 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         var textH = dc.getFontHeight(font);
         var iconY = y - textH / 2 + 2;
         dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-        if (icon == :readiness) {
-            // Gauge: an upper half-ring with a needle leaning toward full.
-            dc.setPenWidth(3);
-            dc.drawArc(x, iconY + 6, 11, Graphics.ARC_COUNTER_CLOCKWISE, 0, 180);
-            dc.drawLine(x, iconY + 6, x + 6, iconY - 2);
-            dc.fillCircle(x, iconY + 6, 3);
+        if (icon == :sun) {
+            dc.fillCircle(x, iconY, 6);
+            dc.setPenWidth(2);
+            for (var i = 0; i < 8; i++) {
+                var a = i * 45.0;
+                dc.drawLine(px(x, a, 9), py(iconY, a, 9), px(x, a, 12), py(iconY, a, 12));
+            }
             dc.setPenWidth(1);
+        } else if (icon == :cloud || icon == :rain || icon == :snow) {
+            // Cloud from three circles on a flat base, with drops or flakes under it.
+            var cy = icon == :cloud ? iconY + 2 : iconY - 2;
+            dc.setColor(CLOUD, Graphics.COLOR_TRANSPARENT);
+            dc.fillCircle(x - 6, cy + 1, 5);
+            dc.fillCircle(x + 1, cy - 3, 7);
+            dc.fillCircle(x + 7, cy + 1, 5);
+            dc.fillRectangle(x - 6, cy + 1, 13, 5);
+            dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+            if (icon == :rain) {
+                dc.setPenWidth(2);
+                for (var i = -1; i <= 1; i++) { dc.drawLine(x + i * 6 + 1, cy + 9, x + i * 6 - 1, cy + 13); }
+                dc.setPenWidth(1);
+            } else if (icon == :snow) {
+                for (var i = -1; i <= 1; i++) { dc.fillCircle(x + i * 6, cy + 11, 2); }
+            }
         } else if (icon == :heart) {
             dc.fillCircle(x - 5, iconY - 3, 6);
             dc.fillCircle(x + 5, iconY - 3, 6);
@@ -202,38 +219,47 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         dc.drawText(x, iconY + 12, font, value, Graphics.TEXT_JUSTIFY_CENTER);
     }
 
-    private function readinessScore() as Number? {
-        var id = readinessId();
-        if (id != null) {
-            try {
-                var value = Complications.getComplication(id).value;
-                if (value instanceof Number || value instanceof Float || value instanceof Double || value instanceof Long) {
-                    return (value as Numeric).toNumber();
-                }
-                if (value instanceof String) { return (value as String).toNumber(); }
-            } catch (e) {}
+    // Temperature in the watch's units and a sky for the icon.
+    private function readWeather() as Void {
+        var now = Time.now().value();
+        if (_weatherAt >= 0 && now - _weatherAt < 60) { return; }
+        _weatherAt = now;
+        _temp = "--";
+        _sky = :cloud;
+        if (!(Toybox has :Weather)) { return; }
+        var current = Weather.getCurrentConditions();
+        if (current == null) { return; }
+        if (current.temperature != null) {
+            var t = (current.temperature as Numeric).toFloat();
+            if (System.getDeviceSettings().temperatureUnits == System.UNIT_STATUTE) { t = t * 9.0 / 5.0 + 32.0; }
+            _temp = Math.round(t).toNumber().format("%d") + "°";
         }
-        return Pushed.fresh("at", HUB_TRAINING_AGE) ? Pushed.number("ready") : null;
+        if (current.condition != null) { _sky = sky(current.condition as Number); }
     }
 
-    private function readinessId() as Complications.Id? {
-        if (_readyId != null || !(Complications has :getComplications)) { return _readyId; }
-        var now = System.getTimer();
-        if (_searchedAt >= 0 && now - _searchedAt < 300000) { return null; }
-        _searchedAt = now;
-        try {
-            var iter = Complications.getComplications();
-            var c = iter.next();
-            while (c != null) {
-                var label = (c.longLabel != null ? c.longLabel : c.shortLabel) as String?;
-                if (label != null && label.toUpper().find("READI") != null) {
-                    _readyId = c.complicationId;
-                    return _readyId;
-                }
-                c = iter.next();
-            }
-        } catch (e) {}
-        return null;
+    private function sky(condition as Number) as Symbol {
+        var clear = [Weather.CONDITION_CLEAR, Weather.CONDITION_MOSTLY_CLEAR, Weather.CONDITION_PARTLY_CLEAR, Weather.CONDITION_FAIR];
+        var snow = [Weather.CONDITION_SNOW, Weather.CONDITION_LIGHT_SNOW, Weather.CONDITION_HEAVY_SNOW, Weather.CONDITION_FLURRIES,
+            Weather.CONDITION_WINTRY_MIX, Weather.CONDITION_SLEET, Weather.CONDITION_HAIL, Weather.CONDITION_ICE, Weather.CONDITION_ICE_SNOW,
+            Weather.CONDITION_RAIN_SNOW, Weather.CONDITION_LIGHT_RAIN_SNOW, Weather.CONDITION_HEAVY_RAIN_SNOW,
+            Weather.CONDITION_CHANCE_OF_SNOW, Weather.CONDITION_CHANCE_OF_RAIN_SNOW, Weather.CONDITION_CLOUDY_CHANCE_OF_SNOW,
+            Weather.CONDITION_CLOUDY_CHANCE_OF_RAIN_SNOW, Weather.CONDITION_FREEZING_RAIN];
+        var rain = [Weather.CONDITION_RAIN, Weather.CONDITION_LIGHT_RAIN, Weather.CONDITION_HEAVY_RAIN, Weather.CONDITION_DRIZZLE,
+            Weather.CONDITION_SHOWERS, Weather.CONDITION_LIGHT_SHOWERS, Weather.CONDITION_HEAVY_SHOWERS, Weather.CONDITION_SCATTERED_SHOWERS,
+            Weather.CONDITION_CHANCE_OF_SHOWERS, Weather.CONDITION_CLOUDY_CHANCE_OF_RAIN, Weather.CONDITION_THUNDERSTORMS,
+            Weather.CONDITION_SCATTERED_THUNDERSTORMS, Weather.CONDITION_CHANCE_OF_THUNDERSTORMS, Weather.CONDITION_TROPICAL_STORM,
+            Weather.CONDITION_HURRICANE];
+        if (clear.indexOf(condition) >= 0) { return :sun; }
+        if (snow.indexOf(condition) >= 0) { return :snow; }
+        if (rain.indexOf(condition) >= 0) { return :rain; }
+        return :cloud;
+    }
+
+    private function skyColor(sky as Symbol) as Number {
+        if (sky == :sun) { return SUN; }
+        if (sky == :rain) { return Draw.TEAL; }
+        if (sky == :snow) { return Draw.WHITE; }
+        return CLOUD;
     }
 
     private function caloriesToday() as Number? {

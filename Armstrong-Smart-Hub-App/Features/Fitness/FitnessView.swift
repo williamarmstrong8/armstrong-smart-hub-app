@@ -274,7 +274,7 @@ struct FitnessView: View {
         .frame(maxWidth: .infinity)
         .background {
             // Reaches up under the status bar and past the top when pulled down.
-            UnevenRoundedRectangle(bottomLeadingRadius: 60, bottomTrailingRadius: 60, style: .continuous)
+            UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
                 .fill(BrickLook.sheet)
                 .padding(.top, -600)
                 .shadow(color: .black.opacity(0.10), radius: 18, y: 10)

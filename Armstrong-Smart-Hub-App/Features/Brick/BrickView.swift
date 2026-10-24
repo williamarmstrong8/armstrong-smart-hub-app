@@ -115,9 +115,8 @@ private struct BrickSheet: View {
     let store: BrickStore
     @Binding var path: [BrickRoute]
 
-    /// The button's height; the sheet's corners are its radius plus the gap around it, so the two curves run parallel.
+    /// The button's height; the sheet's corners (BrickLook.sheetRadius) are its radius plus the gap around it.
     private static let buttonHeight: CGFloat = 64
-    private static let cornerRadius = buttonHeight / 2 + Fit.gutter
 
     var body: some View {
         let p = store.blockingProfile
@@ -154,7 +153,7 @@ private struct BrickSheet: View {
         .frame(maxWidth: .infinity)
         .background {
             // Reaches up under the status bar and past the top when pulled down.
-            UnevenRoundedRectangle(bottomLeadingRadius: Self.cornerRadius, bottomTrailingRadius: Self.cornerRadius, style: .continuous)
+            UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
                 .fill(BrickLook.sheet)
                 .padding(.top, -600)
                 .shadow(color: .black.opacity(0.10), radius: 18, y: 10)
