@@ -202,9 +202,6 @@ private struct BrickSheet: View {
                         HStack(spacing: 8) {
                             Image(systemName: "lock.fill").font(.system(size: 13))
                             Text("\(l.name) lockdown").font(.system(size: 15, weight: .medium))
-                            let keys = store.keys(for: l.id)
-                            Text(keys.isEmpty ? "Emergency unbrick ends it" : "Tap \(keys) to end")
-                                .font(.system(size: 14)).foregroundStyle(BrickLook.soft)
                         }
                     }
                     .buttonStyle(.plain)
