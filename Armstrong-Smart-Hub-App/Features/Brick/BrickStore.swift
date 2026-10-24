@@ -15,8 +15,65 @@ struct BrickProfile: Codable, Identifiable {
     /// Minutes until blocking ends by itself. nil means until the tag is tapped.
     var timerMinutes: Int?
 
+    /// Content & Privacy limits that hold while this mode is on.
+    var restrictions = BrickRestrictions()
+
     var blockedCount: Int {
         selection.applicationTokens.count + selection.categoryTokens.count + selection.webDomainTokens.count
+    }
+
+    /// Nothing to block and nothing to restrict, so bricking would do nothing.
+    var isEmpty: Bool { blockedCount == 0 && restrictions.count == 0 }
+
+    init(name: String, strict: Bool = true, timerMinutes: Int? = nil) {
+        self.name = name
+        self.strict = strict
+        self.timerMinutes = timerMinutes
+    }
+
+    // Modes saved before restrictions existed have no key for them.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        selection = try c.decodeIfPresent(FamilyActivitySelection.self, forKey: .selection) ?? FamilyActivitySelection()
+        strict = try c.decodeIfPresent(Bool.self, forKey: .strict) ?? true
+        timerMinutes = try c.decodeIfPresent(Int.self, forKey: .timerMinutes)
+        restrictions = try c.decodeIfPresent(BrickRestrictions.self, forKey: .restrictions) ?? BrickRestrictions()
+    }
+}
+
+/// The Content & Privacy limits a mode can turn on, beyond shielding apps. iOS lifts them all on unbrick.
+struct BrickRestrictions: Codable, Hashable {
+    var adultWebsites = false
+    var explicitMedia = false
+    var appInstalls = false
+    var appRemoval = false
+    var inAppPurchases = false
+    var siri = false
+    var multiplayerGames = false
+    var automaticTime = false
+
+    /// How many are on.
+    var count: Int {
+        [adultWebsites, explicitMedia, appInstalls, appRemoval, inAppPurchases, siri, multiplayerGames, automaticTime]
+            .filter { $0 }.count
+    }
+
+    init() {}
+
+    // Any limit added later decodes as off.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func bool(_ k: CodingKeys) throws -> Bool { try c.decodeIfPresent(Bool.self, forKey: k) ?? false }
+        adultWebsites = try bool(.adultWebsites)
+        explicitMedia = try bool(.explicitMedia)
+        appInstalls = try bool(.appInstalls)
+        appRemoval = try bool(.appRemoval)
+        inAppPurchases = try bool(.inAppPurchases)
+        siri = try bool(.siri)
+        multiplayerGames = try bool(.multiplayerGames)
+        automaticTime = try bool(.automaticTime)
     }
 }
 
@@ -277,7 +334,7 @@ final class BrickStore: NSObject {
             return (true, "Unbricked \(name).")
         }
         guard let p = profile(for: tag) else { return (false, "No mode to start.") }
-        guard p.blockedCount > 0 else { return (false, "Pick apps to block in \(p.name) first.") }
+        guard !p.isEmpty else { return (false, "Pick apps to block in \(p.name) first.") }
         start(p)
         return (true, "Bricked \(p.name).")
     }
@@ -300,7 +357,7 @@ final class BrickStore: NSObject {
 
     private func start(_ p: BrickProfile) {
         let s = p.selection
-        if p.blockedCount == 0 {
+        if p.isEmpty {
             message = "Pick apps to block in \(p.name) first."
             return
         }
@@ -308,6 +365,7 @@ final class BrickStore: NSObject {
         settings.shield.applicationCategories = s.categoryTokens.isEmpty ? nil : .specific(s.categoryTokens)
         settings.shield.webDomains = s.webDomainTokens.isEmpty ? nil : s.webDomainTokens
         settings.shield.webDomainCategories = s.categoryTokens.isEmpty ? nil : .specific(s.categoryTokens)
+        apply(p.restrictions)
         blockingProfileID = p.id
         endsAt = p.timerMinutes.map { Date().addingTimeInterval(Double($0) * 60) }
         defaults.set(p.id.uuidString, forKey: "brick.active")
@@ -316,6 +374,20 @@ final class BrickStore: NSObject {
         sessions.append(BrickSession(profileName: p.name, start: now))
         save(sessions, "brick.sessions")
         WidgetSync.brick(self)
+    }
+
+    /// nil leaves a setting as the user has it; stop() clears them all.
+    private func apply(_ r: BrickRestrictions) {
+        func on(_ v: Bool) -> Bool? { v ? true : nil }
+        settings.webContent.blockedByFilter = r.adultWebsites ? .auto() : nil
+        settings.media.denyExplicitContent = on(r.explicitMedia)
+        settings.application.denyAppInstallation = on(r.appInstalls)
+        settings.application.denyAppRemoval = on(r.appRemoval)
+        settings.appStore.denyInAppPurchases = on(r.inAppPurchases)
+        settings.siri.denySiri = on(r.siri)
+        settings.gameCenter.denyMultiplayerGaming = on(r.multiplayerGames)
+        settings.gameCenter.denyAddingFriends = on(r.multiplayerGames)
+        settings.dateAndTime.requireAutomaticDateAndTime = on(r.automaticTime)
     }
 
     private func stop(byTimer: Bool = false) {

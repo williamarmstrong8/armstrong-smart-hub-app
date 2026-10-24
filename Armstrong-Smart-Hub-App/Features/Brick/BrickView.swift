@@ -5,7 +5,7 @@ import FamilyControls
 
 /// Where the Brick page can go. Everything lives under the one page; these open on top of it.
 enum BrickRoute: Hashable {
-    case modes, mode(UUID), schedules, schedule(UUID), activity, screenTime, tag, emergency
+    case modes, mode(UUID), restrictions(UUID), schedules, schedule(UUID), activity, screenTime, tag, emergency
 }
 
 /// Brick's app on one page: the device sheet on top, then screen time, today, and settings.
@@ -35,6 +35,7 @@ struct BrickView: View {
                 switch route {
                 case .modes: BrickModesPage(store: store, path: $path)
                 case .mode(let id): BrickModePage(store: store, id: id)
+                case .restrictions(let id): BrickRestrictionsPage(store: store, id: id)
                 case .schedules: BrickSchedulesPage(store: store, path: $path)
                 case .schedule(let id): BrickSchedulePage(store: store, id: id)
                 case .activity: BrickActivityPage(store: store)
@@ -141,7 +142,8 @@ private struct BrickSheet: View {
                     }
                 } else {
                     let n = p?.blockedCount ?? 0
-                    Text(n == 1 ? "Blocks 1 app" : "Blocks \(n) apps")
+                    let r = p?.restrictions.count ?? 0
+                    Text((n == 1 ? "Blocks 1 app" : "Blocks \(n) apps") + (r > 0 ? " · \(r) restrictions" : ""))
                 }
             }
             .font(.system(size: 18)).monospacedDigit().foregroundStyle(BrickLook.soft).padding(.top, 14)

@@ -63,6 +63,7 @@ struct BrickModesPage: View {
 
     private func modeSummary(_ p: BrickProfile) -> String {
         var parts = [p.blockedCount == 1 ? "Blocks 1 app" : "Blocks \(p.blockedCount) apps"]
+        if p.restrictions.count > 0 { parts.append("\(p.restrictions.count) restrictions") }
         if p.strict { parts.append("Strict") }
         if let m = p.timerMinutes { parts.append("\(m) min") }
         let tags = store.tags.filter { $0.profileID == p.id }.map(\.name)
@@ -92,6 +93,12 @@ struct BrickModePage: View {
                         Button { picking = true } label: {
                             BrickRow(icon: "apps.iphone", title: "Apps and sites",
                                      value: p.blockedCount == 0 ? "Choose" : "\(p.blockedCount)")
+                        }
+                        .buttonStyle(.plain)
+                        BrickDivider()
+                        NavigationLink(value: BrickRoute.restrictions(p.id)) {
+                            BrickRow(icon: "hand.raised", title: "Restrictions",
+                                     value: p.restrictions.count == 0 ? "None" : "\(p.restrictions.count)")
                         }
                         .buttonStyle(.plain)
                     }
@@ -131,6 +138,54 @@ struct BrickModePage: View {
                 p.selection = new
                 store.update(p)
             }))
+    }
+}
+
+/// Content & Privacy limits for one mode, on only while it's bricked.
+struct BrickRestrictionsPage: View {
+    let store: BrickStore
+    var id: UUID
+
+    private var profile: BrickProfile? { store.profiles.first { $0.id == id } }
+
+    var body: some View {
+        BrickPage(title: "Restrictions") {
+            if let p = profile {
+                BrickCard {
+                    toggle(p, \.adultWebsites, "Block adult websites", "Filters adult sites in Safari and other browsers.")
+                    BrickDivider().padding(.vertical, 18)
+                    toggle(p, \.explicitMedia, "Block explicit content", "Hides explicit music, podcasts, books and video.")
+                    BrickDivider().padding(.vertical, 18)
+                    toggle(p, \.inAppPurchases, "Block in-app purchases", "No buying inside apps.")
+                }
+                BrickCard {
+                    toggle(p, \.appInstalls, "Block installing apps", "No new apps, so there's no way around the block.")
+                    BrickDivider().padding(.vertical, 18)
+                    toggle(p, \.appRemoval, "Block deleting apps", "Apps can't be removed while bricked.")
+                    BrickDivider().padding(.vertical, 18)
+                    toggle(p, \.automaticTime, "Lock date and time", "Keeps date and time automatic, so a timer can't be skipped.")
+                }
+                BrickCard {
+                    toggle(p, \.siri, "Turn off Siri", "Siri is off while bricked.")
+                    BrickDivider().padding(.vertical, 18)
+                    toggle(p, \.multiplayerGames, "Block multiplayer games", "No Game Center multiplayer and adding friends.")
+                }
+                Takeaway(text: "These turn on when \(p.name) bricks and lift when it ends, like Screen Time's Content & Privacy Restrictions.")
+                    .padding(.horizontal, 4)
+            }
+        }
+        .disabled(store.blockingProfileID == id)
+    }
+
+    private func toggle(_ p: BrickProfile, _ key: WritableKeyPath<BrickRestrictions, Bool>, _ title: String, _ detail: String) -> some View {
+        Toggle(isOn: Binding(get: { p.restrictions[keyPath: key] },
+                             set: { var q = p; q.restrictions[keyPath: key] = $0; store.update(q) })) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 18))
+                Text(detail).font(.system(size: 15)).foregroundStyle(BrickLook.soft)
+            }
+        }
+        .tint(BrickLook.bar)
     }
 }
 
