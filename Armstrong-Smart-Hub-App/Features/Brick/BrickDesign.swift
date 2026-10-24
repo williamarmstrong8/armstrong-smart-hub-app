@@ -381,7 +381,11 @@ extension BrickSchedule {
             let symbols = Calendar.current.shortWeekdaySymbols
             days = weekdays.sorted().map { symbols[$0 - 1] }.joined(separator: ", ")
         }
-        return "\(t) · \(days)"
+        guard let h = endHour,
+              let end = Calendar.current.date(bySettingHour: h, minute: endMinute ?? 0, second: 0, of: Date()) else {
+            return "\(t) · \(days)"
+        }
+        return "\(t)–\(end.formatted(date: .omitted, time: .shortened).lowercased()) · \(days)"
     }
 }
 #endif

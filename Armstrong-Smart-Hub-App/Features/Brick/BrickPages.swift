@@ -64,6 +64,7 @@ struct BrickModesPage: View {
     private func modeSummary(_ p: BrickProfile) -> String {
         var parts = [p.blockedCount == 1 ? "Blocks 1 app" : "Blocks \(p.blockedCount) apps"]
         if p.restrictions.count > 0 { parts.append("\(p.restrictions.count) restrictions") }
+        if p.lockdown { parts.append(store.isOn(p.id) ? "Lockdown on" : "Lockdown") }
         if p.strict { parts.append("Strict") }
         if let m = p.timerMinutes { parts.append("\(m) min") }
         let tags = store.tags.filter { $0.profileID == p.id }.map(\.name)
@@ -80,7 +81,7 @@ struct BrickModePage: View {
     @Environment(\.dismiss) private var dismiss
 
     private var profile: BrickProfile? { store.profiles.first { $0.id == id } }
-    private var locked: Bool { store.blockingProfileID == id }
+    private var locked: Bool { store.isOn(id) }
 
     var body: some View {
         BrickPage(title: profile?.name ?? "Mode") {
@@ -103,6 +104,16 @@ struct BrickModePage: View {
                         .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 24)
+                }
+                BrickCard {
+                    Toggle(isOn: Binding(get: { p.lockdown }, set: { var q = p; q.lockdown = $0; store.update(q) })) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Lockdown").font(.system(size: 18))
+                            Text("Stays on alongside your Bricks and doesn't count as Brick time. Only its own tag ends it.")
+                                .font(.system(size: 15)).foregroundStyle(BrickLook.soft)
+                        }
+                    }
+                    .tint(BrickLook.bar)
                 }
                 BrickCard {
                     Toggle(isOn: Binding(get: { p.strict }, set: { var q = p; q.strict = $0; store.update(q) })) {
@@ -174,7 +185,7 @@ struct BrickRestrictionsPage: View {
                     .padding(.horizontal, 4)
             }
         }
-        .disabled(store.blockingProfileID == id)
+        .disabled(store.isOn(id))
     }
 
     private func toggle(_ p: BrickProfile, _ key: WritableKeyPath<BrickRestrictions, Bool>, _ title: String, _ detail: String) -> some View {
@@ -211,8 +222,17 @@ struct BrickSchedulePage: View {
                     .padding(.horizontal, 24)
                 }
                 BrickCard {
-                    DatePicker("Bricks at", selection: timeBinding(s), displayedComponents: .hourAndMinute)
+                    DatePicker("Starts at", selection: timeBinding(s), displayedComponents: .hourAndMinute)
                         .font(.system(size: 18))
+                    BrickDivider().padding(.vertical, 18)
+                    Toggle("Ends at a set time", isOn: Binding(
+                        get: { s.endHour != nil },
+                        set: { var q = s; q.endHour = $0 ? 17 : nil; q.endMinute = $0 ? 0 : nil; store.update(q) }))
+                        .font(.system(size: 18)).tint(BrickLook.bar)
+                    if s.endHour != nil {
+                        DatePicker("Ends at", selection: endBinding(s), displayedComponents: .hourAndMinute)
+                            .font(.system(size: 18)).padding(.top, 14)
+                    }
                     BrickDivider().padding(.vertical, 18)
                     Text("Days").font(.system(size: 18))
                     HStack(spacing: 8) {
@@ -239,7 +259,9 @@ struct BrickSchedulePage: View {
                     }
                     .font(.system(size: 18))
                 }
-                Takeaway(text: "Bricks within an hour of the start time while the app is open or next opened. Your Brick ends it.")
+                Takeaway(text: s.endHour == nil
+                         ? "Starts within an hour of the start time while the app is open or next opened. A tag ends it."
+                         : "Starts at the start time, or whenever the app next opens before the end, and lifts at the end time. A tag can still end it early.")
                     .padding(.horizontal, 4)
                 Button("Delete schedule", role: .destructive) { store.delete(s); dismiss() }
                     .font(.system(size: 17)).padding(.top, 12)
@@ -253,6 +275,17 @@ struct BrickSchedulePage: View {
             s[keyPath: key] = v
             store.update(s)
         })
+    }
+
+    private func endBinding(_ s: BrickSchedule) -> Binding<Date> {
+        Binding(
+            get: { Calendar.current.date(bySettingHour: s.endHour ?? 17, minute: s.endMinute ?? 0, second: 0, of: Date()) ?? Date() },
+            set: { d in
+                var q = s
+                q.endHour = Calendar.current.component(.hour, from: d)
+                q.endMinute = Calendar.current.component(.minute, from: d)
+                store.update(q)
+            })
     }
 
     private func timeBinding(_ s: BrickSchedule) -> Binding<Date> {
@@ -365,15 +398,14 @@ struct BrickTagPage: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 24)
             }
-            if store.isBlocking {
-                Text("Tags can't change while bricked.").font(.footnote).foregroundStyle(BrickLook.soft)
+            if store.tags.contains(where: store.isKey) {
+                Text("A tag that would end something on now can't change until it's off.").font(.footnote).foregroundStyle(BrickLook.soft)
             }
-            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes a key. A tag with a mode starts that mode and only it can end it; a tag set to Any starts the selected mode and ends any Brick.")
+            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes a key. A tag with a mode starts and ends that mode; a tag set to Any starts the selected mode and ends the running Brick, but not lockdowns.")
                 .padding(.horizontal, 4)
             Takeaway(text: "To use a tag without opening the app: in Shortcuts, add an Automation \u{2192} NFC, scan the tag, set it to Run Immediately, and add Tap Brick tag with this tag.")
                 .padding(.horizontal, 4)
         }
-        .disabled(store.isBlocking)
     }
 }
 
@@ -412,6 +444,7 @@ private struct BrickTagCard: View {
             }
             .padding(.horizontal, 24)
         }
+        .disabled(store.isKey(tag))
     }
 }
 
@@ -435,14 +468,14 @@ struct BrickEmergencyPage: View {
                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
             }
             .buttonStyle(.plain)
-            .disabled(!store.isBlocking || store.emergencyLeft == 0)
-            .opacity(store.isBlocking && store.emergencyLeft > 0 ? 1 : 0.5)
+            .disabled(!store.anyOn || store.emergencyLeft == 0)
+            .opacity(store.anyOn && store.emergencyLeft > 0 ? 1 : 0.5)
             .confirmationDialog("Use one of your \(store.emergencyLeft) emergency unbricks?", isPresented: $confirming,
                                 titleVisibility: .visible) {
                 Button("Unbrick", role: .destructive) { store.emergencyUnbrick() }
             }
-            Takeaway(text: store.isBlocking
-                     ? "Ends this Brick without the tag. They don't come back, so save them for when you really need your phone."
+            Takeaway(text: store.anyOn
+                     ? "Ends this Brick and any lockdowns without the tag. They don't come back, so save them for when you really need your phone."
                      : "For when you're bricked and away from your Brick. Ends the session without the tag. They don't come back.")
                 .padding(.horizontal, 4).padding(.top, 8)
         }

@@ -17,6 +17,8 @@ struct BrickProfile: Codable, Identifiable {
 
     /// Content & Privacy limits that hold while this mode is on.
     var restrictions = BrickRestrictions()
+    /// A lockdown runs alongside a Brick, isn't counted as Brick time, and only its own tag ends it.
+    var lockdown = false
 
     var blockedCount: Int {
         selection.applicationTokens.count + selection.categoryTokens.count + selection.webDomainTokens.count
@@ -40,6 +42,7 @@ struct BrickProfile: Codable, Identifiable {
         strict = try c.decodeIfPresent(Bool.self, forKey: .strict) ?? true
         timerMinutes = try c.decodeIfPresent(Int.self, forKey: .timerMinutes)
         restrictions = try c.decodeIfPresent(BrickRestrictions.self, forKey: .restrictions) ?? BrickRestrictions()
+        lockdown = try c.decodeIfPresent(Bool.self, forKey: .lockdown) ?? false
     }
 }
 
@@ -92,22 +95,31 @@ struct BrickTag: Codable, Identifiable, Hashable {
     /// The tag's UID in hex.
     var id: String
     var name: String
-    /// The mode this tag starts, and the only sessions it can end. nil: starts the selected mode and ends any.
+    /// The mode this tag starts and ends. nil: starts the selected mode and ends whichever Brick is running (not lockdowns).
     var profileID: UUID?
 }
 
-/// Bricks the phone at a time of day on chosen weekdays. The tag still ends it.
+/// Bricks the phone at a time of day on chosen weekdays, until an end time or a tag.
 struct BrickSchedule: Codable, Identifiable, Hashable {
     var id = UUID()
     var name: String
     var hour = 9
     var minute = 0
+    /// When it ends by itself, for a work day. nil: runs until a tag (or the mode's own timer) ends it.
+    var endHour: Int?
+    var endMinute: Int?
     /// Calendar weekdays, 1 is Sunday.
     var weekdays: Set<Int> = [2, 3, 4, 5, 6]
     var profileID: UUID?
     var enabled = true
     /// The last day it bricked, so it fires once a day.
     var lastFired: Date?
+}
+
+/// A lockdown mode that's on, and when it ends by itself.
+struct BrickLockdown: Codable, Hashable {
+    var profileID: UUID
+    var endsAt: Date?
 }
 
 /// Tap-to-block, like Brick. The shield itself is enforced by iOS (Managed Settings);
@@ -129,8 +141,11 @@ final class BrickStore: NSObject {
         // Shortcuts offers tags by name in its phrases; keep that list current.
         didSet { BrickShortcuts.updateAppShortcutParameters() }
     }
+    /// The Brick running now, the one that counts as Brick time.
     private(set) var blockingProfileID: UUID?
     private(set) var endsAt: Date?
+    /// Lockdowns on now. Each has its own settings store, so they stack with the Brick and each other.
+    private(set) var lockdowns: [BrickLockdown] = []
     private(set) var authorized = false
     private(set) var sessions: [BrickSession] = []
     private(set) var emergencyLeft = BrickStore.emergencyAllowance
@@ -166,12 +181,17 @@ final class BrickStore: NSObject {
             let t = defaults.double(forKey: "brick.endsAt")
             endsAt = t > 0 ? Date(timeIntervalSince1970: t) : nil
         }
+        lockdowns = load([BrickLockdown].self, "brick.lockdowns") ?? []
         authorized = AuthorizationCenter.shared.authorizationStatus == .approved
         startTicker()
         check()
     }
 
     var isBlocking: Bool { blockingProfileID != nil }
+    /// A Brick or any lockdown is on.
+    var anyOn: Bool { isBlocking || !lockdowns.isEmpty }
+    func isOn(_ id: UUID) -> Bool { blockingProfileID == id || lockdowns.contains { $0.profileID == id } }
+    var activeLockdowns: [BrickProfile] { lockdowns.compactMap { l in profiles.first { $0.id == l.profileID } } }
     var hasTag: Bool { !tags.isEmpty }
     var selected: BrickProfile? { profiles.first { $0.id == selectedID } }
     var blockingProfile: BrickProfile? { profiles.first { $0.id == blockingProfileID } }
@@ -204,7 +224,7 @@ final class BrickStore: NSObject {
     }
 
     func delete(_ profile: BrickProfile) {
-        guard profile.id != blockingProfileID else { message = "Unbrick first."; return }
+        guard !isOn(profile.id) else { message = "Turn it off first."; return }
         profiles.removeAll { $0.id == profile.id }
         // Its tags go back to starting whichever mode is selected.
         for i in tags.indices where tags[i].profileID == profile.id { tags[i].profileID = nil }
@@ -235,21 +255,33 @@ final class BrickStore: NSObject {
         save(schedules, "brick.schedules")
     }
 
-    /// A schedule bricks within an hour of its start time, once a day, while the app runs or when it opens.
+    /// When a schedule ends today, if it has an end time; past midnight if it ends before it starts.
+    func endDate(of s: BrickSchedule, on day: Date) -> Date? {
+        let cal = Calendar.current
+        guard let h = s.endHour,
+              let start = cal.date(bySettingHour: s.hour, minute: s.minute, second: 0, of: day),
+              var end = cal.date(bySettingHour: h, minute: s.endMinute ?? 0, second: 0, of: day) else { return nil }
+        if end <= start { end = cal.date(byAdding: .day, value: 1, to: end) ?? end }
+        return end
+    }
+
+    /// A schedule starts its mode once a day: within an hour of its start time, or any time before its end
+    /// time if it has one. Checked while the app runs or when it opens.
     private func checkSchedules() {
-        guard !isBlocking, authorized else { return }
+        guard authorized else { return }
         let cal = Calendar.current
         let now = Date()
         for s in schedules where s.enabled && s.weekdays.contains(cal.component(.weekday, from: now)) {
-            guard let at = cal.date(bySettingHour: s.hour, minute: s.minute, second: 0, of: now),
-                  now >= at, now < at.addingTimeInterval(3600),
+            guard let at = cal.date(bySettingHour: s.hour, minute: s.minute, second: 0, of: now) else { continue }
+            let end = endDate(of: s, on: now)
+            guard now >= at, now < (end ?? at.addingTimeInterval(3600)),
                   !(s.lastFired.map { cal.isDate($0, inSameDayAs: now) } ?? false),
-                  let p = profiles.first(where: { $0.id == s.profileID }) ?? selected else { continue }
+                  let p = profiles.first(where: { $0.id == s.profileID }) ?? selected,
+                  !isOn(p.id), p.lockdown || !isBlocking else { continue }
             var fired = s
             fired.lastFired = now
             update(fired)
-            start(p)
-            return
+            start(p, until: end)
         }
     }
 
@@ -268,7 +300,6 @@ final class BrickStore: NSObject {
 
     /// Tap a new tag to add it as another key.
     func registerTag() {
-        guard !isBlocking else { message = "Unbrick before changing tags."; return }
         scan("Hold your phone to the new tag.") { [weak self] id in
             guard let self else { return }
             if let known = self.tags.first(where: { $0.id == id }) {
@@ -283,12 +314,13 @@ final class BrickStore: NSObject {
 
     func update(_ tag: BrickTag) {
         guard let i = tags.firstIndex(where: { $0.id == tag.id }) else { return }
+        guard !isKey(tags[i]) else { message = "\(tags[i].name) is ending something that's on. Turn it off first."; return }
         tags[i] = tag
         save(tags, "brick.tags")
     }
 
     func delete(_ tag: BrickTag) {
-        guard !isBlocking else { message = "Unbrick before changing tags."; return }
+        guard !isKey(tag) else { message = "\(tag.name) is ending something that's on. Turn it off first."; return }
         tags.removeAll { $0.id == tag.id }
         save(tags, "brick.tags")
     }
@@ -298,16 +330,21 @@ final class BrickStore: NSObject {
         profiles.first { $0.id == tag.profileID } ?? selected
     }
 
-    /// Whether a tag can end the running session: tags without a mode end any, the rest only their own.
-    func canUnbrick(with tag: BrickTag) -> Bool {
-        tag.profileID == nil || tag.profileID == blockingProfileID
+    /// Whether a tag ends a mode that's on: its own mode, or for Any tags, the running Brick.
+    func canEnd(_ id: UUID, with tag: BrickTag) -> Bool {
+        tag.profileID == id || (tag.profileID == nil && id == blockingProfileID)
     }
 
-    /// The main gesture: tap a tag to start its mode, or to stop blocking.
+    /// A tag that would end something on now can't be changed or removed, so nothing gets stuck on.
+    func isKey(_ tag: BrickTag) -> Bool {
+        (blockingProfileID.map { canEnd($0, with: tag) } ?? false) || lockdowns.contains { canEnd($0.profileID, with: tag) }
+    }
+
+    /// The main gesture: tap a tag to start its mode, or to end it.
     func tapTag() {
         guard authorized else { message = "Allow Screen Time access first."; return }
         guard hasTag else { message = "Register your Brick first."; return }
-        let prompt = isBlocking ? "Tap your Brick to unbrick." : "Tap a Brick to start blocking."
+        let prompt = anyOn ? "Tap a Brick to start or end a mode." : "Tap a Brick to start blocking."
         scan(prompt) { [weak self] id in
             guard let self else { return }
             let (ok, text) = self.handleTag(id)
@@ -315,7 +352,7 @@ final class BrickStore: NSObject {
         }
     }
 
-    /// What a tag does, from the in-app scan or a Shortcuts automation: start its mode, or end the Brick.
+    /// What a tag does, from the in-app scan or a Shortcuts automation: end its mode if it's on, or start it.
     /// Returns whether it did something, and a line saying what.
     @discardableResult
     func handleTag(_ id: String) -> (ok: Bool, text: String) {
@@ -324,50 +361,56 @@ final class BrickStore: NSObject {
         guard let tag = tags.first(where: { $0.id == id }) else {
             return (false, "That is not one of your registered tags.")
         }
-        if isBlocking {
-            guard canUnbrick(with: tag) else {
-                let keys = tags.filter { canUnbrick(with: $0) }.map(\.name).joined(separator: " or ")
-                return (false, "\(tag.name) can't end \(blockingProfile?.name ?? "this Brick"). Use \(keys).")
-            }
-            let name = blockingProfile?.name ?? "Brick"
-            stop()
-            return (true, "Unbricked \(name).")
+        // Its own mode, or the running Brick for an Any tag.
+        if let on = tag.profileID ?? blockingProfileID, isOn(on), canEnd(on, with: tag) {
+            let name = profiles.first { $0.id == on }?.name ?? "Brick"
+            end(on)
+            return (true, "Ended \(name).")
         }
         guard let p = profile(for: tag) else { return (false, "No mode to start.") }
-        guard !p.isEmpty else { return (false, "Pick apps to block in \(p.name) first.") }
+        guard !p.isEmpty else { return (false, "Pick apps or restrictions for \(p.name) first.") }
+        if !p.lockdown, isBlocking {
+            let keys = tags.filter { canEnd(blockingProfileID!, with: $0) }.map(\.name).joined(separator: " or ")
+            return (false, "\(blockingProfile?.name ?? "A Brick") is on. End it with \(keys) first.")
+        }
         start(p)
-        return (true, "Bricked \(p.name).")
+        return (true, p.lockdown ? "\(p.name) lockdown on." : "Bricked \(p.name).")
     }
 
-    /// Non-strict modes can be unlocked without the tag.
-    func unlockWithoutTag() {
-        guard let p = blockingProfile, !p.strict else { return }
-        stop()
+    /// Non-strict modes can be ended without the tag.
+    func unlockWithoutTag(_ id: UUID) {
+        guard let p = profiles.first(where: { $0.id == id }), !p.strict else { return }
+        end(id)
     }
 
-    /// Unbrick without the tag, from the small allowance.
+    /// Ends everything without a tag, from the small allowance.
     func emergencyUnbrick() {
-        guard isBlocking, emergencyLeft > 0 else { return }
+        guard anyOn, emergencyLeft > 0 else { return }
         emergencyLeft -= 1
         defaults.set(emergencyLeft, forKey: "brick.emergencyLeft")
-        stop()
+        if isBlocking { stop() }
+        for l in lockdowns { end(l.profileID) }
     }
 
     // MARK: Blocking
 
-    private func start(_ p: BrickProfile) {
-        let s = p.selection
+    /// Starts a mode: a lockdown in its own store, or the Brick. `until` overrides the mode's timer (a schedule's end).
+    private func start(_ p: BrickProfile, until: Date? = nil) {
         if p.isEmpty {
-            message = "Pick apps to block in \(p.name) first."
+            message = "Pick apps or restrictions for \(p.name) first."
             return
         }
-        settings.shield.applications = s.applicationTokens.isEmpty ? nil : s.applicationTokens
-        settings.shield.applicationCategories = s.categoryTokens.isEmpty ? nil : .specific(s.categoryTokens)
-        settings.shield.webDomains = s.webDomainTokens.isEmpty ? nil : s.webDomainTokens
-        settings.shield.webDomainCategories = s.categoryTokens.isEmpty ? nil : .specific(s.categoryTokens)
-        apply(p.restrictions)
+        let ends = until ?? p.timerMinutes.map { Date().addingTimeInterval(Double($0) * 60) }
+        if p.lockdown {
+            apply(p, to: lockdownStore(p.id))
+            lockdowns.removeAll { $0.profileID == p.id }
+            lockdowns.append(BrickLockdown(profileID: p.id, endsAt: ends))
+            save(lockdowns, "brick.lockdowns")
+            return
+        }
+        apply(p, to: settings)
         blockingProfileID = p.id
-        endsAt = p.timerMinutes.map { Date().addingTimeInterval(Double($0) * 60) }
+        endsAt = ends
         defaults.set(p.id.uuidString, forKey: "brick.active")
         defaults.set(endsAt?.timeIntervalSince1970 ?? 0, forKey: "brick.endsAt")
         now = Date()
@@ -376,18 +419,40 @@ final class BrickStore: NSObject {
         WidgetSync.brick(self)
     }
 
-    /// nil leaves a setting as the user has it; stop() clears them all.
-    private func apply(_ r: BrickRestrictions) {
+    /// Ends whichever kind of mode this is.
+    private func end(_ id: UUID, byTimer: Bool = false) {
+        if id == blockingProfileID {
+            stop(byTimer: byTimer)
+        } else {
+            lockdownStore(id).clearAllSettings()
+            lockdowns.removeAll { $0.profileID == id }
+            save(lockdowns, "brick.lockdowns")
+        }
+    }
+
+    private func lockdownStore(_ id: UUID) -> ManagedSettingsStore {
+        ManagedSettingsStore(named: ManagedSettingsStore.Name("lockdown.\(id.uuidString)"))
+    }
+
+    /// Shields the mode's apps and sets its restrictions. nil leaves a setting as the user has it;
+    /// clearing the store lifts them all.
+    private func apply(_ p: BrickProfile, to store: ManagedSettingsStore) {
+        let s = p.selection
+        store.shield.applications = s.applicationTokens.isEmpty ? nil : s.applicationTokens
+        store.shield.applicationCategories = s.categoryTokens.isEmpty ? nil : .specific(s.categoryTokens)
+        store.shield.webDomains = s.webDomainTokens.isEmpty ? nil : s.webDomainTokens
+        store.shield.webDomainCategories = s.categoryTokens.isEmpty ? nil : .specific(s.categoryTokens)
+        let r = p.restrictions
         func on(_ v: Bool) -> Bool? { v ? true : nil }
-        settings.webContent.blockedByFilter = r.adultWebsites ? .auto() : nil
-        settings.media.denyExplicitContent = on(r.explicitMedia)
-        settings.application.denyAppInstallation = on(r.appInstalls)
-        settings.application.denyAppRemoval = on(r.appRemoval)
-        settings.appStore.denyInAppPurchases = on(r.inAppPurchases)
-        settings.siri.denySiri = on(r.siri)
-        settings.gameCenter.denyMultiplayerGaming = on(r.multiplayerGames)
-        settings.gameCenter.denyAddingFriends = on(r.multiplayerGames)
-        settings.dateAndTime.requireAutomaticDateAndTime = on(r.automaticTime)
+        store.webContent.blockedByFilter = r.adultWebsites ? .auto() : nil
+        store.media.denyExplicitContent = on(r.explicitMedia)
+        store.application.denyAppInstallation = on(r.appInstalls)
+        store.application.denyAppRemoval = on(r.appRemoval)
+        store.appStore.denyInAppPurchases = on(r.inAppPurchases)
+        store.siri.denySiri = on(r.siri)
+        store.gameCenter.denyMultiplayerGaming = on(r.multiplayerGames)
+        store.gameCenter.denyAddingFriends = on(r.multiplayerGames)
+        store.dateAndTime.requireAutomaticDateAndTime = on(r.automaticTime)
     }
 
     private func stop(byTimer: Bool = false) {
@@ -412,6 +477,7 @@ final class BrickStore: NSObject {
         if approved != authorized { authorized = approved }
         if isBlocking { now = Date() }
         if let endsAt, endsAt <= Date(), isBlocking { stop(byTimer: true) }
+        for l in lockdowns where (l.endsAt.map { $0 <= Date() } ?? false) { end(l.profileID, byTimer: true) }
         checkSchedules()
         WidgetSync.brick(self)
     }

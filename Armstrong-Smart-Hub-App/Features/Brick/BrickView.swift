@@ -147,6 +147,7 @@ private struct BrickSheet: View {
                 }
             }
             .font(.system(size: 18)).monospacedDigit().foregroundStyle(BrickLook.soft).padding(.top, 14)
+            if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, 18) }
             stats.padding(.top, 30)
             brickButton.padding(.top, 30).padding(.bottom, Fit.gutter)
         }
@@ -192,6 +193,24 @@ private struct BrickSheet: View {
             .accessibilityAddTraits(.isButton)
     }
 
+    /// Lockdowns on now. They don't count as Brick time, so they get a line here rather than the timer.
+    private var lockdownLine: some View {
+        VStack(spacing: 10) {
+            ForEach(store.activeLockdowns) { l in
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill").font(.system(size: 13))
+                    Text("\(l.name) lockdown on").font(.system(size: 15, weight: .medium))
+                    if !l.strict {
+                        Button("End") { store.unlockWithoutTag(l.id) }
+                            .font(.system(size: 15, weight: .medium)).foregroundStyle(BrickLook.soft)
+                    }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(BrickLook.card, in: Capsule())
+            }
+        }
+    }
+
     private var brickButton: some View {
         VStack(spacing: 14) {
             Button { store.tapTag() } label: {
@@ -206,7 +225,7 @@ private struct BrickSheet: View {
                 Button("Allow Screen Time access") { Task { await store.authorize() } }
                     .font(.system(size: 15, weight: .medium)).foregroundStyle(BrickLook.soft)
             } else if store.isBlocking, store.blockingProfile?.strict == false {
-                Button("Unbrick without tag") { store.unlockWithoutTag() }
+                Button("Unbrick without tag") { if let id = store.blockingProfileID { store.unlockWithoutTag(id) } }
                     .font(.system(size: 15, weight: .medium)).foregroundStyle(BrickLook.soft)
             }
         }
