@@ -5,123 +5,6 @@ import FamilyControls
 import ManagedSettings
 import CoreNFC
 
-/// One blocking mode: which apps to shield, whether only the tag can unlock, and an optional timer.
-struct BrickProfile: Codable, Identifiable {
-    var id = UUID()
-    var name: String
-    var selection = FamilyActivitySelection()
-    /// Strict: only the registered tag (or an emergency unbrick) unlocks. Not strict: the in-app button also works.
-    var strict = true
-    /// Minutes until blocking ends by itself. nil means until the tag is tapped.
-    var timerMinutes: Int?
-
-    /// Content & Privacy limits that hold while this mode is on.
-    var restrictions = BrickRestrictions()
-    /// A lockdown runs alongside a Brick, isn't counted as Brick time, and only its own tag ends it.
-    var lockdown = false
-
-    var blockedCount: Int {
-        selection.applicationTokens.count + selection.categoryTokens.count + selection.webDomainTokens.count
-    }
-
-    /// Nothing to block and nothing to restrict, so bricking would do nothing.
-    var isEmpty: Bool { blockedCount == 0 && restrictions.count == 0 }
-
-    init(name: String, strict: Bool = true, timerMinutes: Int? = nil) {
-        self.name = name
-        self.strict = strict
-        self.timerMinutes = timerMinutes
-    }
-
-    // Modes saved before restrictions existed have no key for them.
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(UUID.self, forKey: .id)
-        name = try c.decode(String.self, forKey: .name)
-        selection = try c.decodeIfPresent(FamilyActivitySelection.self, forKey: .selection) ?? FamilyActivitySelection()
-        strict = try c.decodeIfPresent(Bool.self, forKey: .strict) ?? true
-        timerMinutes = try c.decodeIfPresent(Int.self, forKey: .timerMinutes)
-        restrictions = try c.decodeIfPresent(BrickRestrictions.self, forKey: .restrictions) ?? BrickRestrictions()
-        lockdown = try c.decodeIfPresent(Bool.self, forKey: .lockdown) ?? false
-    }
-}
-
-/// The Content & Privacy limits a mode can turn on, beyond shielding apps. iOS lifts them all on unbrick.
-struct BrickRestrictions: Codable, Hashable {
-    var adultWebsites = false
-    var explicitMedia = false
-    var appInstalls = false
-    var appRemoval = false
-    var inAppPurchases = false
-    var siri = false
-    var multiplayerGames = false
-    var automaticTime = false
-
-    /// How many are on.
-    var count: Int {
-        [adultWebsites, explicitMedia, appInstalls, appRemoval, inAppPurchases, siri, multiplayerGames, automaticTime]
-            .filter { $0 }.count
-    }
-
-    init() {}
-
-    // Any limit added later decodes as off.
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        func bool(_ k: CodingKeys) throws -> Bool { try c.decodeIfPresent(Bool.self, forKey: k) ?? false }
-        adultWebsites = try bool(.adultWebsites)
-        explicitMedia = try bool(.explicitMedia)
-        appInstalls = try bool(.appInstalls)
-        appRemoval = try bool(.appRemoval)
-        inAppPurchases = try bool(.inAppPurchases)
-        siri = try bool(.siri)
-        multiplayerGames = try bool(.multiplayerGames)
-        automaticTime = try bool(.automaticTime)
-    }
-}
-
-/// One finished (or running) blocking session, kept for the activity page.
-struct BrickSession: Codable, Identifiable, Hashable {
-    var id = UUID()
-    var profileName: String
-    var start: Date
-    var end: Date?
-    /// True when the timer ended it, false when the tag or button did.
-    var byTimer = false
-}
-
-/// One NFC tag. Its UID is the key; it can be tied to a mode so each tag starts its own kind of block.
-struct BrickTag: Codable, Identifiable, Hashable {
-    /// The tag's UID in hex.
-    var id: String
-    var name: String
-    /// The one mode this tag starts and ends. nil until one is picked (or after its mode is deleted).
-    var profileID: UUID?
-}
-
-/// Bricks the phone at a time of day on chosen weekdays, until an end time or a tag.
-struct BrickSchedule: Codable, Identifiable, Hashable {
-    var id = UUID()
-    var name: String
-    var hour = 9
-    var minute = 0
-    /// When it ends by itself, for a work day. nil: runs until a tag (or the mode's own timer) ends it.
-    var endHour: Int?
-    var endMinute: Int?
-    /// Calendar weekdays, 1 is Sunday.
-    var weekdays: Set<Int> = [2, 3, 4, 5, 6]
-    var profileID: UUID?
-    var enabled = true
-    /// The last day it bricked, so it fires once a day.
-    var lastFired: Date?
-}
-
-/// A lockdown mode that's on, and when it ends by itself.
-struct BrickLockdown: Codable, Hashable {
-    var profileID: UUID
-    var endsAt: Date?
-}
-
 /// Tap-to-block, like Brick. The shield itself is enforced by iOS (Managed Settings);
 /// the tag is a plain NFC tag whose ID is the key. Nothing leaves the phone.
 /// One store for the whole app, so timers and schedules are checked whichever tab is open.
@@ -150,18 +33,16 @@ final class BrickStore: NSObject {
     /// The time the pages count a running session up to. Ticks while bricked, so totals grow live.
     private(set) var now = Date()
 
-    @ObservationIgnored private let settings = ManagedSettingsStore()
-    @ObservationIgnored private let defaults = UserDefaults.standard
+    @ObservationIgnored private let defaults = BrickEngine.defaults
     @ObservationIgnored private var session: NFCTagReaderSession?
     @ObservationIgnored private var onTag: ((String) -> Void)?
     @ObservationIgnored private var ticker: Timer?
 
     override private init() {
         super.init()
+        BrickEngine.moveFromStandardDefaults()
         profiles = load([BrickProfile].self, "brick.profiles") ?? []
         if profiles.isEmpty { profiles = [BrickProfile(name: "Focus")] }
-        sessions = load([BrickSession].self, "brick.sessions") ?? []
-        schedules = load([BrickSchedule].self, "brick.schedules") ?? []
         tags = load([BrickTag].self, "brick.tags") ?? []
         // Tags used to be able to start "whichever mode is selected"; now each has its own,
         // so those take the mode that was selected. The single tag from before tags had names comes along too.
@@ -177,13 +58,9 @@ final class BrickStore: NSObject {
         if defaults.object(forKey: "brick.emergencyLeft") != nil {
             emergencyLeft = defaults.integer(forKey: "brick.emergencyLeft")
         }
-        if let raw = defaults.string(forKey: "brick.active"), let id = UUID(uuidString: raw) {
-            blockingProfileID = id
-            let t = defaults.double(forKey: "brick.endsAt")
-            endsAt = t > 0 ? Date(timeIntervalSince1970: t) : nil
-        }
-        lockdowns = load([BrickLockdown].self, "brick.lockdowns") ?? []
+        reload()
         authorized = AuthorizationCenter.shared.authorizationStatus == .approved
+        if authorized { BrickEngine.syncSchedules() }
         startTicker()
         check()
     }
@@ -198,12 +75,25 @@ final class BrickStore: NSObject {
     /// The session running now, if bricked.
     var current: BrickSession? { sessions.last { $0.end == nil } }
 
-    private func load<T: Decodable>(_ type: T.Type, _ key: String) -> T? {
-        defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
-    }
+    private func load<T: Decodable>(_ type: T.Type, _ key: String) -> T? { BrickEngine.load(type, key) }
+    private func save<T: Encodable>(_ value: T, _ key: String) { BrickEngine.save(value, key) }
 
-    private func save<T: Encodable>(_ value: T, _ key: String) {
-        if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: key) }
+    /// What's on, the sessions and the schedules can change from the BrickMonitor extension while the app
+    /// is closed, so they're read back from the shared state rather than trusted from memory.
+    private func reload() {
+        #if DEBUG
+        if seeded { return }
+        #endif
+        let active = BrickEngine.blockingProfileID
+        if active != blockingProfileID { blockingProfileID = active }
+        let ends = BrickEngine.endsAt
+        if ends != endsAt { endsAt = ends }
+        let l = BrickEngine.lockdowns
+        if l != lockdowns { lockdowns = l }
+        let s = BrickEngine.sessions
+        if s != sessions { sessions = s }
+        let sc = BrickEngine.schedules
+        if sc != schedules { schedules = sc }
     }
 
     // MARK: Modes
@@ -239,48 +129,40 @@ final class BrickStore: NSObject {
         let s = BrickSchedule(name: "\(profiles.first?.name ?? "Brick") schedule", profileID: profiles.first?.id)
         schedules.append(s)
         save(schedules, "brick.schedules")
+        BrickEngine.syncSchedules()
         return s.id
     }
 
     func update(_ schedule: BrickSchedule) {
         guard let i = schedules.firstIndex(where: { $0.id == schedule.id }) else { return }
+        // Renaming (each keystroke) doesn't need iOS to re-register anything.
+        var old = schedules[i], new = schedule
+        old.name = ""; new.name = ""; old.lastFired = nil; new.lastFired = nil
         schedules[i] = schedule
         save(schedules, "brick.schedules")
+        if old != new { BrickEngine.syncSchedules() }
     }
 
     func delete(_ schedule: BrickSchedule) {
         schedules.removeAll { $0.id == schedule.id }
         save(schedules, "brick.schedules")
+        BrickEngine.syncSchedules()
     }
 
-    /// When a schedule ends today, if it has an end time; past midnight if it ends before it starts.
-    func endDate(of s: BrickSchedule, on day: Date) -> Date? {
-        let cal = Calendar.current
-        guard let h = s.endHour,
-              let start = cal.date(bySettingHour: s.hour, minute: s.minute, second: 0, of: day),
-              var end = cal.date(bySettingHour: h, minute: s.endMinute ?? 0, second: 0, of: day) else { return nil }
-        if end <= start { end = cal.date(byAdding: .day, value: 1, to: end) ?? end }
-        return end
-    }
+    func endDate(of s: BrickSchedule, on day: Date) -> Date? { BrickEngine.endDate(of: s, on: day) }
 
-    /// A schedule starts its mode once a day: within an hour of its start time, or any time before its end
-    /// time if it has one. Checked while the app runs or when it opens.
+    /// Backup for the extension: starts a schedule's mode once a day, within an hour of its start time or any
+    /// time before its end time. Checked while the app runs or when it opens.
     private func checkSchedules() {
         guard authorized else { return }
         let cal = Calendar.current
         let now = Date()
-        for s in schedules where s.enabled && s.weekdays.contains(cal.component(.weekday, from: now)) {
+        for s in schedules where s.enabled {
             guard let at = cal.date(bySettingHour: s.hour, minute: s.minute, second: 0, of: now) else { continue }
-            let end = endDate(of: s, on: now)
-            guard now >= at, now < (end ?? at.addingTimeInterval(3600)),
-                  !(s.lastFired.map { cal.isDate($0, inSameDayAs: now) } ?? false),
-                  let p = profiles.first(where: { $0.id == s.profileID }),
-                  !isOn(p.id), p.lockdown || !isBlocking else { continue }
-            var fired = s
-            fired.lastFired = now
-            update(fired)
-            start(p, until: end)
+            guard now >= at, now < (endDate(of: s, on: now) ?? at.addingTimeInterval(3600)) else { continue }
+            BrickEngine.fire(s.id, now: now)
         }
+        reload()
     }
 
     // MARK: Authorization
@@ -289,6 +171,7 @@ final class BrickStore: NSObject {
         do {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
             authorized = AuthorizationCenter.shared.authorizationStatus == .approved
+            if authorized { BrickEngine.syncSchedules() }
         } catch {
             message = "Screen Time access was not granted: \(error.localizedDescription)"
         }
@@ -389,7 +272,7 @@ final class BrickStore: NSObject {
         guard anyOn, emergencyLeft > 0 else { return }
         emergencyLeft -= 1
         defaults.set(emergencyLeft, forKey: "brick.emergencyLeft")
-        if isBlocking { stop() }
+        if let id = blockingProfileID { end(id) }
         for l in lockdowns { end(l.profileID) }
     }
 
@@ -397,77 +280,20 @@ final class BrickStore: NSObject {
 
     /// Starts a mode: a lockdown in its own store, or the Brick. `until` overrides the mode's timer (a schedule's end).
     private func start(_ p: BrickProfile, until: Date? = nil) {
-        if p.isEmpty {
+        guard BrickEngine.start(p, until: until) else {
             message = "Pick apps or restrictions for \(p.name) first."
             return
         }
-        let ends = until ?? p.timerMinutes.map { Date().addingTimeInterval(Double($0) * 60) }
-        if p.lockdown {
-            apply(p, to: lockdownStore(p.id))
-            lockdowns.removeAll { $0.profileID == p.id }
-            lockdowns.append(BrickLockdown(profileID: p.id, endsAt: ends))
-            save(lockdowns, "brick.lockdowns")
-            return
-        }
-        apply(p, to: settings)
-        blockingProfileID = p.id
-        endsAt = ends
-        defaults.set(p.id.uuidString, forKey: "brick.active")
-        defaults.set(endsAt?.timeIntervalSince1970 ?? 0, forKey: "brick.endsAt")
         now = Date()
-        sessions.append(BrickSession(profileName: p.name, start: now))
-        save(sessions, "brick.sessions")
+        reload()
         WidgetSync.brick(self)
     }
 
     /// Ends whichever kind of mode this is.
     private func end(_ id: UUID, byTimer: Bool = false) {
-        if id == blockingProfileID {
-            stop(byTimer: byTimer)
-        } else {
-            lockdownStore(id).clearAllSettings()
-            lockdowns.removeAll { $0.profileID == id }
-            save(lockdowns, "brick.lockdowns")
-        }
-    }
-
-    private func lockdownStore(_ id: UUID) -> ManagedSettingsStore {
-        ManagedSettingsStore(named: ManagedSettingsStore.Name("lockdown.\(id.uuidString)"))
-    }
-
-    /// Shields the mode's apps and sets its restrictions. nil leaves a setting as the user has it;
-    /// clearing the store lifts them all.
-    private func apply(_ p: BrickProfile, to store: ManagedSettingsStore) {
-        let s = p.selection
-        store.shield.applications = s.applicationTokens.isEmpty ? nil : s.applicationTokens
-        store.shield.applicationCategories = s.categoryTokens.isEmpty ? nil : .specific(s.categoryTokens)
-        store.shield.webDomains = s.webDomainTokens.isEmpty ? nil : s.webDomainTokens
-        store.shield.webDomainCategories = s.categoryTokens.isEmpty ? nil : .specific(s.categoryTokens)
-        let r = p.restrictions
-        func on(_ v: Bool) -> Bool? { v ? true : nil }
-        store.webContent.blockedByFilter = r.adultWebsites ? .auto() : nil
-        store.media.denyExplicitContent = on(r.explicitMedia)
-        store.application.denyAppInstallation = on(r.appInstalls)
-        store.application.denyAppRemoval = on(r.appRemoval)
-        store.appStore.denyInAppPurchases = on(r.inAppPurchases)
-        store.siri.denySiri = on(r.siri)
-        store.gameCenter.denyMultiplayerGaming = on(r.multiplayerGames)
-        store.gameCenter.denyAddingFriends = on(r.multiplayerGames)
-        store.dateAndTime.requireAutomaticDateAndTime = on(r.automaticTime)
-    }
-
-    private func stop(byTimer: Bool = false) {
-        if let i = sessions.lastIndex(where: { $0.end == nil }) {
-            sessions[i].end = byTimer ? (endsAt ?? Date()) : Date()
-            sessions[i].byTimer = byTimer
-            save(sessions, "brick.sessions")
-        }
-        settings.clearAllSettings()
+        BrickEngine.end(id, byTimer: byTimer)
         now = Date()
-        blockingProfileID = nil
-        endsAt = nil
-        defaults.removeObject(forKey: "brick.active")
-        defaults.removeObject(forKey: "brick.endsAt")
+        reload()
         WidgetSync.brick(self)
     }
 
@@ -476,8 +302,9 @@ final class BrickStore: NSObject {
         // The system's answer can arrive after launch, or change in Settings; never trust a single read.
         let approved = AuthorizationCenter.shared.authorizationStatus == .approved
         if approved != authorized { authorized = approved }
+        reload()
         if isBlocking { now = Date() }
-        if let endsAt, endsAt <= Date(), isBlocking { stop(byTimer: true) }
+        if let endsAt, endsAt <= Date(), let id = blockingProfileID { end(id, byTimer: true) }
         for l in lockdowns where (l.endsAt.map { $0 <= Date() } ?? false) { end(l.profileID, byTimer: true) }
         checkSchedules()
         WidgetSync.brick(self)
@@ -490,8 +317,11 @@ final class BrickStore: NSObject {
     }
 
     #if DEBUG
-    /// Sample sessions for screenshots, in memory only.
+    @ObservationIgnored private var seeded = false
+
+    /// Sample sessions for screenshots, in memory only; the saved state isn't read back while they show.
     func debugSeed() {
+        seeded = true
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         func at(_ day: Int, _ h: Double) -> Date { cal.date(byAdding: .day, value: day, to: today)!.addingTimeInterval(h * 3600) }
