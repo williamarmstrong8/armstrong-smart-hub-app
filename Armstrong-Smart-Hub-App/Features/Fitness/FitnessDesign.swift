@@ -311,6 +311,8 @@ struct OverviewRow<Chart: View>: View {
     var value: String
     var unit: String?
     var caption: String?
+    /// A second, muted line under the caption, for a row that sums up several numbers.
+    var detail: String? = nil
     var tint: Color
     @ViewBuilder var chart: Chart
 
@@ -323,6 +325,7 @@ struct OverviewRow<Chart: View>: View {
                     if let unit { Text(unit).font(Fit.label).foregroundStyle(Fit.muted) }
                 }
                 if let caption { Text(caption).font(.caption).foregroundStyle(tint).lineLimit(1) }
+                if let detail { Text(detail).font(.caption).foregroundStyle(Fit.muted).lineLimit(1).minimumScaleFactor(0.85) }
             }
             Spacer(minLength: 8)
             chart.frame(width: 96, height: 34)

@@ -137,11 +137,9 @@ struct OverviewList: View {
     var body: some View {
         VStack(spacing: 0) {
             row(.heart) { LiveHeartRow(store: store) }
-            stress
+            battery
             strain
-            fitness
             endurance
-            race
             recovery
             age
             NavigationLink { TrendsView(store: store) } label: { LiveStepsRow(store: store) }
@@ -149,13 +147,17 @@ struct OverviewList: View {
         }
     }
 
-    private var stress: some View {
+    /// Body Battery first, as on the Energy page it opens, with stress beside it.
+    private var battery: some View {
         let metrics = store.snapshot?.metrics
-        let value = store.currentStress ?? store.snapshot?.insights?.stress.now ?? metrics?.stress?.average
+        let value = store.currentBodyBattery ?? metrics?.bodyBattery?.current ?? store.snapshot?.insights?.stress.bodyBattery?.current
+        let stress = store.currentStress ?? store.snapshot?.insights?.stress.now ?? metrics?.stress?.average
+        let caption = [value.map(EnergyPage.batteryWord), stress.map { "Stress \($0), \(stressWord($0).lowercased())" }]
+            .compactMap { $0 }.joined(separator: " · ")
         return row(.energy) {
-            OverviewRow(title: "Stress", value: value.map(String.init) ?? "–", unit: nil,
-                        caption: value.map(stressWord), tint: value.map { MetricColor.stress($0) } ?? Fit.muted) {
-                MiniTrend(values: Self.thin(store.series(.stress).map { Double($0.value) }, to: 24), tint: Fit.fair, bars: true)
+            OverviewRow(title: "Body Battery", value: value.map(String.init) ?? "–", unit: nil,
+                        caption: caption.isEmpty ? nil : caption, tint: value == nil ? Fit.muted : Fit.energy) {
+                MiniTrend(values: Self.thin(store.series(.bodyBattery).map { Double($0.value) }, to: 40), tint: Fit.energy)
             }
         }
     }
@@ -170,33 +172,27 @@ struct OverviewList: View {
         }
     }
 
-    private var fitness: some View {
+    /// Endurance Score, VO2 max and the 5K prediction in one row: they move together.
+    /// Without an Endurance Score from the watch, VO2 max leads.
+    private var endurance: some View {
         let watch = store.snapshot?.watch
         let vo2 = store.snapshot?.metrics?.vo2max?.value ?? watch?.vo2max?.value
+        let endurance = watch?.endurance
+        let races = watch?.races
+        let parts = [endurance == nil ? nil : vo2.map { String(format: "VO2 max %.0f", $0) },
+                     races?.fiveK.map { "5K \(WatchFormat.raceTime($0))" },
+                     races?.half.map { "Half \(WatchFormat.raceTime($0))" }].compactMap { $0 }
         return row(.training) {
-            OverviewRow(title: "VO2 max", value: vo2.map { String(format: "%.0f", $0) } ?? "–", unit: "ml/kg/min",
-                        caption: store.snapshot?.insights?.age?.cardioFitness.map { $0.level.capitalized }, tint: Fit.activity) {
-                MiniTrend(values: watch?.vo2max?.history.suffix(12).map(\.value) ?? [], tint: Fit.activity)
-            }
-        }
-    }
-
-    @ViewBuilder private var endurance: some View {
-        if let endurance = store.snapshot?.watch?.endurance {
-            row(.training) {
-                OverviewRow(title: "Endurance score", value: endurance.score.formatted(), unit: nil, caption: endurance.level.capitalized, tint: Fit.positive) {
+            if let endurance {
+                OverviewRow(title: "Endurance", value: endurance.score.formatted(), unit: nil, caption: endurance.level.capitalized,
+                            detail: parts.isEmpty ? nil : parts.joined(separator: " · "), tint: Fit.positive) {
                     MiniTrend(values: endurance.history.map(\.value), tint: Fit.positive)
                 }
-            }
-        }
-    }
-
-    @ViewBuilder private var race: some View {
-        if let races = store.snapshot?.watch?.races, let five = races.fiveK {
-            row(.training) {
-                OverviewRow(title: "5K prediction", value: WatchFormat.raceTime(five), unit: nil,
-                            caption: races.half.map { "Half marathon \(WatchFormat.raceTime($0))" }, tint: Fit.muted) {
-                    MiniTrend(values: races.history.map { -$0.value }, tint: Fit.muted)
+            } else {
+                OverviewRow(title: "VO2 max", value: vo2.map { String(format: "%.0f", $0) } ?? "–", unit: "ml/kg/min",
+                            caption: store.snapshot?.insights?.age?.cardioFitness.map { $0.level.capitalized },
+                            detail: parts.isEmpty ? nil : parts.joined(separator: " · "), tint: Fit.activity) {
+                    MiniTrend(values: watch?.vo2max?.history.suffix(12).map(\.value) ?? [], tint: Fit.activity)
                 }
             }
         }
@@ -659,7 +655,7 @@ struct EnergyPage: View {
             let points = store.series(.bodyBattery).map { TimeValue(date: $0.date, value: Double($0.value)) }
             let window = FitData.window(points)
             let day = points.filter { $0.date >= window.0 }
-            ScoreHeader(score: current, tint: Fit.energy, status: current.map(batteryWord) ?? "No data", subtitle: "Body Battery",
+            ScoreHeader(score: current, tint: Fit.energy, status: current.map(Self.batteryWord) ?? "No data", subtitle: "Body Battery",
                         source: current == nil ? nil : live != nil || store.bodyBatteryFromWatch || metrics?.fromWatch("bodyBattery") == true)
             if !day.isEmpty {
                 let changes = zip(day.dropFirst(), day).map { $0.value - $1.value }
@@ -707,7 +703,7 @@ struct EnergyPage: View {
         }
     }
 
-    private func batteryWord(_ value: Int) -> String {
+    static func batteryWord(_ value: Int) -> String {
         value >= 75 ? "Charged" : value >= 50 ? "Good" : value >= 25 ? "Running low" : "Drained"
     }
 }

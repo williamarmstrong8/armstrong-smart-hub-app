@@ -32,11 +32,10 @@ struct FitnessView: View {
                             }
                             MorningCheckin(store: checkins)
                             today
-                            workoutsSection
                             // Straight on the page, not on a card. It reads the watch's live
                             // numbers itself, so a heartbeat redraws one row, not this page.
-                            OverviewList(store: store).padding(.bottom, 28)
-                            RecentActivities(activities: store.activities)
+                            OverviewList(store: store).padding(.bottom, 36)
+                            workoutsSection
                             syncStatus
                             routinesButton.padding(.top, 24)
                         }
