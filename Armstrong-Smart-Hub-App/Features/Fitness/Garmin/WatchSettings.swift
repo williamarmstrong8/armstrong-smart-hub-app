@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 /// Writes hub-only numbers (sleep score and stages, overnight HRV, load,
-/// readiness, VO2max) into the Last Night and Training glances' Connect IQ app
-/// settings, the way Garmin Connect saves an app's settings: a PROTOBUF_REQUEST
+/// readiness, VO2max) into the Last Night and Training glances' (and the
+/// Armstrong Minimal face's) Connect IQ app settings, the way Garmin Connect saves an app's settings: a PROTOBUF_REQUEST
 /// carrying Smart.app_config_service.appConfigSet, with the values in Garmin's
 /// binary JSON. The glance reads them with Application.Properties. Ported from
 /// Gadgetbridge's AppConfigHandler and GarminJson (AGPL-3.0-or-later); the
@@ -19,10 +19,12 @@ final class WatchSettings {
 
     weak var link: WatchLink?
 
-    /// The glance apps, by manifest id (watch/glances/<App>/manifest.xml), and which part of the hub's answer each gets.
+    /// The glance apps and the Minimal face, by manifest id (watch/<App>/manifest.xml), and which part of the hub's answer each gets.
     static let targets: [(name: String, appID: UUID, part: KeyPath<HubValues, [String: HubValue]>)] = [
         ("Last Night", UUID(uuidString: "41a12dd5-ae16-476d-8d0e-d07e00c36c49")!, \.night),
         ("Training", UUID(uuidString: "5b8fa0a1-f73d-4582-88cc-7b70c5f3149d")!, \.training),
+        // The Armstrong Minimal face shows the sleep score when the watch doesn't give it one.
+        ("Armstrong Minimal", UUID(uuidString: "99122c2f-4a24-4fa5-9291-b0eabcf1764c")!, \.night),
     ]
 
     private var nextRequestID: UInt16 = 0xB000

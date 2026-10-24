@@ -4,12 +4,13 @@ import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
 import Toybox.System;
+import Toybox.Timer;
 import Toybox.WatchUi;
 
-// Armstrong Minimal: an analog dial in the style of Apple's Meridian. Hour bars,
-// a fine minute track at the bezel, hollow capsule hands with a red seconds hand,
-// and four stat circles: sleep score on top, heart rate left, calories right,
-// watch battery at the bottom.
+// Armstrong Minimal: an analog dial in the style of Apple's Meridian. Hour bars
+// out to the bezel, hollow capsule hands with a red seconds hand that sweeps while
+// the screen is awake, and four stat circles: sleep score on top, heart rate left,
+// calories right, watch battery at the bottom.
 class ArmstrongFaceView extends WatchUi.WatchFace {
 
     private const DISC   = 0x1C1C1E;
@@ -18,6 +19,17 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
     private var _lowPower as Boolean = false;
     private var _sleepId as Complications.Id? = null;
 
+    // Sweep: redraw every FRAME ms while awake. The clock only gives whole seconds,
+    // so the fraction comes from the system timer since the second last changed.
+    private const FRAME = 50;
+    private var _timer as Timer.Timer? = null;
+    private var _lastSec as Number = -1;
+    private var _secStart as Number = 0;
+
+    // The hub's sleep score counts while its night ended under 20 hours ago,
+    // the same rule as the Last Night glance.
+    private const HUB_NIGHT_AGE = 20 * 3600;
+
     function initialize() {
         WatchFace.initialize();
         if (Complications has :COMPLICATION_TYPE_SLEEP_SCORE) {
@@ -25,13 +37,36 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         }
     }
 
+    function onShow() as Void {
+        if (!_lowPower) { startSweep(); }
+    }
+
+    function onHide() as Void {
+        stopSweep();
+    }
+
     function onEnterSleep() as Void {
         _lowPower = true;
+        stopSweep();
         WatchUi.requestUpdate();
     }
 
     function onExitSleep() as Void {
         _lowPower = false;
+        startSweep();
+        WatchUi.requestUpdate();
+    }
+
+    private function startSweep() as Void {
+        if (_timer == null) { _timer = new Timer.Timer(); }
+        (_timer as Timer.Timer).start(method(:frame), FRAME, true);
+    }
+
+    private function stopSweep() as Void {
+        if (_timer != null) { (_timer as Timer.Timer).stop(); }
+    }
+
+    function frame() as Void {
         WatchUi.requestUpdate();
     }
 
@@ -80,7 +115,14 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         dc.setColor(Draw.WHITE, Graphics.COLOR_TRANSPARENT);
         dc.fillCircle(cx, cy, 8);
 
-        var secondAngle = clock.sec * 6.0;
+        var now = System.getTimer();
+        if (clock.sec != _lastSec) {
+            _lastSec = clock.sec;
+            _secStart = now;
+        }
+        var fraction = (now - _secStart) / 1000.0;
+        if (fraction > 0.999) { fraction = 0.999; }
+        var secondAngle = (clock.sec + fraction) * 6.0;
         dc.setColor(SECOND, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(3);
         dc.drawLine(px(cx, secondAngle, -r * 0.12), py(cy, secondAngle, -r * 0.12),
@@ -91,20 +133,13 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         dc.fillCircle(cx, cy, 2);
     }
 
-    // Fine minute track at the bezel, white hour bars inside it.
+    // White hour bars reaching out toward the bezel.
     private function dial(dc as Dc, cx as Number, cy as Number, r as Number) as Void {
-        dc.setColor(Draw.FAINT, Graphics.COLOR_TRANSPARENT);
-        dc.setPenWidth(2);
-        for (var i = 0; i < 60; i++) {
-            if (i % 5 == 0) { continue; }
-            var a = i * 6.0;
-            dc.drawLine(px(cx, a, r - 14), py(cy, a, r - 14), px(cx, a, r - 4), py(cy, a, r - 4));
-        }
         dc.setColor(Draw.WHITE, Graphics.COLOR_TRANSPARENT);
-        dc.setPenWidth(6);
+        dc.setPenWidth(7);
         for (var i = 0; i < 12; i++) {
             var a = i * 30.0;
-            dc.drawLine(px(cx, a, r * 0.74), py(cy, a, r * 0.74), px(cx, a, r * 0.87), py(cy, a, r * 0.87));
+            dc.drawLine(px(cx, a, r * 0.81), py(cy, a, r * 0.81), px(cx, a, r * 0.96), py(cy, a, r * 0.96));
         }
         dc.setPenWidth(1);
     }
@@ -164,15 +199,16 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         dc.drawText(x, iconY + 12, font, value, Graphics.TEXT_JUSTIFY_CENTER);
     }
 
-    // Last night's sleep score, from the watch's own complication.
+    // Last night's sleep score: the watch's own complication when it has one,
+    // else the hub's, which the phone writes into this face's settings (Pushed).
     private function sleepScore() as Number? {
-        if (_sleepId == null) { return null; }
-        try {
-            var value = Complications.getComplication(_sleepId as Complications.Id).value;
-            return value == null ? null : (value as Numeric).toNumber();
-        } catch (e) {
-            return null;
+        if (_sleepId != null) {
+            try {
+                var value = Complications.getComplication(_sleepId as Complications.Id).value;
+                if (value != null) { return (value as Numeric).toNumber(); }
+            } catch (e) {}
         }
+        return Pushed.fresh("sEnd", HUB_NIGHT_AGE) ? Pushed.number("score") : null;
     }
 
     private function caloriesToday() as Number? {
