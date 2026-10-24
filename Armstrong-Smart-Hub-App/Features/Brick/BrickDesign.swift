@@ -100,7 +100,10 @@ struct BrickPage<Content: View>: View {
                 .padding(.horizontal, Fit.gutter)
                 .padding(.top, 12)
                 .padding(.bottom, 48)
+                // A page with little on it (no schedules yet) would otherwise shrink to its content.
+                .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)
