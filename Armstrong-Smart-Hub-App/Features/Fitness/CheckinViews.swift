@@ -162,15 +162,18 @@ struct WeekStrip: View {
                     let isToday = date == today
                     let feeling = date > today ? nil : store.entry(for: CheckinStore.dayString(date)).flatMap(Feeling.of)
                     VStack(spacing: 7) {
+                        // As wide as the column allows, up to 40, so the seven fill the page.
                         ZStack {
-                            Circle().stroke(worked ? Fit.action : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
+                            Circle().strokeBorder(worked ? Fit.action : isToday ? BrickLook.ink : BrickLook.line, lineWidth: isToday ? 1.5 : 1)
                             if worked { Circle().fill(Fit.action) }
                         }
-                        .frame(width: 26, height: 26)
+                        .frame(maxWidth: 40)
+                        .aspectRatio(1, contentMode: .fit)
+                        .padding(.horizontal, 4)
                         Text(date.formatted(.dateTime.weekday(.narrow)))
                             .font(.caption.weight(isToday ? .semibold : .regular))
                             .foregroundStyle(isToday ? BrickLook.ink : Fit.muted)
-                        Circle().fill(feeling.map(Feeling.tint) ?? .clear).frame(width: 7, height: 7)
+                        Circle().fill(feeling.map(Feeling.tint) ?? .clear).frame(width: 8, height: 8)
                     }
                     .frame(maxWidth: .infinity)
                 }
