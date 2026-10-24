@@ -343,6 +343,24 @@ enum WorkoutFormat {
         return "\(value.formatted(.number.precision(.fractionLength(0)))) \(unit.rawValue)"
     }
 
+    /// The number alone, "12,450", for where the unit is in the label.
+    static func volumeNumber(_ kg: Double, unit: WeightUnit) -> String {
+        unit.fromKg(kg).formatted(.number.precision(.fractionLength(0)))
+    }
+
+    /// A Tabler icon for the kind of workout, read from the words of its name
+    /// ("Morning run", "Leg day"); a barbell for anything else.
+    static func icon(name: String) -> String {
+        let kinds: [(icon: String, words: [String])] = [
+            ("run", ["run", "jog", "sprint", "treadmill"]), ("walk", ["walk"]), ("bike", ["bike", "cycl", "spin", "ride"]),
+            ("swimming", ["swim", "pool"]), ("yoga", ["yoga", "stretch", "mobility", "pilates"]), ("mountain", ["hike", "climb"]),
+            ("activity", ["cardio", "hiit", "conditioning", "circuit"]), ("lungs", ["rower", "erg"]),
+        ]
+        let words = name.lowercased().split { !$0.isLetter }
+        let kind = kinds.first { kind in words.contains { word in kind.words.contains { word.hasPrefix($0) } } }
+        return kind?.icon ?? "barbell"
+    }
+
     static func clock(_ seconds: TimeInterval) -> String {
         let s = max(0, Int(seconds))
         return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
@@ -386,7 +404,7 @@ enum WorkoutFormat {
 /// Heart rate zones as shares of max heart rate, the way the watch counts them.
 enum HeartZones {
     static let bounds = [0.5, 0.6, 0.7, 0.8, 0.9]
-    static let colors: [Color] = [Fit.faint, Fit.energy, Fit.positive, Fit.activity, Fit.attention]
+    static let colors: [Color] = [Fit.faint, Fit.action, Fit.positive, Fit.activity, Fit.attention]
     static let names = ["Warm up", "Easy", "Aerobic", "Threshold", "Maximum"]
 
     /// 0 to 4, or nil below zone 1.

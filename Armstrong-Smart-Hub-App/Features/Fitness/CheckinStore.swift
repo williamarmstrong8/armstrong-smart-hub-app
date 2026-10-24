@@ -54,8 +54,19 @@ struct DayGuess: Decodable {
     var day: String
     var energy: Double
     var states: [StateGuess]
+    /// The three cards to offer, likeliest first. Missing from older hubs.
+    var options: [CheckinOption]?
     var metrics: [GuessReason]
     var calibrated: Bool
+}
+
+/// A morning card: a state the hub guesses, or "fine", with a few words why.
+struct CheckinOption: Decodable, Identifiable, Hashable {
+    var key: String
+    var label: String
+    var probability: Double?
+    var reason: String?
+    var id: String { key }
 }
 
 struct StateGuess: Decodable, Identifiable {
@@ -226,13 +237,27 @@ final class CheckinStore {
         await flush(api: api)
     }
 
-    /// Sick or not for a day, keeping the rest of that day's check-in.
-    func answer(day: String, sick: Bool, api: APIClient) async {
+    /// The cards for this morning: the hub's three guesses, or a plain three before it has any.
+    var options: [CheckinOption] {
+        if let options = guess?.options, !options.isEmpty { return options }
+        return ["fine", "run_down", "sick"].map { CheckinOption(key: $0, label: Feeling.label($0)) }
+    }
+
+    /// A card picked for a day: its state (or "fine") replaces the day's state,
+    /// the other cards' states are a no, and the rest of the check-in stays.
+    func answer(day: String, feeling: String, offered: [String], api: APIClient) async {
         let saved = entry(for: day)
-        var tags = Set(saved?.tags ?? []), rejected = Set(saved?.rejected ?? [])
-        if sick { tags.insert("sick"); rejected.remove("sick") } else { rejected.insert("sick"); tags.remove("sick") }
+        let states = Set(Feeling.all)
+        let tags = Set(saved?.tags ?? []).subtracting(states).union([feeling])
+        let rejected = Set(saved?.rejected ?? []).subtracting(states)
+            .union(offered.filter { $0 != feeling && $0 != "fine" && $0 != "energized" })
         await save(Checkin(day: day, energy: saved?.energy, mood: saved?.mood, soreness: saved?.soreness,
                            tags: tags.sorted(), rejected: rejected.sorted(), note: saved?.note), api: api)
+    }
+
+    /// Sick or fine, from a notification's buttons.
+    func answer(day: String, sick: Bool, api: APIClient) async {
+        await answer(day: day, feeling: sick ? "sick" : "fine", offered: ["sick"], api: api)
     }
 
     /// "Don't remember": the hub keeps it so the question doesn't come back.

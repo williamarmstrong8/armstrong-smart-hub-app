@@ -99,7 +99,7 @@ private func accent(_ score: Int?, _ tint: Color) -> Color {
 
 // MARK: Overview
 
-/// Readiness, Sleep and Energy as three thin rings, Oura's top row.
+/// Readiness, Sleep and Energy as three bold rings, Oura's top row.
 struct TodayScores: View {
     var store: FitnessStore
 
@@ -119,9 +119,9 @@ struct TodayScores: View {
     private func ring(_ page: FitnessPage, _ score: Int?, _ tint: Color, _ label: String) -> some View {
         NavigationLink(value: page) {
             VStack(spacing: 8) {
-                ScoreRing(value: score.map(String.init) ?? "–", fraction: Double(score ?? 0) / 100, tint: tint, size: 100, track: BrickLook.line)
+                ScoreRing(value: score.map(String.init) ?? "–", fraction: Double(score ?? 0) / 100, tint: tint, size: 100,
+                          track: tint.opacity(0.16), weight: 0.09)
                 Text(label).font(.subheadline.weight(.medium))
-                Text(score == nil ? " " : Status.word(score)).font(.caption).foregroundStyle(accent(score, Fit.muted))
             }
             .frame(maxWidth: .infinity)
             .contentShape(.rect)
@@ -133,13 +133,10 @@ struct TodayScores: View {
 /// Everything else on the overview, one plain row each.
 struct OverviewList: View {
     var store: FitnessStore
-    var liveBpm: Int?
-    var steps: Int
-    var stepGoal: Int?
 
     var body: some View {
         VStack(spacing: 0) {
-            heart
+            row(.heart) { LiveHeartRow(store: store) }
             stress
             strain
             fitness
@@ -147,22 +144,8 @@ struct OverviewList: View {
             race
             recovery
             age
-            NavigationLink { TrendsView(store: store) } label: {
-                OverviewRow(title: "Steps", value: steps.formatted(), unit: nil, caption: stepGoal.map { "Goal \($0.formatted())" }, tint: Fit.muted) {
-                    MiniTrend(values: store.days.prefix(7).reversed().map { Double($0.steps ?? 0) }, tint: Fit.positive, bars: true)
-                }
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var heart: some View {
-        row(.heart) {
-            let series = store.series(.heartRate)
-            OverviewRow(title: "Heart rate", value: (liveBpm ?? series.last?.value).map(String.init) ?? "–", unit: "bpm",
-                        caption: store.restingHr.map { "Resting \($0)" }, tint: Fit.heart) {
-                MiniTrend(values: thin(series.map { Double($0.value) }, to: 40), tint: Fit.heart)
-            }
+            NavigationLink { TrendsView(store: store) } label: { LiveStepsRow(store: store) }
+                .buttonStyle(.plain)
         }
     }
 
@@ -172,7 +155,7 @@ struct OverviewList: View {
         return row(.energy) {
             OverviewRow(title: "Stress", value: value.map(String.init) ?? "–", unit: nil,
                         caption: value.map(stressWord), tint: value.map { MetricColor.stress($0) } ?? Fit.muted) {
-                MiniTrend(values: thin(store.series(.stress).map { Double($0.value) }, to: 24), tint: Fit.fair, bars: true)
+                MiniTrend(values: Self.thin(store.series(.stress).map { Double($0.value) }, to: 24), tint: Fit.fair, bars: true)
             }
         }
     }
@@ -254,10 +237,38 @@ struct OverviewList: View {
     }
 
     /// Evenly spaced values, so a sparkline isn't a solid block.
-    private func thin(_ values: [Double], to count: Int) -> [Double] {
+    static func thin(_ values: [Double], to count: Int) -> [Double] {
         guard values.count > count else { return values }
         let step = Double(values.count) / Double(count)
         return (0..<count).map { values[min(values.count - 1, Int(Double($0) * step))] }
+    }
+}
+
+/// Heart rate with the watch's live beat. Its own view, since the beat changes every second.
+private struct LiveHeartRow: View {
+    @Environment(WatchLink.self) private var watch
+    var store: FitnessStore
+
+    var body: some View {
+        let series = store.series(.heartRate)
+        OverviewRow(title: "Heart rate", value: (watch.heartRate?.bpm ?? series.last?.value).map(String.init) ?? "–", unit: "bpm",
+                    caption: store.restingHr.map { "Resting \($0)" }, tint: Fit.heart) {
+            MiniTrend(values: OverviewList.thin(series.map { Double($0.value) }, to: 40), tint: Fit.heart)
+        }
+    }
+}
+
+/// Today's steps, the watch's live count when it's ahead of the hub's.
+private struct LiveStepsRow: View {
+    @Environment(WatchLink.self) private var watch
+    var store: FitnessStore
+
+    var body: some View {
+        let steps = max(watch.steps?.count ?? 0, store.today?.steps ?? 0)
+        let goal = store.today?.stepGoal ?? watch.steps?.goal
+        OverviewRow(title: "Steps", value: steps.formatted(), unit: nil, caption: goal.map { "Goal \($0.formatted())" }, tint: Fit.muted) {
+            MiniTrend(values: store.days.prefix(7).reversed().map { Double($0.steps ?? 0) }, tint: Fit.positive, bars: true)
+        }
     }
 }
 

@@ -26,10 +26,12 @@ enum Fit {
     static let muted = adaptive(0x666666, 0xA1A1A1)
     static let faint = adaptive(0xA1A1A1, 0x5C5C5C)
 
-    // Accents: the hub's positive, amber, blue, negative and teal, one per topic.
-    static let readiness = adaptive(0x0E9F8A, 0x45DEC5)
-    static let sleep = adaptive(0x5B57D6, 0x9A97FF)
-    static let energy = adaptive(0x0068D6, 0x52A8FF)
+    // Accents, one per topic: the three scores are green, deep violet and yellow.
+    static let readiness = adaptive(0x1E9E4A, 0x3DDC6E)
+    static let sleep = adaptive(0x4B23C2, 0x8B6CFF)
+    static let energy = adaptive(0xD9A300, 0xFFD60A)
+    /// Buttons, the workout days and anything else to tap: the hub's blue.
+    static let action = adaptive(0x0068D6, 0x52A8FF)
     static let activity = adaptive(0xA35200, 0xFF990A)
     static let heart = adaptive(0xCB2A2F, 0xFF6166)
     static let health = adaptive(0x8E44AD, 0xC58AF9)
@@ -151,13 +153,15 @@ struct ScoreRing: View {
     var size: CGFloat = 96
     var label: String?
     var track: Color = Fit.track
+    /// The stroke as a share of the ring's size.
+    var weight: CGFloat = 0.035
 
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                Circle().stroke(track, lineWidth: max(3, size * 0.035))
+                Circle().stroke(track, lineWidth: max(3, size * weight))
                 Circle().trim(from: 0, to: max(0.002, min(1, fraction)))
-                    .stroke(tint, style: StrokeStyle(lineWidth: max(3, size * 0.035), lineCap: .round))
+                    .stroke(tint, style: StrokeStyle(lineWidth: max(3, size * weight), lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .opacity(fraction > 0 ? 1 : 0)
                     .animation(.smooth(duration: 0.8), value: fraction)

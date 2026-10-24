@@ -201,7 +201,7 @@ struct ActivityPage: View {
     private func zones(_ bpm: [Double]) -> some View {
         let peak = Double(store.snapshot?.metrics?.profile?.maxHr ?? activity.maxHr ?? Int(bpm.max() ?? 190))
         let bounds = [0.5, 0.6, 0.7, 0.8, 0.9]
-        let colors: [Color] = [Fit.faint, Fit.energy, Fit.positive, Fit.activity, Fit.attention]
+        let colors: [Color] = [Fit.faint, Fit.action, Fit.positive, Fit.activity, Fit.attention]
         let counts = (0..<5).map { zone in
             bpm.filter { value in
                 let share = value / max(peak, 1)

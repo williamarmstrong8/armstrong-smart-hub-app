@@ -5,7 +5,9 @@ import Observation
 @MainActor
 @Observable
 final class FitnessStore {
-    private(set) var snapshot: FitnessSnapshot?
+    private(set) var snapshot: FitnessSnapshot? {
+        didSet { seriesCache = [:] }
+    }
     private(set) var error: String?
     /// When the snapshot came from the hub; older than this session when the
     /// hub can't be reached and the copy on the phone is showing.
@@ -54,6 +56,21 @@ final class FitnessStore {
     /// file), so the phone fills gaps anywhere, not only after the hub's last
     /// reading. Stress and Body Battery go in 5-minute averages like the hub's.
     func series(_ kind: LiveStore.Kind) -> [Reading] {
+        // Views ask for this on every redraw, and it parses thousands of hub
+        // timestamps, so it's worked out once per snapshot, new live reading
+        // and 5 minutes. Reading `snapshot` and `revision` keeps those views
+        // redrawing when either changes.
+        _ = snapshot
+        let key = "\(live.revision)|\(Int(Date.now.timeIntervalSince1970 / 300))"
+        if let cached = seriesCache[kind], cached.key == key { return cached.readings }
+        let readings = buildSeries(kind)
+        seriesCache[kind] = (key, readings)
+        return readings
+    }
+
+    @ObservationIgnored private var seriesCache: [LiveStore.Kind: (key: String, readings: [Reading])] = [:]
+
+    private func buildSeries(_ kind: LiveStore.Kind) -> [Reading] {
         let since = Date.now.addingTimeInterval(-86400)
         let bucket = { (date: Date) in Int(date.timeIntervalSince1970 / 300) }
         let hub = hubSeries(kind).filter { $0.date >= since }
