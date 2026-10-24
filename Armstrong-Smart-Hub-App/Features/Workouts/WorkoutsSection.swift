@@ -102,7 +102,7 @@ struct RoutineCarousel: View {
     private static func middle(_ count: Int) -> Int { count * (laps / 2) }
 }
 
-/// The newest workout at a glance, straight on the page: its kind's icon, name and day, three numbers, its volume
+/// The newest workout at a glance, straight on the page: name and day, three numbers, its volume
 /// against the workouts before it, and what was in it. Opens the workout.
 struct LastWorkoutCard: View {
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
@@ -114,8 +114,6 @@ struct LastWorkoutCard: View {
             NavigationLink(value: WorkoutRoute(id: workout.id)) {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(alignment: .center, spacing: 12) {
-                        TablerIcon(name: WorkoutFormat.icon(name: workout.name), size: 30)
-                            .foregroundStyle(Fit.action)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(workout.name).font(.system(size: 22, weight: .regular)).lineLimit(1)
                             if let start = workout.start {
@@ -356,7 +354,6 @@ struct WorkoutsPage: View {
             .padding(.horizontal, Fit.gutter)
             .padding(.bottom, 40)
         }
-        .environment(\.fitnessCards, true)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .navigationTitle("Workouts")
