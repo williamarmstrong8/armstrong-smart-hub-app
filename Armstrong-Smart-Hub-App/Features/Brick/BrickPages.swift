@@ -379,7 +379,7 @@ struct BrickActivityPage: View {
 
 // MARK: Settings pages
 
-/// Every tag that locks and unlocks. Each can start its own mode, so a tag by the bed and one on the desk block different things.
+/// Every tag that locks and unlocks, one row each. Each can start its own mode, so a tag by the bed and one on the desk block different things.
 struct BrickTagPage: View {
     let store: BrickStore
 
@@ -388,20 +388,24 @@ struct BrickTagPage: View {
             Image("BrickDevice").resizable().scaledToFit().frame(width: 140, height: 140)
                 .shadow(color: .black.opacity(0.16), radius: 18, y: 12)
                 .padding(.vertical, 28)
-            ForEach(store.tags) { tag in
-                BrickTagCard(store: store, tag: tag)
-            }
             BrickCard(padding: 0) {
-                Button { store.registerTag() } label: {
-                    BrickRow(icon: "plus.viewfinder", title: store.hasTag ? "Add another tag" : "Register tag", value: nil)
+                VStack(spacing: 0) {
+                    ForEach(store.tags) { tag in
+                        NavigationLink(value: BrickRoute.tagDetail(tag.id)) {
+                            BrickRow(icon: store.isKey(tag) ? "lock.fill" : "wave.3.right", title: tag.name,
+                                     value: store.profiles.first { $0.id == tag.profileID }?.name ?? "Any")
+                        }
+                        .buttonStyle(.plain)
+                        BrickDivider()
+                    }
+                    Button { store.registerTag() } label: {
+                        BrickRow(icon: "plus.viewfinder", title: store.hasTag ? "Add another tag" : "Register tag", value: nil)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 .padding(.horizontal, 24)
             }
-            if store.tags.contains(where: store.isKey) {
-                Text("A tag that would end something on now can't change until it's off.").font(.footnote).foregroundStyle(BrickLook.soft)
-            }
-            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes a key. A tag with a mode starts and ends that mode; a tag set to Any starts the selected mode and ends the running Brick, but not lockdowns.")
+            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Its ID becomes a key: tap it once to start its mode, again to end it.")
                 .padding(.horizontal, 4)
             Takeaway(text: "To use a tag without opening the app: in Shortcuts, add an Automation \u{2192} NFC, scan the tag, set it to Run Immediately, and add Tap Brick tag with this tag.")
                 .padding(.horizontal, 4)
@@ -409,42 +413,67 @@ struct BrickTagPage: View {
     }
 }
 
-/// One tag: its name, the mode it starts, and a way to remove it.
-private struct BrickTagCard: View {
+/// One tag: its name, which mode it starts, and a way to remove it. Laid out like the Modes page.
+struct BrickTagDetailPage: View {
     let store: BrickStore
-    var tag: BrickTag
+    var id: String
     @State private var confirming = false
+    @Environment(\.dismiss) private var dismiss
+
+    private var tag: BrickTag? { store.tags.first { $0.id == id } }
 
     var body: some View {
-        BrickCard(padding: 0) {
-            VStack(spacing: 0) {
-                HStack(spacing: 16) {
-                    Image(systemName: "wave.3.right").font(.system(size: 20, weight: .light)).frame(width: 26)
-                    TextField("Name", text: Binding(get: { tag.name }, set: { var t = tag; t.name = $0; store.update(t) }))
-                        .font(.system(size: 18))
-                    Text(String(tag.id.prefix(8)).uppercased())
-                        .font(.system(size: 15).monospacedDigit()).foregroundStyle(BrickLook.soft)
+        BrickPage(title: tag?.name ?? "Tag") {
+            if let tag {
+                BrickCard(padding: 0) {
+                    VStack(spacing: 0) {
+                        TextField("Name", text: Binding(get: { tag.name }, set: { var t = tag; t.name = $0; store.update(t) }))
+                            .font(.system(size: 18)).padding(.vertical, 20)
+                        BrickDivider()
+                        BrickRow(icon: "wave.3.right", title: "Tag ID", value: String(tag.id.prefix(8)).uppercased(), chevron: false)
+                    }
+                    .padding(.horizontal, 24)
                 }
-                .padding(.vertical, 20)
-                BrickDivider()
-                Picker(selection: Binding(get: { tag.profileID }, set: { var t = tag; t.profileID = $0; store.update(t) })) {
-                    Text("Any (selected mode)").tag(UUID?.none)
-                    ForEach(store.profiles) { p in Text(p.name).tag(Optional(p.id)) }
-                } label: {
-                    Text("Mode").font(.system(size: 18))
+                BrickCaps(text: "Starts").foregroundStyle(BrickLook.soft).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12).padding(.leading, 4)
+                choice(tag, nil, "Any", "Whichever mode is selected. Ends the running Brick, and lockdowns with no tag of their own.")
+                ForEach(store.profiles) { p in
+                    choice(tag, p.id, p.name, p.lockdown ? "Lockdown · only this tag ends it" : "Brick · counts as Brick time")
                 }
-                .padding(.vertical, 14)
-                BrickDivider()
+                if store.isKey(tag) {
+                    Text("\(tag.name) would end something that's on, so it can't change until that's off.")
+                        .font(.footnote).foregroundStyle(BrickLook.soft)
+                }
                 Button("Remove tag", role: .destructive) { confirming = true }
-                    .font(.system(size: 17)).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 18)
+                    .font(.system(size: 17)).padding(.top, 12)
                     .confirmationDialog("Remove \(tag.name)? It will stop working as a key.", isPresented: $confirming,
                                         titleVisibility: .visible) {
-                        Button("Remove", role: .destructive) { store.delete(tag) }
+                        Button("Remove", role: .destructive) { store.delete(tag); dismiss() }
                     }
             }
-            .padding(.horizontal, 24)
         }
-        .disabled(store.isKey(tag))
+        .disabled(tag.map(store.isKey) ?? true)
+    }
+
+    /// A mode as a card with a circle, like the Modes page; the filled one is what this tag starts.
+    private func choice(_ tag: BrickTag, _ profileID: UUID?, _ title: String, _ detail: String) -> some View {
+        let chosen = tag.profileID == profileID
+        return Button { var t = tag; t.profileID = profileID; store.update(t) } label: {
+            HStack(spacing: 14) {
+                Image(systemName: chosen ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundStyle(chosen ? BrickLook.bar : BrickLook.soft)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.system(size: 19, weight: .medium))
+                    Text(detail).font(.system(size: 15)).foregroundStyle(BrickLook.soft)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(chosen ? "\(title), selected" : "Start \(title)")
     }
 }
 

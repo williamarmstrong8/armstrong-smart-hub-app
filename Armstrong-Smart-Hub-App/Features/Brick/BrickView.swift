@@ -5,7 +5,7 @@ import FamilyControls
 
 /// Where the Brick page can go. Everything lives under the one page; these open on top of it.
 enum BrickRoute: Hashable {
-    case modes, mode(UUID), restrictions(UUID), schedules, schedule(UUID), activity, screenTime, tag, emergency
+    case modes, mode(UUID), restrictions(UUID), schedules, schedule(UUID), activity, screenTime, tag, tagDetail(String), emergency
 }
 
 /// Brick's app on one page: the device sheet on top, then screen time, today, and settings.
@@ -41,6 +41,7 @@ struct BrickView: View {
                 case .activity: BrickActivityPage(store: store)
                 case .screenTime: BrickScreenTimePage(store: store)
                 case .tag: BrickTagPage(store: store)
+                case .tagDetail(let id): BrickTagDetailPage(store: store, id: id)
                 case .emergency: BrickEmergencyPage(store: store)
                 }
             }
@@ -198,8 +199,17 @@ private struct BrickSheet: View {
         VStack(spacing: 10) {
             ForEach(store.activeLockdowns) { l in
                 HStack(spacing: 8) {
-                    Image(systemName: "lock.fill").font(.system(size: 13))
-                    Text("\(l.name) lockdown on").font(.system(size: 15, weight: .medium))
+                    // Tapping the chip scans, so its tag ends it right here.
+                    Button { store.tapTag() } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "lock.fill").font(.system(size: 13))
+                            Text("\(l.name) lockdown").font(.system(size: 15, weight: .medium))
+                            let keys = store.keys(for: l.id)
+                            Text(keys.isEmpty ? "Emergency unbrick ends it" : "Tap \(keys) to end")
+                                .font(.system(size: 14)).foregroundStyle(BrickLook.soft)
+                        }
+                    }
+                    .buttonStyle(.plain)
                     if !l.strict {
                         Button("End") { store.unlockWithoutTag(l.id) }
                             .font(.system(size: 15, weight: .medium)).foregroundStyle(BrickLook.soft)

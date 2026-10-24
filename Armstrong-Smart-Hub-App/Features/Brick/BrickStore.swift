@@ -330,9 +330,16 @@ final class BrickStore: NSObject {
         profiles.first { $0.id == tag.profileID } ?? selected
     }
 
-    /// Whether a tag ends a mode that's on: its own mode, or for Any tags, the running Brick.
+    /// Whether a tag ends a mode: its own mode, or for Any tags, the running Brick and any lockdown with no tag of its own.
     func canEnd(_ id: UUID, with tag: BrickTag) -> Bool {
-        tag.profileID == id || (tag.profileID == nil && id == blockingProfileID)
+        if tag.profileID == id { return true }
+        guard tag.profileID == nil else { return false }
+        return id == blockingProfileID || !tags.contains { $0.profileID == id }
+    }
+
+    /// The tags that end a mode, by name.
+    func keys(for id: UUID) -> String {
+        tags.filter { canEnd(id, with: $0) }.map(\.name).joined(separator: " or ")
     }
 
     /// A tag that would end something on now can't be changed or removed, so nothing gets stuck on.
@@ -361,8 +368,9 @@ final class BrickStore: NSObject {
         guard let tag = tags.first(where: { $0.id == id }) else {
             return (false, "That is not one of your registered tags.")
         }
-        // Its own mode, or the running Brick for an Any tag.
-        if let on = tag.profileID ?? blockingProfileID, isOn(on), canEnd(on, with: tag) {
+        // Its own mode; for an Any tag the running Brick, else a lockdown that has no tag of its own.
+        let target = tag.profileID ?? blockingProfileID ?? lockdowns.first { canEnd($0.profileID, with: tag) }?.profileID
+        if let on = target, isOn(on), canEnd(on, with: tag) {
             let name = profiles.first { $0.id == on }?.name ?? "Brick"
             end(on)
             return (true, "Ended \(name).")
@@ -370,8 +378,7 @@ final class BrickStore: NSObject {
         guard let p = profile(for: tag) else { return (false, "No mode to start.") }
         guard !p.isEmpty else { return (false, "Pick apps or restrictions for \(p.name) first.") }
         if !p.lockdown, isBlocking {
-            let keys = tags.filter { canEnd(blockingProfileID!, with: $0) }.map(\.name).joined(separator: " or ")
-            return (false, "\(blockingProfile?.name ?? "A Brick") is on. End it with \(keys) first.")
+            return (false, "\(blockingProfile?.name ?? "A Brick") is on. End it with \(keys(for: blockingProfileID!)) first.")
         }
         start(p)
         return (true, p.lockdown ? "\(p.name) lockdown on." : "Bricked \(p.name).")
