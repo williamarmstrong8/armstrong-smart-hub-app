@@ -16,15 +16,21 @@ struct WorkoutDetailPage: View {
 
     var body: some View {
         ScrollView {
-            if let detail {
-                content(detail)
-            } else if loading {
-                ProgressView().padding(.top, 80)
-            } else {
-                MessageView(title: "Couldn't load this workout", systemImage: "exclamationmark.triangle",
-                            actionTitle: "Retry") { Task { await load(refresh: true) } }
+            Group {
+                if let detail {
+                    content(detail)
+                } else if loading {
+                    ProgressView().padding(.top, 80)
+                } else {
+                    MessageView(title: "Couldn't load this workout", systemImage: "exclamationmark.triangle",
+                                actionTitle: "Retry") { Task { await load(refresh: true) } }
+                }
             }
+            .frame(maxWidth: .infinity)
         }
+        // Fill the screen from the first frame: a page still loading would otherwise
+        // shrink to its content, showing the background as a strip that then grows.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)
