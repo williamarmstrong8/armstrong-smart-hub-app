@@ -6,8 +6,8 @@ struct WorkoutRoute: Hashable {
 }
 
 /// The Fitness tab's Workouts section: resume, or the routines (swipe
-/// through them) and Start Empty Workout, straight on the page; then the
-/// last workout on its own card. Routines and history open from the button
+/// through them) and Start Empty Workout, then the last workout, all
+/// straight on the page. Routines and history open from the button
 /// at the bottom of the page (RoutinesAndHistoryButton).
 struct WorkoutsSection: View {
     var store: WorkoutStore
@@ -102,7 +102,7 @@ struct RoutineCarousel: View {
     private static func middle(_ count: Int) -> Int { count * (laps / 2) }
 }
 
-/// The newest workout at a glance: its kind's icon, name and day, three numbers, its volume
+/// The newest workout at a glance, straight on the page: its kind's icon, name and day, three numbers, its volume
 /// against the workouts before it, and what was in it. Opens the workout.
 struct LastWorkoutCard: View {
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
@@ -110,14 +110,12 @@ struct LastWorkoutCard: View {
     var workout: WorkoutSummary
 
     var body: some View {
-        FitSection(title: "Last workout", trailing: store.pending.isEmpty ? nil : "\(store.pending.count) waiting to upload") {
+        VStack(alignment: .leading, spacing: 0) {
             NavigationLink(value: WorkoutRoute(id: workout.id)) {
                 VStack(alignment: .leading, spacing: 20) {
-                    HStack(alignment: .center, spacing: 14) {
-                        TablerIcon(name: WorkoutFormat.icon(name: workout.name), size: 24)
+                    HStack(alignment: .center, spacing: 12) {
+                        TablerIcon(name: WorkoutFormat.icon(name: workout.name), size: 30)
                             .foregroundStyle(Fit.action)
-                            .frame(width: 48, height: 48)
-                            .background(Fit.action.opacity(0.14), in: .circle)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(workout.name).font(.system(size: 22, weight: .regular)).lineLimit(1)
                             if let start = workout.start {
@@ -138,11 +136,15 @@ struct LastWorkoutCard: View {
                         Text(workout.exercises.joined(separator: " · "))
                             .font(.footnote).foregroundStyle(BrickLook.soft).lineLimit(2)
                     }
+                    if !store.pending.isEmpty {
+                        Text("\(store.pending.count) waiting to upload").font(.footnote).foregroundStyle(BrickLook.soft)
+                    }
                 }
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
         }
+        .padding(.bottom, 36)
     }
 
     private func stat(_ value: String, _ label: String, tint: Color? = nil) -> some View {
