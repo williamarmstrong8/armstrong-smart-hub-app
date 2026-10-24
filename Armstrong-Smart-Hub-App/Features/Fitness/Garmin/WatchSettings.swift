@@ -23,8 +23,8 @@ final class WatchSettings {
     static let targets: [(name: String, appID: UUID, part: KeyPath<HubValues, [String: HubValue]>)] = [
         ("Last Night", UUID(uuidString: "41a12dd5-ae16-476d-8d0e-d07e00c36c49")!, \.night),
         ("Training", UUID(uuidString: "5b8fa0a1-f73d-4582-88cc-7b70c5f3149d")!, \.training),
-        // The Armstrong Minimal face shows the sleep score when the watch doesn't give it one.
-        ("Armstrong Minimal", UUID(uuidString: "99122c2f-4a24-4fa5-9291-b0eabcf1764c")!, \.night),
+        // The Armstrong Minimal face shows training readiness in its top circle.
+        ("Armstrong Minimal", UUID(uuidString: "99122c2f-4a24-4fa5-9291-b0eabcf1764c")!, \.training),
     ]
 
     private var nextRequestID: UInt16 = 0xB000

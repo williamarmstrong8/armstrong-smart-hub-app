@@ -1,5 +1,4 @@
 import Toybox.ActivityMonitor;
-import Toybox.Complications;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
@@ -9,7 +8,7 @@ import Toybox.WatchUi;
 
 // Armstrong Minimal: an analog dial in the style of Apple's Meridian. Hour bars
 // out to the bezel, hollow capsule hands with a red seconds hand that sweeps while
-// the screen is awake, and four stat circles: sleep score on top, heart rate left,
+// the screen is awake, and four stat circles: training readiness on top, heart rate left,
 // calories right, watch battery at the bottom.
 class ArmstrongFaceView extends WatchUi.WatchFace {
 
@@ -17,7 +16,6 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
     private const SECOND = 0xFF3B30;
 
     private var _lowPower as Boolean = false;
-    private var _sleepId as Complications.Id? = null;
 
     // Sweep: redraw every FRAME ms while awake. The clock only gives whole seconds,
     // so the fraction comes from the system timer since the second last changed.
@@ -26,15 +24,11 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
     private var _lastSec as Number = -1;
     private var _secStart as Number = 0;
 
-    // The hub's sleep score counts while its night ended under 20 hours ago,
-    // the same rule as the Last Night glance.
-    private const HUB_NIGHT_AGE = 20 * 3600;
+    // The hub's readiness counts for 36 hours after a push, the same rule as the Training glance.
+    private const HUB_TRAINING_AGE = 36 * 3600;
 
     function initialize() {
         WatchFace.initialize();
-        if (Complications has :COMPLICATION_TYPE_SLEEP_SCORE) {
-            _sleepId = new Complications.Id(Complications.COMPLICATION_TYPE_SLEEP_SCORE);
-        }
     }
 
     function onShow() as Void {
@@ -102,8 +96,8 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         // Stat circles, Meridian's four positions.
         var off = (r * 0.42).toNumber();
         var disc = (r * 0.21).toNumber();
-        var sleep = sleepScore();
-        stat(dc, cx, cy - off, disc, :sleep, Draw.orDash(sleep), Draw.INDIGO);
+        var ready = Pushed.fresh("at", HUB_TRAINING_AGE) ? Pushed.number("ready") : null;
+        stat(dc, cx, cy - off, disc, :readiness, Draw.orDash(ready), ready != null && ready < 50 ? Draw.ORANGE : Draw.GREEN);
         stat(dc, cx - off, cy, disc, :heart, Draw.orDash(HubData.heartRate()), Draw.RED);
         stat(dc, cx + off, cy, disc, :calories, Draw.orDash(caloriesToday()), Draw.ORANGE);
         var charge = HubData.battery();
@@ -172,10 +166,13 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         var textH = dc.getFontHeight(font);
         var iconY = y - textH / 2 + 2;
         dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-        if (icon == :sleep) {
-            dc.fillCircle(x, iconY, 10);
-            dc.setColor(DISC, Graphics.COLOR_TRANSPARENT);
-            dc.fillCircle(x + 6, iconY - 5, 9);
+        if (icon == :readiness) {
+            // Gauge: an upper half-ring with a needle leaning toward full.
+            dc.setPenWidth(3);
+            dc.drawArc(x, iconY + 6, 11, Graphics.ARC_COUNTER_CLOCKWISE, 0, 180);
+            dc.drawLine(x, iconY + 6, x + 6, iconY - 2);
+            dc.fillCircle(x, iconY + 6, 3);
+            dc.setPenWidth(1);
         } else if (icon == :heart) {
             dc.fillCircle(x - 5, iconY - 3, 6);
             dc.fillCircle(x + 5, iconY - 3, 6);
@@ -197,18 +194,6 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
 
         dc.setColor(Draw.WHITE, Graphics.COLOR_TRANSPARENT);
         dc.drawText(x, iconY + 12, font, value, Graphics.TEXT_JUSTIFY_CENTER);
-    }
-
-    // Last night's sleep score: the watch's own complication when it has one,
-    // else the hub's, which the phone writes into this face's settings (Pushed).
-    private function sleepScore() as Number? {
-        if (_sleepId != null) {
-            try {
-                var value = Complications.getComplication(_sleepId as Complications.Id).value;
-                if (value != null) { return (value as Numeric).toNumber(); }
-            } catch (e) {}
-        }
-        return Pushed.fresh("sEnd", HUB_NIGHT_AGE) ? Pushed.number("score") : null;
     }
 
     private function caloriesToday() as Number? {
