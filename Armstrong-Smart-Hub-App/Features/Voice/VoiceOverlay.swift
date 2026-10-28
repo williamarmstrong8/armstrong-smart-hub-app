@@ -15,11 +15,7 @@ struct VoiceOverlay: View {
                 // Listening or thinking: just the orb, small, in the corner. Tap it to cancel.
                 VStack(alignment: .trailing, spacing: 12) {
                     if let notice = agent.notice { NoticePill(text: notice) }
-                    orb
-                        .frame(width: 84, height: 84)
-                        .padding(10)
-                        .background(Circle().fill(.black.opacity(0.78)))
-                        .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
+                    orb.frame(width: 56, height: 56)
                 }
                 .environment(\.colorScheme, .dark)
                 .padding(28)
