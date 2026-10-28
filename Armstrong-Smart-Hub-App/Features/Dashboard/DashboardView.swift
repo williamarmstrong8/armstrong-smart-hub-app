@@ -230,10 +230,13 @@ struct DashboardView: View {
 
     private var popups: some View {
         TimelineView(.everyMinute) { context in
-            let queue = WallAlert.queue(now: context.date, pi: pi.status, alarm: wake, calendar: calendar, dismissed: alerts.dismissed)
+            let queue = WallAlert.queue(now: context.date, pi: pi.status, alarm: wake, calendar: calendar,
+                                        dismissed: alerts.dismissed, kept: alerts.kept)
             ZStack {
                 if let alert = queue.first {
                     WallPopup(alert: alert, pi: pi, alarm: wake, home: home, toast: toast) {
+                        alerts.keep(alert)
+                    } onClose: {
                         withAnimation(.smooth(duration: 0.35)) { alerts.dismiss(alert) }
                     }
                     .id(alert.id)

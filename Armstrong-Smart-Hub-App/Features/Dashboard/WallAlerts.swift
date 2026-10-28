@@ -36,7 +36,8 @@ enum WallAlert: Identifiable, Equatable {
 
     /// The popups due right now, in the order they show.
     @MainActor
-    static func queue(now: Date, pi: PiStatus?, alarm: WakeAlarm, calendar: CalendarResponse?, dismissed: Set<String>) -> [WallAlert] {
+    static func queue(now: Date, pi: PiStatus?, alarm: WakeAlarm, calendar: CalendarResponse?,
+                      dismissed: Set<String>, kept: Set<String> = []) -> [WallAlert] {
         let cal = Calendar.current
         let hour = cal.component(.hour, from: now)
         var out: [WallAlert] = samples()
@@ -45,10 +46,12 @@ enum WallAlert: Identifiable, Equatable {
             out.append(.pi(pi.troubled, key: "pi:" + pi.troubled.map(\.name).sorted().joined(separator: ",")))
         }
 
-        // 10 PM to 3 AM counts as one night, keyed by the evening it started.
-        if alarm.scheduled == nil, hour >= 22 || hour < 3 {
+        // 10 PM to 3 AM counts as one night, keyed by the evening it started. It shows while no
+        // alarm is set, and stays (now showing the time) once one is set from it, until its X.
+        if hour >= 22 || hour < 3 {
             let evening = cal.date(byAdding: .hour, value: -6, to: now) ?? now
-            out.append(.wake(key: "wake:" + DayFormat.string(evening, zone: .current)))
+            let key = "wake:" + DayFormat.string(evening, zone: .current)
+            if alarm.scheduled == nil || kept.contains(key) { out.append(.wake(key: key)) }
         }
 
         if hour >= 7, let calendar, let today = calendar.today {
@@ -75,6 +78,12 @@ final class WallAlertsStore {
         dismissed = Set(saved)
     }
 
+    /// Popups that stay up after what would end them (an alarm set from the wake-up popup), until
+    /// their X. Just for this launch.
+    private(set) var kept: Set<String> = []
+
+    func keep(_ alert: WallAlert) { kept.insert(alert.id) }
+
     func dismiss(_ alert: WallAlert) {
         order.removeAll { $0 == alert.id }
         order.append(alert.id)
@@ -93,6 +102,8 @@ struct WallPopup: View {
     let alarm: WakeAlarm
     let home: HomeStore
     let toast: Toast
+    /// Keeps the popup up after its alarm is set, so it closes only with the X.
+    var onKeep: () -> Void = {}
     let onClose: () -> Void
 
     @Environment(AppSession.self) private var session
@@ -168,10 +179,18 @@ struct WallPopup: View {
 
         case .wake:
             VStack(spacing: 32) {
-                headline("Wake-up", "Set tomorrow's alarm", nil)
+                headline("Wake-up",
+                         alarm.scheduled.map { "Alarm set for \($0.formatted(date: .omitted, time: .shortened))" } ?? "Set tomorrow's alarm",
+                         nil)
+                    .contentTransition(.opacity)
+                    .animation(.smooth, value: alarm.scheduled)
                 WakeEditor(alarm: alarm) {
+                    onKeep()
                     Task { await alarm.set(home: home, api: session.api, toast: toast) }
-                } onOff: {}
+                } onOff: {
+                    onKeep()
+                    Task { await alarm.cancel(home: home, api: session.api, toast: toast) }
+                }
                 .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
             }
 
