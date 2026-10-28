@@ -7,28 +7,48 @@ import SwiftUI
 struct CalendarCard: View {
     let data: CalendarCardData
 
+    /// Minimal and centered: the day's date big on top, its events under it. Several days sit
+    /// side by side as centered columns, as many across as fit.
     var body: some View {
         let zone = TimeZone(identifier: data.timeZone) ?? .current
-        VStack(alignment: .leading, spacing: 40) {
-            CardHeader(title: data.title, detail: detail)
+        VStack(spacing: 28) {
             if data.days.count == 1, let day = data.days.first {
                 DayAgenda(day: day, zone: zone, addedId: data.addedId, removedId: data.removedId, wide: true)
             } else {
-                // Several days wrap into rows instead of squeezing a week into one line.
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 32, alignment: .top)], alignment: .leading, spacing: 36) {
-                    ForEach(data.days) { day in
+                ViewThatFits(in: .horizontal) {
+                    columns(3, zone)
+                    columns(2, zone)
+                    columns(1, zone)
+                }
+            }
+            if let change {
+                Text(change).font(.title2.weight(.medium)).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func columns(_ across: Int, _ zone: TimeZone) -> some View {
+        let n = max(1, min(across, data.days.count))
+        let rows = stride(from: 0, to: data.days.count, by: n).map { Array(data.days[$0..<min($0 + n, data.days.count)]) }
+        return VStack(spacing: 44) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .top, spacing: 36) {
+                    ForEach(row) { day in
                         DayAgenda(day: day, zone: zone, addedId: data.addedId, removedId: data.removedId, wide: false)
+                            .frame(width: 280)
                     }
                 }
             }
         }
+        .fixedSize()
     }
 
-    private var detail: String {
-        let count = data.days.reduce(0) { $0 + $1.events.count }
+    /// Only when something changed: the date and the events say the rest.
+    private var change: String? {
         if data.removedId != nil { return "Removed from your calendar" }
-        if data.addedId != nil { return "Updated your calendar" }
-        return count == 0 ? "Nothing planned" : "\(count) event\(count == 1 ? "" : "s")"
+        if data.addedId != nil { return "Added to your calendar" }
+        return nil
     }
 }
 
@@ -49,29 +69,28 @@ private struct DayAgenda: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: wide ? 40 : 18) {
+        VStack(spacing: wide ? 32 : 20) {
             DateBadge(day: day.day, zone: zone, large: wide)
 
-            VStack(alignment: .leading, spacing: wide ? 14 : 10) {
+            VStack(spacing: wide ? 16 : 12) {
                 if day.events.isEmpty {
                     Text("Nothing planned")
-                        .font(wide ? .title : .title3)
+                        .font(.system(size: wide ? 40 : 26, weight: .light))
                         .foregroundStyle(.secondary)
-                        .padding(.top, 14)
                 }
                 ForEach(events) { event in
                     let isNew = event.id == addedId
                     let shown = isNew || revealed.contains(event.id)
                     EventChip(event: event, zone: zone, isNew: isNew, large: wide)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: wide ? 640 : .infinity)
                         // The one being deleted fades back before it leaves.
                         .opacity(event.id == removedId ? 0.45 : 1)
                         .scaleEffect(event.id == removedId ? 0.97 : 1)
                         .opacity(shown ? 1 : 0)
-                        .offset(x: shown ? 0 : 60)
+                        .offset(y: shown ? 0 : 24)
                         // The day opens a gap and the new chip grows into it.
                         .transition(.asymmetric(
-                            insertion: .scale(scale: 0.6, anchor: .leading).combined(with: .opacity),
+                            insertion: .scale(scale: 0.6).combined(with: .opacity),
                             removal: .move(edge: .trailing).combined(with: .scale(scale: 0.85)).combined(with: .opacity)))
                 }
             }
@@ -128,18 +147,19 @@ private struct DateBadge: View {
     var body: some View {
         let date = DayFormat.parse(day) ?? .now
         let today = DayFormat.string(.now, zone: zone) == day
-        VStack(spacing: 6) {
-            Text(date.formatted(Date.FormatStyle(timeZone: .gmt).weekday(.abbreviated)).uppercased())
-                .font(large ? .title3.weight(.semibold) : .footnote.weight(.semibold))
+        VStack(spacing: large ? 10 : 6) {
+            Text(date.formatted(Date.FormatStyle(timeZone: .gmt).weekday(large ? .wide : .abbreviated)).uppercased())
+                .font(.system(size: large ? 24 : 16, weight: .semibold))
+                .tracking(1.5)
                 .foregroundStyle(today ? Color.googleBlue : .secondary)
             Text(date.formatted(Date.FormatStyle(timeZone: .gmt).day()))
-                .font(.system(size: large ? 40 : 26, weight: .medium))
+                .font(.system(size: large ? 76 : 40, weight: .light))
                 .monospacedDigit()
                 .foregroundStyle(today ? .white : .primary)
-                .frame(width: large ? 80 : 52, height: large ? 80 : 52)
+                .frame(width: large ? 140 : 76, height: large ? 140 : 76)
                 .background(today ? Color.googleBlue : .clear, in: .circle)
         }
-        .frame(width: large ? 90 : 60)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -155,29 +175,27 @@ private struct EventChip: View {
     var body: some View {
         // Darkened where needed: Google's pastel calendar colors left white text unreadable.
         let color = Color(hexForWhiteText: event.color)
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(spacing: 4) {
             Text(event.title)
-                .font(.system(size: (event.allDay ? 17 : 19) * (large ? 1.4 : 1), weight: .semibold))
+                .font(.system(size: (event.allDay ? 18 : 21) * (large ? 1.6 : 1), weight: .semibold))
                 .lineLimit(2)
             if !event.allDay {
                 Text(timeText)
-                    .font(.system(size: large ? 21 : 15, weight: .medium))
+                    .font(.system(size: large ? 26 : 16, weight: .medium))
                     .monospacedDigit()
                     .opacity(0.85)
             }
-            if let location = event.location, !event.allDay {
-                Text(location).font(.system(size: large ? 19 : 14)).opacity(0.75).lineLimit(1)
-            }
         }
+        .multilineTextAlignment(.center)
         .foregroundStyle(.white)
-        .padding(.horizontal, large ? 24 : 16)
-        .padding(.vertical, (event.allDay ? 9 : 13) * (large ? 1.5 : 1))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color, in: .rect(cornerRadius: large ? 16 : 12))
+        .padding(.horizontal, large ? 28 : 16)
+        .padding(.vertical, (event.allDay ? 10 : 14) * (large ? 1.5 : 1))
+        .frame(maxWidth: .infinity)
+        .background(color, in: .rect(cornerRadius: large ? 22 : 14))
         .shadow(color: color.opacity(isNew ? 0.6 : 0.25), radius: isNew ? 22 : 10, y: 6)
         .overlay {
             if isNew {
-                RoundedRectangle(cornerRadius: large ? 16 : 12)
+                RoundedRectangle(cornerRadius: large ? 22 : 14)
                     .strokeBorder(color, lineWidth: 3)
                     .scaleEffect(ring ? 1.12 : 1)
                     .opacity(ring ? 0 : 1)

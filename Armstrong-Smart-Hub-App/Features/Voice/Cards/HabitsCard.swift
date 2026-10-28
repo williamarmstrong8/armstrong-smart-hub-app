@@ -6,14 +6,32 @@ import SwiftUI
 struct HabitsCard: View {
     let data: HabitsCardData
 
+    /// Centered rows, as many across as fit (a short last row centered too).
     var body: some View {
-        // As many across as fit: a fixed five-wide grid ran off the iPad mini.
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 32)], spacing: 40) {
-            ForEach(Array(data.habits.enumerated()), id: \.element.id) { i, habit in
-                HabitCircle(habit: habit, changed: habit.id == data.changedId, delay: Double(i) * 0.08)
-            }
+        ViewThatFits(in: .horizontal) {
+            rows(5)
+            rows(4)
+            rows(3)
+            rows(2)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func rows(_ across: Int) -> some View {
+        let habits = Array(data.habits.enumerated())
+        let n = max(1, min(across, habits.count))
+        let rows = stride(from: 0, to: habits.count, by: n).map { Array(habits[$0..<min($0 + n, habits.count)]) }
+        return VStack(spacing: 40) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .top, spacing: 32) {
+                    ForEach(row, id: \.element.id) { i, habit in
+                        HabitCircle(habit: habit, changed: habit.id == data.changedId, delay: Double(i) * 0.08)
+                            .frame(width: 170)
+                    }
+                }
+            }
+        }
+        .fixedSize()
     }
 }
 
