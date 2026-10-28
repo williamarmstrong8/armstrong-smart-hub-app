@@ -179,6 +179,7 @@ private struct PlaceholderCard: View {
                         block(width: nil, height: 18, radius: 6).padding(.trailing, 40)
                     }
                 }
+            default:
                 HStack(spacing: 16) {
                     ForEach(0..<3, id: \.self) { _ in block(width: nil, height: 160, radius: 28) }
                 }
