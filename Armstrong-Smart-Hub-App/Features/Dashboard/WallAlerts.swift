@@ -70,8 +70,9 @@ final class WallAlertsStore {
     private static let key = "wall.dismissedAlerts"
 
     init() {
-        order = UserDefaults.standard.stringArray(forKey: Self.key) ?? []
-        dismissed = Set(order)
+        let saved = UserDefaults.standard.stringArray(forKey: Self.key) ?? []
+        order = saved
+        dismissed = Set(saved)
     }
 
     func dismiss(_ alert: WallAlert) {
