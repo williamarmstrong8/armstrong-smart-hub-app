@@ -63,6 +63,49 @@ private struct Placeholder: View {
     }
 }
 
+// MARK: Lights
+
+/// A light on the wall, styled like the weather and readiness cards: its name in caps, a bulb in
+/// its own color, and how bright it is, big. Tap toggles; hold for brightness and color.
+struct WallLightCard: View {
+    let entity: HAEntity
+    let onTap: () -> Void
+    let onAdjust: () -> Void
+
+    @State private var pressed = false
+
+    var body: some View {
+        let on = entity.isOn
+        let tint = entity.rgbColor.map { Color(rgb: $0) } ?? .orange
+        GlanceTile(title: entity.name) {
+            Image(systemName: on ? "lightbulb.fill" : "lightbulb")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(on ? .white : BrickLook.soft)
+                .frame(width: 40, height: 40)
+                .background(on ? tint : BrickLook.pill, in: .circle)
+                .contentTransition(.symbolEffect(.replace))
+        } content: {
+            BigValue(value: on ? "\(entity.brightnessPct)%" : "Off",
+                     note: entity.isUnavailable ? "Unavailable" : on ? "On" : " ",
+                     tint: on ? BrickLook.ink : BrickLook.soft)
+        }
+        .scaleEffect(pressed ? 0.97 : 1)
+        .animation(.spring(duration: 0.2), value: pressed)
+        .animation(.easeOut(duration: 0.2), value: on)
+        .opacity(entity.isUnavailable ? 0.5 : 1)
+        .onTapGesture { if !entity.isUnavailable { onTap() } }
+        .onLongPressGesture(minimumDuration: 0.4) {
+            if !entity.isUnavailable { onAdjust() }
+        } onPressingChanged: { pressed = $0 }
+        .sensoryFeedback(.impact(weight: .medium), trigger: on)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("\(entity.name), \(entity.stateLabel)")
+        .accessibilityAction { onTap() }
+        .accessibilityAction(named: "Adjust") { onAdjust() }
+    }
+}
+
 // MARK: Weather
 
 /// The morning's weather, big: the temperature now, what it's doing, and today's low to high
