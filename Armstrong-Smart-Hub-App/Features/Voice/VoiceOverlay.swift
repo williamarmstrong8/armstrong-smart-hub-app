@@ -50,7 +50,7 @@ struct VoiceOverlay: View {
         .animation(.smooth(duration: 0.5), value: hasStage)
     }
 
-    private var hasStage: Bool { agent.view != nil || agent.hint != nil }
+    private var hasStage: Bool { agent.hasCard }
 
     /// The card gets the screen, with the orb and the conversation in a header above it.
     @ViewBuilder private var content: some View {
