@@ -17,12 +17,29 @@ enum WallAlert: Identifiable, Equatable {
         }
     }
 
+    /// Bump to show the sample round again; each sample goes for good once its X is tapped.
+    static let testRound = 1
+
+    /// One of each popup with sample content, to see them all once.
+    @MainActor
+    private static func samples() -> [WallAlert] {
+        let r = testRound
+        let stopped = try? JSONDecoder().decode(PiContainer.self, from: Data("""
+            {"name":"test-service","state":"exited","status":"Exited (1) 2 minutes ago · a sample","health":null,"image":"sample"}
+            """.utf8))
+        return [
+            .pi(stopped.map { [$0] } ?? [], key: "test\(r):pi"),
+            .wake(key: "test\(r):wake"),
+            .birthday(title: "Sample's birthday", calendar: "Birthdays (sample)", key: "test\(r):birthday"),
+        ]
+    }
+
     /// The popups due right now, in the order they show.
     @MainActor
     static func queue(now: Date, pi: PiStatus?, alarm: WakeAlarm, calendar: CalendarResponse?, dismissed: Set<String>) -> [WallAlert] {
         let cal = Calendar.current
         let hour = cal.component(.hour, from: now)
-        var out: [WallAlert] = []
+        var out: [WallAlert] = samples()
 
         if let pi, pi.available, !pi.troubled.isEmpty {
             out.append(.pi(pi.troubled, key: "pi:" + pi.troubled.map(\.name).sorted().joined(separator: ",")))
@@ -44,21 +61,26 @@ enum WallAlert: Identifiable, Equatable {
     }
 }
 
-/// Which popups were closed, kept across launches.
+/// Which popups were closed, kept across launches, newest last.
 @MainActor
 @Observable
 final class WallAlertsStore {
+    private var order: [String]
     private(set) var dismissed: Set<String>
     private static let key = "wall.dismissedAlerts"
 
     init() {
-        dismissed = Set(UserDefaults.standard.stringArray(forKey: Self.key) ?? [])
+        order = UserDefaults.standard.stringArray(forKey: Self.key) ?? []
+        dismissed = Set(order)
     }
 
     func dismiss(_ alert: WallAlert) {
-        dismissed.insert(alert.id)
-        // Only recent ones matter; keep the list from growing forever.
-        UserDefaults.standard.set(Array(dismissed.sorted().suffix(80)), forKey: Self.key)
+        order.removeAll { $0 == alert.id }
+        order.append(alert.id)
+        // Only recent ones matter; keep the newest so the list doesn't grow forever.
+        order = Array(order.suffix(80))
+        dismissed = Set(order)
+        UserDefaults.standard.set(order, forKey: Self.key)
     }
 }
 
