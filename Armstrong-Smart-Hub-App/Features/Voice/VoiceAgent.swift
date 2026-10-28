@@ -519,7 +519,10 @@ final class VoiceAgent {
         }
     }
 
+    /// Closes the overlay and cancels the conversation: the socket closes and anything Jarvis
+    /// was still saying stops at once.
     func end(immediately: Bool = false) {
+        audio.flushPlayback()
         followUp?.cancel()
         followUp = nil
         watchdog?.cancel()
