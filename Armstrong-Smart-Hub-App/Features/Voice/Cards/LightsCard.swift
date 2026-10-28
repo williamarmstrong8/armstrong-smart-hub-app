@@ -6,16 +6,32 @@ struct LightsCard: View {
     let lights: [LightTile]
     let changed: [String]
 
+    /// No title, just the lights, centered: as many across as fit, the rows centered too.
     var body: some View {
-        let on = lights.filter(\.on).count
-        VStack(alignment: .leading, spacing: 48) {
-            CardHeader(title: "Lights", detail: on == 0 ? "All off" : "\(on) of \(lights.count) on", symbol: "lightbulb.2")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 190, maximum: 300), spacing: 40)], spacing: 52) {
-                ForEach(lights) { light in
-                    LightTileView(light: light, changed: changed.contains(light.id))
+        ViewThatFits(in: .horizontal) {
+            grid(4)
+            grid(3)
+            grid(2)
+            grid(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Rows of `across` lights, each row centered (a short last row too).
+    private func grid(_ across: Int) -> some View {
+        let n = max(1, min(across, lights.count))
+        let rows = stride(from: 0, to: lights.count, by: n).map { Array(lights[$0..<min($0 + n, lights.count)]) }
+        return VStack(spacing: 52) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 40) {
+                    ForEach(row) { light in
+                        LightTileView(light: light, changed: changed.contains(light.id))
+                            .frame(width: 200)
+                    }
                 }
             }
         }
+        .fixedSize()
     }
 }
 

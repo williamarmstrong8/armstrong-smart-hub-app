@@ -40,6 +40,17 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
     /// When the mic last delivered a buffer.
     private var lastMicAt: CFAbsoluteTime = 0
 
+    // Jarvis hearing itself. Echo cancellation leaves a trace of its own voice in the mic, and
+    // the service took that for you talking over it. While it plays (and briefly after), only
+    // loud mic audio is sent; the rest goes up as silence, keeping the stream's timing. Opening
+    // sends the last 300 ms first, so your first word isn't clipped.
+    private static let bargeInLevel: Float = 0.55
+    private static let gateHold: CFAbsoluteTime = 0.7
+    private static let echoTail: CFAbsoluteTime = 0.4
+    private var lastPlaybackAt: CFAbsoluteTime = 0
+    private var gateOpenUntil: CFAbsoluteTime = 0
+    private var held = Data()
+
     var isPlaying: Bool { lock.withLock { queuedBuffers > 0 } }
     var isRunning: Bool { engine.isRunning }
     /// The mic delivered audio in the last few seconds. False after an interruption (a call,
@@ -170,7 +181,10 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
             guard let self else { return }
             self.lock.withLock {
                 self.queuedBuffers = max(0, self.queuedBuffers - 1)
-                if self.queuedBuffers == 0 { self.outputLevel = 0 }
+                if self.queuedBuffers == 0 {
+                    self.outputLevel = 0
+                    self.lastPlaybackAt = CFAbsoluteTimeGetCurrent()
+                }
             }
         }
         if !player.isPlaying { player.play() }
@@ -182,6 +196,10 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
         lock.withLock {
             queuedBuffers = 0
             outputLevel = 0
+            // Cut off because you're talking: no echo to guard against, so let it all through.
+            lastPlaybackAt = 0
+            gateOpenUntil = 0
+            held = Data()
         }
         // Playing on a stopped engine (after an interruption) raises an exception.
         if engine.isRunning { player.play() }
@@ -223,13 +241,29 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
 
         guard let stream = convert(buffer, with: streamConverter, to: streamFormat), let ch = stream.int16ChannelData?[0] else { return }
         let data = Data(bytes: ch, count: Int(stream.frameLength) * 2)
-        let live: Bool = lock.withLock {
-            if streaming { return true }
-            preroll.append(data)
-            if preroll.count > Self.prerollBytes { preroll.removeFirst(preroll.count - Self.prerollBytes) }
-            return false
+        let out: Data? = lock.withLock {
+            guard streaming else {
+                preroll.append(data)
+                if preroll.count > Self.prerollBytes { preroll.removeFirst(preroll.count - Self.prerollBytes) }
+                return nil
+            }
+            let now = CFAbsoluteTimeGetCurrent()
+            let speaking = queuedBuffers > 0 || now - lastPlaybackAt < Self.echoTail
+            guard speaking else {
+                held = Data()
+                return data
+            }
+            if level >= Self.bargeInLevel { gateOpenUntil = now + Self.gateHold }
+            if now < gateOpenUntil {
+                let head = held
+                held = Data()
+                return head + data
+            }
+            held.append(data)
+            if held.count > Self.prerollBytes { held.removeFirst(held.count - Self.prerollBytes) }
+            return Data(count: data.count)
         }
-        if live { onStreamAudio?(data) }
+        if let out { onStreamAudio?(out) }
     }
 
     private func convert(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter?, to format: AVAudioFormat) -> AVAudioPCMBuffer? {
