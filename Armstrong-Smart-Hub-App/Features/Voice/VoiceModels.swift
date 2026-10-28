@@ -148,6 +148,8 @@ struct FitnessCardData: Decodable, Equatable, Sendable {
         let minutes: Int?
         let distanceMeters: Double?
     }
+    /// readiness, sleep, bodyBattery, steps, heart or workout: what the card shows big.
+    let focus: String?
     let readiness: Int?
     let readinessLevel: String?
     let sleepScore: Int?
