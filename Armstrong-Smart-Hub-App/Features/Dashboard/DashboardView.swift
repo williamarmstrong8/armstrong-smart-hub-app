@@ -163,11 +163,12 @@ struct DashboardView: View {
         }
         // Popups (a service down, tomorrow's wake-up, a birthday), one at a time, under Jarvis.
         .overlay { popups }
-        // Jarvis takes the stage: the dashboard softens and steps back.
-        .blur(radius: voice.presented ? 24 : 0)
-        .scaleEffect(voice.presented ? 0.97 : 1)
-        .allowsHitTesting(!voice.presented)
-        .animation(.smooth(duration: 0.5), value: voice.presented)
+        // Jarvis takes the stage once it has a card: the dashboard softens and steps back. While
+        // it's only the corner orb, the wall stays as it is.
+        .blur(radius: voice.takingOver ? 24 : 0)
+        .scaleEffect(voice.takingOver ? 0.97 : 1)
+        .allowsHitTesting(!voice.takingOver)
+        .animation(.smooth(duration: 0.5), value: voice.takingOver)
         .background(BrickLook.page.ignoresSafeArea())
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)
