@@ -15,11 +15,14 @@ struct VoiceOverlay: View {
                 // Listening or thinking: just the orb, small, in the corner. Tap it to cancel.
                 VStack(alignment: .trailing, spacing: 12) {
                     if let notice = agent.notice { NoticePill(text: notice) }
-                    orb.frame(width: 56, height: 56)
+                    orb.frame(width: 88, height: 88)
                 }
                 .environment(\.colorScheme, .dark)
-                .padding(28)
+                // The same gap from the side and the bottom: measured from the screen's edges, not
+                // the safe area (which adds the home indicator's margin at the bottom only).
+                .padding(Self.cornerInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .ignoresSafeArea()
                 .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
             } else if agent.presented {
                 // Tap anywhere outside the card to dismiss.
@@ -47,6 +50,8 @@ struct VoiceOverlay: View {
     }
 
     private var hasStage: Bool { agent.hasCard }
+
+    private static let cornerInset: CGFloat = 20
 
     /// The card gets the screen, with the orb and the conversation in a header above it.
     @ViewBuilder private var content: some View {
