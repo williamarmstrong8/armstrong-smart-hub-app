@@ -185,32 +185,23 @@ struct WakeControl: View {
     @Environment(AppSession.self) private var session
     @State private var editing = false
 
+    /// Only a set alarm shows here, as quiet text (tap it to change or turn it off). Setting one
+    /// happens in the wall's evening popup.
     var body: some View {
         TimelineView(.everyMinute) { context in
-            let hour = Calendar.current.component(.hour, from: context.date)
-            // TODO: back to 21 after testing.
-            let evening = hour >= 18 || hour < 3
             Group {
                 if let date = alarm.scheduled {
-                    Button { editing = true } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "alarm.fill")
-                            Text(date.formatted(date: .omitted, time: .shortened)).monospacedDigit()
-                            if alarm.followUpScheduled { Text("+\(WakeAlarm.followUpMinutes)").foregroundStyle(.tertiary) }
-                        }
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Image(systemName: "alarm.fill")
+                        Text(date.formatted(date: .omitted, time: .shortened)).monospacedDigit()
+                        if alarm.followUpScheduled { Text("+\(WakeAlarm.followUpMinutes)").foregroundStyle(.tertiary) }
                     }
-                } else if evening {
-                    Button { editing = true } label: {
-                        Label("Set wake-up", systemImage: "alarm")
-                            .font(.title3.weight(.medium))
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(BrickLook.soft)
+                    .contentShape(.rect)
+                    .onTapGesture { editing = true }
                 }
             }
-            .buttonStyle(.plain)
             .onChange(of: context.date) { alarm.expireIfPast() }
         }
         .popover(isPresented: $editing, arrowEdge: .top) {
@@ -225,7 +216,7 @@ struct WakeControl: View {
     }
 }
 
-private struct WakeEditor: View {
+struct WakeEditor: View {
     @Bindable var alarm: WakeAlarm
     let onSet: () -> Void
     let onOff: () -> Void
