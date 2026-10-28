@@ -223,6 +223,13 @@ struct PiStatus: Decodable, Equatable, Sendable {
     var troubled: [PiContainer] { containers?.filter(\.troubled) ?? [] }
 }
 
+/// The wake-up alarm Jarvis just set (or turned off, when `time` is nil). Made on the iPad,
+/// which owns the alarm; the hub never sends it.
+struct AlarmCardData: Equatable, Sendable {
+    let time: Date?
+    let secondAlarm: Bool
+}
+
 /// What the overlay shows after the orb: one card per kind of request.
 enum VoiceView: Decodable, Sendable {
     case lights([LightTile], changed: [String])
@@ -233,8 +240,9 @@ enum VoiceView: Decodable, Sendable {
     case weather(WeatherData)
     case fitness(FitnessCardData)
     case pi(PiStatus, changed: String?, action: String?)
+    case alarm(AlarmCardData)
 
-    enum Kind: String, Decodable, Sendable { case lights, movie, finance, calendar, habits, weather, fitness, pi }
+    enum Kind: String, Decodable, Sendable { case lights, movie, finance, calendar, habits, weather, fitness, pi, alarm }
 
     var kind: Kind {
         switch self {
@@ -246,6 +254,7 @@ enum VoiceView: Decodable, Sendable {
         case .weather: .weather
         case .fitness: .fitness
         case .pi: .pi
+        case .alarm: .alarm
         }
     }
 
@@ -272,6 +281,8 @@ enum VoiceView: Decodable, Sendable {
             self = .pi(try c.decode(PiStatus.self, forKey: .pi),
                        changed: try c.decodeIfPresent(String.self, forKey: .changed),
                        action: try c.decodeIfPresent(String.self, forKey: .action))
+        case .alarm:
+            throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "Alarm cards are made on the iPad")
         }
     }
 }

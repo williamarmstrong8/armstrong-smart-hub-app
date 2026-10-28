@@ -45,7 +45,17 @@ struct DashboardTab: View {
                     case .habits: Task { await habits.load(api: session.api) }
                     case .calendar: Task { await refreshSlow() }
                     case .pi: Task { await pi.load(api: session.api) }
-                    case .finance, .weather, .fitness: break
+                    case .finance, .weather, .fitness, .alarm: break
+                    }
+                }
+                // "Wake me at 6:30": the alarm is this iPad's, so Jarvis sets it here.
+                voice.localTool = { name, arguments in
+                    switch name {
+                    case "setWakeAlarm": return await setAlarm(arguments)
+                    case "cancelWakeAlarm":
+                        await wake.cancel(home: home, api: session.api, toast: Toast())
+                        return (["ok": wake.scheduled == nil], .alarm(AlarmCardData(time: nil, secondAlarm: false)))
+                    default: return nil
                     }
                 }
                 await voice.start(api: session.api)
@@ -67,6 +77,27 @@ struct DashboardTab: View {
                     try? await Task.sleep(for: .seconds(60))
                 }
             }
+    }
+
+    private func setAlarm(_ arguments: String) async -> (output: [String: Any], view: VoiceView?) {
+        struct Args: Decodable { let time: String; let secondAlarm: Bool? }
+        let args = try? JSONDecoder().decode(Args.self, from: Data(arguments.utf8))
+        let parts = args?.time.split(separator: ":").compactMap { Int($0) } ?? []
+        guard let args, parts.count == 2, (0..<24).contains(parts[0]), (0..<60).contains(parts[1]) else {
+            return (["error": "Give the time as HH:mm."], nil)
+        }
+        wake.hour = parts[0]
+        wake.minute = parts[1]
+        if let second = args.secondAlarm { wake.followUp = second }
+        let toast = Toast()
+        await wake.set(home: home, api: session.api, toast: toast)
+        guard let date = wake.scheduled, Calendar.current.component(.hour, from: date) == parts[0] else {
+            return (["error": toast.message ?? "Couldn't set the alarm. Alarms may be turned off for this app in Settings."], nil)
+        }
+        var output: [String: Any] = ["ok": true, "alarm": date.formatted(date: .omitted, time: .shortened), "secondAlarm": wake.followUpScheduled]
+        // The alarm is set even if the lamp couldn't be scheduled; say so.
+        if toast.isError, let message = toast.message { output["note"] = message }
+        return (output, .alarm(AlarmCardData(time: date, secondAlarm: wake.followUpScheduled)))
     }
 
     private func refreshSlow() async {
