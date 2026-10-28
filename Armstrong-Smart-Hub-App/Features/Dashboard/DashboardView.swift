@@ -52,6 +52,14 @@ struct DashboardTab: View {
                 voice.localTool = { name, arguments in
                     switch name {
                     case "setWakeAlarm": return await setAlarm(arguments)
+                    case "showWakeAlarm":
+                        wake.expireIfPast()
+                        guard let date = wake.scheduled else {
+                            return (["set": false], .alarm(AlarmCardData(time: nil, secondAlarm: false)))
+                        }
+                        return (["set": true, "alarm": date.formatted(date: .omitted, time: .shortened),
+                                 "secondAlarm": wake.followUpScheduled],
+                                .alarm(AlarmCardData(time: date, secondAlarm: wake.followUpScheduled)))
                     case "cancelWakeAlarm":
                         await wake.cancel(home: home, api: session.api, toast: Toast())
                         return (["ok": wake.scheduled == nil], .alarm(AlarmCardData(time: nil, secondAlarm: false)))
