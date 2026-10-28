@@ -93,12 +93,6 @@ private let deviceGroups: [(title: String, kinds: Set<ControlKind>)] = [
     ("Switches", [.toggle]),
 ]
 
-/// Pages opened from the wall.
-private enum WallPage: String, Identifiable {
-    case pi
-    var id: String { rawValue }
-}
-
 struct DashboardView: View {
     let home: HomeStore
     let finance: FinanceStore
@@ -116,9 +110,7 @@ struct DashboardView: View {
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
     @State private var retagging: Transaction?
-    @State private var editingHabit: HabitEditTarget?
     @State private var account = false
-    @State private var page: WallPage?
     @State private var alerts = WallAlertsStore()
 
     var body: some View {
@@ -162,11 +154,7 @@ struct DashboardView: View {
                 Task { await finance.retag(t, to: c, api: session.api, toast: toast) }
             }
         }
-        .sheet(item: $page) { _ in
-            WallSheet(title: "Raspberry Pi") { PiPanel(store: pi) }
-        }
         .sheet(isPresented: $account) { SettingsView() }
-        .habitEditor($editingHabit, store: habits)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in habits.rollDay() }
         .toast(toast)
     }
@@ -196,44 +184,9 @@ struct DashboardView: View {
                 .onLongPressGesture { account = true }
             }
             Spacer(minLength: 0)
-            // Where the buttons used to be: today's habits, small, then the alarm and status.
-            VStack(alignment: .trailing, spacing: 14) {
-                habitsStrip
-                HStack(spacing: 16) {
-                    WakeControl(alarm: wake, home: home, toast: toast)
-                    // Tapping the status opens the Pi's services and their controls.
-                    LinkStatus(voice: voice).contentShape(.rect).onTapGesture { page = .pi }
-                }
-            }
-            .padding(.top, 8)
-        }
-    }
-
-    /// Today's habits as small circles. Tap to fill; hold to edit.
-    @ViewBuilder
-    private var habitsStrip: some View {
-        if habits.loaded, !habits.habits.isEmpty {
-            // Names under the circles when they fit, emoji-only circles when there are many.
-            ViewThatFits(in: .horizontal) {
-                habitCircles(size: 48, names: true)
-                habitCircles(size: 42, names: false)
-            }
-            .animation(.spring(duration: 0.4, bounce: 0.2), value: habits.done)
-            .sensoryFeedback(.success, trigger: habits.doneToday) { old, new in new > old }
-        }
-    }
-
-    private func habitCircles(size: CGFloat, names: Bool) -> some View {
-        let today = habits.today
-        return HStack(alignment: .top, spacing: names ? 6 : 10) {
-            ForEach(habits.habits) { habit in
-                HabitButton(habit: habit, done: habits.isDone(habit.id, today), saving: habits.isSaving(habit.id, today),
-                            size: size, showsName: names) {
-                    Task { await habits.toggle(habit, today, api: session.api, toast: toast) }
-                }
-                .frame(width: names ? 68 : size)
-                .contextMenu { Button("Edit", systemImage: "pencil") { editingHabit = .habit(habit) } }
-            }
+            // A set alarm, as quiet text; nothing otherwise.
+            WakeControl(alarm: wake, home: home, toast: toast)
+                .padding(.top, 12)
         }
     }
 
@@ -387,83 +340,6 @@ private struct WallHeading: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(title).font(.system(size: 26, weight: .regular))
             if let meta { BrickCaps(text: meta).foregroundStyle(BrickLook.soft).monospacedDigit() }
-        }
-    }
-}
-
-/// A page opened from the wall that isn't one of the iPhone's tabs.
-private struct WallSheet<Content: View>: View {
-    let title: String
-    @ViewBuilder var content: Content
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                content.padding(28)
-            }
-            .brickBackdrop()
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(BrickLook.page, for: .navigationBar)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-        }
-        .presentationDetents([.large])
-    }
-}
-
-/// Whether the hub and "Hey Jarvis" are working, in words, so a dead wall says why.
-private struct LinkStatus: View {
-    let voice: VoiceAgent
-    @State private var link = HubLink.shared
-
-    var body: some View {
-        // Side by side when there's room, stacked in portrait.
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                item(hubColor, hubText)
-                item(voiceColor, voiceText)
-            }
-            VStack(alignment: .trailing, spacing: 6) {
-                item(hubColor, hubText)
-                item(voiceColor, voiceText)
-            }
-        }
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(BrickLook.soft)
-        .animation(.smooth, value: link.state)
-        .animation(.smooth, value: voice.status)
-    }
-
-    private func item(_ color: Color, _ text: String) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text(text).lineLimit(1)
-        }
-    }
-
-    private var hubColor: Color {
-        switch link.state { case .online: .green; case .reconnecting: .orange; case .offline: .red }
-    }
-
-    private var hubText: String {
-        switch link.state {
-        case .online: "Pi connected"
-        case .reconnecting: "Reconnecting…"
-        case .offline: link.networkUp ? "Pi unreachable" : "No network"
-        }
-    }
-
-    private var voiceColor: Color {
-        switch voice.status { case .ready: .green; case .starting: .orange; case .noMic, .offline: .red }
-    }
-
-    private var voiceText: String {
-        switch voice.status {
-        case .ready: "Listening for Hey Jarvis"
-        case .starting: "Starting mic…"
-        case .noMic: "Mic off"
-        case .offline: "Jarvis offline"
         }
     }
 }
