@@ -97,6 +97,9 @@ struct WallPopup: View {
                 .shadow(color: .black.opacity(0.25), radius: 30, y: 12)
                 .padding(32)
                 .foregroundStyle(BrickLook.ink)
+                // The wall tints with its ink, which is near white in dark mode: filled buttons and
+                // the toggle came out white on white. The hub's blue reads in both modes.
+                .tint(Fit.action)
         }
     }
 
@@ -129,7 +132,6 @@ struct WallPopup: View {
                                 .font(.system(size: 17, weight: .semibold))
                                 .buttonStyle(.borderedProminent)
                                 .buttonBorderShape(.capsule)
-                                .tint(BrickLook.bar)
                             }
                         }
                         .padding(16)
