@@ -1,7 +1,12 @@
 import SwiftUI
 
-/// The wall's glance row: three soft cards the same height, each with its label and an icon
-/// across the top and one big answer along the bottom.
+/// Every card on the wall (weather, readiness, lights, the next event) is this tall.
+enum WallCard {
+    static let height: CGFloat = 228
+}
+
+/// A soft card on the wall: its label and an icon across the top and one big answer along the
+/// bottom, all the same height.
 private struct GlanceTile<Content: View, Corner: View>: View {
     let title: String
     @ViewBuilder var corner: Corner
@@ -21,7 +26,8 @@ private struct GlanceTile<Content: View, Corner: View>: View {
         .padding(.horizontal, 22)
         .padding(.top, 16)
         .padding(.bottom, 20)
-        .frame(maxWidth: .infinity, minHeight: 168, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(height: WallCard.height)
         .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
         .foregroundStyle(BrickLook.ink)
         .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
@@ -210,23 +216,23 @@ struct ForecastTile: View {
 
 // MARK: Fitness
 
-/// At night: how the day went. Steps when the hub has today's count (usually after the watch's
-/// midnight sync), otherwise Body Battery, otherwise last night's sleep.
+/// At night: what's left in the tank. Body Battery big (last night's sleep when there's no
+/// reading), with the day's steps underneath when the hub has them.
 struct DayEndTile: View {
     let store: FitnessStore
 
     var body: some View {
-        let today = store.today
-        GlanceTile(title: "Your day") {
-            Image(systemName: icon).font(.system(size: 24)).foregroundStyle(tint)
+        let energy = store.energy
+        GlanceTile(title: energy != nil ? "Body Battery" : "Sleep") {
+            Image(systemName: energy != nil ? "bolt.fill" : "moon.fill")
+                .font(.system(size: 24))
+                .foregroundStyle(energy != nil ? Fit.energy : Fit.sleep)
         } content: {
             if store.loaded {
-                if let steps = today?.steps {
-                    BigValue(value: steps.formatted(), note: stepsNote(today))
-                } else if let energy = store.energy {
-                    BigValue(value: "\(energy)", note: "Body Battery", tint: Fit.energy)
+                if let energy {
+                    BigValue(value: "\(energy)", note: stepsNote ?? Status.word(energy), tint: Fit.energy)
                 } else {
-                    BigValue(value: store.sleepScore.map(String.init) ?? "–", note: "Last night's sleep", tint: Fit.sleep)
+                    BigValue(value: store.sleepScore.map(String.init) ?? "–", note: stepsNote ?? "Last night", tint: Fit.sleep)
                 }
             } else {
                 Placeholder(error: store.error)
@@ -234,19 +240,69 @@ struct DayEndTile: View {
         }
     }
 
-    private var icon: String {
-        store.today?.steps != nil ? "figure.walk" : store.energy != nil ? "bolt.fill" : "moon.fill"
+    private var stepsNote: String? {
+        guard let steps = store.today?.steps else { return nil }
+        return "\(steps.formatted()) steps today"
+    }
+}
+
+// MARK: Calendar
+
+/// The next thing on the calendar, big: its title, then when (and how soon) in its calendar's
+/// color. Timed events first; an all-day one only when nothing timed is left.
+struct NextEventTile: View {
+    let calendar: CalendarResponse?
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            let next = next(after: context.date)
+            GlanceTile(title: next.map { live($0, context.date) ? "Now" : "Next" } ?? "Calendar") {
+                Image(systemName: "calendar")
+                    .font(.system(size: 26))
+                    .foregroundStyle(next.map { Color(hexForWhiteText: $0.color) } ?? BrickLook.soft)
+            } content: {
+                if let next {
+                    BigValue(value: next.title, note: when(next, now: context.date))
+                } else if calendar?.status == "connected" {
+                    BigValue(value: "Nothing planned", note: "The next few days are free", tint: BrickLook.soft)
+                } else {
+                    Placeholder(error: calendar == nil ? nil : "Calendar isn't connected.")
+                }
+            }
+        }
     }
 
-    private var tint: Color {
-        store.today?.steps != nil ? Fit.activity : store.energy != nil ? Fit.energy : Fit.sleep
+    private func next(after now: Date) -> CalendarEvent? {
+        guard let calendar else { return nil }
+        let events = calendar.days.flatMap(\.events)
+        let timed = events.filter { !$0.allDay && (ISO.parse($0.end) ?? .distantPast) > now }
+            .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+        if let first = timed.first { return first }
+        return calendar.days.first { $0.day == calendar.today }?.events.first { $0.allDay }
     }
 
-    private func stepsNote(_ day: FitnessDay?) -> String {
-        var parts = ["steps"]
-        if let goal = day?.stepGoal, goal > 0 { parts = ["of \(goal.formatted()) steps"] }
-        if let energy = store.energy { parts.append("Battery \(energy)") }
-        return parts.joined(separator: " · ")
+    private func live(_ e: CalendarEvent, _ now: Date) -> Bool {
+        !e.allDay && (e.startDate ?? .distantFuture) <= now
+    }
+
+    /// "Today 6:30 PM · in 45 min", "Tomorrow 9 AM", "Thursday 2 PM", "Until 7 PM".
+    private func when(_ e: CalendarEvent, now: Date) -> String {
+        let zone = TimeZone(identifier: calendar?.timeZone ?? "") ?? .current
+        if e.allDay { return "Today · all day" }
+        guard let start = e.startDate else { return "" }
+        var style = Date.FormatStyle.dateTime.hour().minute()
+        style.timeZone = zone
+        if live(e, now), let end = ISO.parse(e.end) { return "Until \(end.formatted(style))" }
+        var cal = Calendar.current
+        cal.timeZone = zone
+        let day = cal.isDate(start, inSameDayAs: now) ? "Today"
+            : cal.isDate(start, inSameDayAs: now.addingTimeInterval(86_400)) ? "Tomorrow"
+            : start.formatted(Date.FormatStyle(timeZone: zone).weekday(.wide))
+        var text = "\(day) \(start.formatted(style))"
+        let minutes = Int(start.timeIntervalSince(now) / 60)
+        if minutes < 60 { text += " · in \(max(minutes, 1)) min" }
+        else if minutes < 6 * 60 { text += " · in \(minutes / 60)h \(minutes % 60)m" }
+        return text
     }
 }
 

@@ -151,7 +151,6 @@ struct DashboardView: View {
                 glance
                 homeSection
                 transactionsSection
-                CalendarSection(calendar: calendar)
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 24)
@@ -273,24 +272,34 @@ struct DashboardView: View {
             }
             .scrollClipDisabled()
         }
-        if home.state == nil {
-            ProgressView().frame(maxWidth: .infinity, minHeight: 160)
-        } else {
+        // Lights on the left in two columns, the next event filling the right half beside them.
+        let lights = home.shownEntities.filter { $0.control == .light }
+        HStack(alignment: .top, spacing: 14) {
+            if home.state == nil {
+                ProgressView().frame(maxWidth: .infinity, minHeight: WallCard.height)
+            } else if !lights.isEmpty {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                    ForEach(lights) { e in
+                        WallLightCard(entity: e) {
+                            Task { await home.toggle(e, api: session.api, toast: toast) }
+                        } onAdjust: {
+                            if e.hasLightControls { light = e }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            NextEventTile(calendar: calendar)
+                .frame(maxWidth: .infinity)
+        }
+        if home.state != nil {
             let shown = home.shownEntities
             ForEach(deviceGroups, id: \.title) { group in
                 let items = shown.filter { group.kinds.contains($0.control) }
                 if !items.isEmpty {
                     if group.kinds.contains(.light) {
-                        // Lights need no heading: each is a card like the weather's, in its own color.
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
-                            ForEach(items) { e in
-                                WallLightCard(entity: e) {
-                                    Task { await home.toggle(e, api: session.api, toast: toast) }
-                                } onAdjust: {
-                                    if e.hasLightControls { light = e }
-                                }
-                            }
-                        }
+                        // Shown above, beside the next event.
+                        EmptyView()
                     } else {
                         VStack(alignment: .leading, spacing: 12) {
                             WallHeading(title: group.title, meta: summary(items))
@@ -539,123 +548,6 @@ struct FlowLayout: Layout {
             x += s.width + spacing
             row = max(row, s.height)
         }
-    }
-}
-
-/// The next three days from Google Calendar, side by side: a Google-style date
-/// marker, then each event as a solid chip with just its title and start time.
-private struct CalendarSection: View {
-    let calendar: CalendarResponse?
-
-    var body: some View {
-        if let calendar, calendar.status == "connected", let today = calendar.today {
-            let byDay = Dictionary(uniqueKeysWithValues: calendar.days.map { ($0.day, $0.events) })
-            let days = (0..<3).map { addDays(today, $0) }
-            VStack(alignment: .leading, spacing: 16) {
-                WallHeading(title: "Calendar")
-                TimelineView(.everyMinute) { context in
-                    HStack(alignment: .top, spacing: 20) {
-                        ForEach(Array(days.enumerated()), id: \.element) { i, day in
-                            DayColumn(day: day, index: i, events: byDay[day] ?? [], zone: calendar.timeZone, now: context.date)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct DayColumn: View {
-    let day: String
-    let index: Int
-    let events: [CalendarEvent]
-    let zone: String
-    let now: Date
-
-    private static let maxShown = 4
-
-    var body: some View {
-        let date = DayFormat.parse(day) ?? .now
-        let utc = TimeZone(identifier: "UTC")!
-        let isToday = index == 0
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                Text(date.formatted(Date.FormatStyle(timeZone: utc).day()))
-                    .font(.system(size: 24, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(isToday ? .white : .primary)
-                    .frame(width: 48, height: 48)
-                    .background(isToday ? Color.googleBlue : .clear, in: .circle)
-                Text(index == 0 ? "Today" : index == 1 ? "Tomorrow" : date.formatted(Date.FormatStyle(timeZone: utc).weekday(.wide)))
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(isToday ? Color.googleBlue : .secondary)
-                    .lineLimit(1)
-            }
-
-            if events.isEmpty {
-                Text("Free")
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 4)
-            } else {
-                ForEach(events.prefix(Self.maxShown)) { event in
-                    EventChip(event: event, zone: zone, now: now)
-                }
-                if events.count > Self.maxShown {
-                    Text("+\(events.count - Self.maxShown) more")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 4)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-}
-
-/// A solid event chip in the calendar's color, darkened where needed so the white text reads
-/// (Google's pastel calendars were too pale): title, and when it starts, or "Now" while it's on.
-private struct EventChip: View {
-    let event: CalendarEvent
-    let zone: String
-    let now: Date
-
-    var body: some View {
-        let color = Color(hexForWhiteText: event.color)
-        let start = event.startDate
-        let end = ISO.parse(event.end)
-        let live = !event.allDay && start.map { $0 <= now } == true && end.map { $0 > now } == true
-        VStack(alignment: .leading, spacing: 4) {
-            Text(event.title)
-                .font(.system(size: 19, weight: .semibold))
-                .lineLimit(2)
-            Text(live ? "Now" : timeText(start))
-                .font(.system(size: 16, weight: .medium))
-                .monospacedDigit()
-                .opacity(0.9)
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 13)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            // The event that's on right now gets a ring.
-            if live { RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.8), lineWidth: 2.5) }
-        }
-        .opacity(end.map { $0 < now } == true ? 0.55 : 1)
-    }
-
-    /// "6 PM" or "6:30 PM", like Google Calendar.
-    private func timeText(_ start: Date?) -> String {
-        if event.allDay { return "All day" }
-        guard let start else { return "" }
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: zone) ?? .current
-        var style = Date.FormatStyle.dateTime.hour()
-        if cal.component(.minute, from: start) != 0 { style = style.minute() }
-        style.timeZone = cal.timeZone
-        return start.formatted(style)
     }
 }
 
