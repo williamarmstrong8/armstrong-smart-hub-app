@@ -161,32 +161,11 @@ struct DashboardView: View {
 
     // MARK: Clock and status
 
+    /// Only a set alarm, as quiet text in the corner; nothing otherwise.
     private var header: some View {
-        HStack(alignment: .top, spacing: 24) {
-            TimelineView(.everyMinute) { context in
-                VStack(alignment: .leading, spacing: 4) {
-                    BrickCaps(text: context.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                        .foregroundStyle(BrickLook.soft)
-                    Text(context.date.formatted(date: .omitted, time: .shortened))
-                        .font(.system(size: 92, weight: .light))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                    if let status = fitness.dayStatus {
-                        Text("\(status.title). \(status.summary)")
-                            .font(.system(size: 18))
-                            .foregroundStyle(BrickLook.soft)
-                            .lineLimit(2)
-                    }
-                }
-                // A long press on the clock opens account settings (sign out).
-                .onLongPressGesture { account = true }
-            }
+        HStack {
             Spacer(minLength: 0)
-            // A set alarm, as quiet text; nothing otherwise.
             WakeControl(alarm: wake, home: home, toast: toast)
-                .padding(.top, 12)
         }
     }
 
@@ -212,6 +191,8 @@ struct DashboardView: View {
             .animation(.smooth(duration: 0.6), value: readinessTime)
             .animation(.smooth(duration: 0.6), value: night)
         }
+        // Holding the cards for two seconds opens account settings (sign out).
+        .onLongPressGesture(minimumDuration: 2) { account = true }
     }
 
     // MARK: Popups
@@ -268,15 +249,27 @@ struct DashboardView: View {
             ForEach(deviceGroups, id: \.title) { group in
                 let items = shown.filter { group.kinds.contains($0.control) }
                 if !items.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        WallHeading(title: group.title, meta: group.kinds.contains(.light) ? nil : summary(items))
-                        let lights = group.kinds.contains(.light)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: lights ? 230 : 170), spacing: 14)], spacing: 14) {
+                    if group.kinds.contains(.light) {
+                        // Lights need no heading: each is a card like the weather's, in its own color.
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
                             ForEach(items) { e in
-                                DeviceButton(entity: e, pending: home.pending.contains(e.id), large: lights) {
-                                    if e.isTV { remote = e } else { Task { await home.toggle(e, api: session.api, toast: toast) } }
+                                WallLightCard(entity: e) {
+                                    Task { await home.toggle(e, api: session.api, toast: toast) }
                                 } onAdjust: {
-                                    if e.isTV { remote = e } else if e.hasLightControls { light = e }
+                                    if e.hasLightControls { light = e }
+                                }
+                            }
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            WallHeading(title: group.title, meta: summary(items))
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
+                                ForEach(items) { e in
+                                    DeviceButton(entity: e, pending: home.pending.contains(e.id)) {
+                                        if e.isTV { remote = e } else { Task { await home.toggle(e, api: session.api, toast: toast) } }
+                                    } onAdjust: {
+                                        if e.isTV { remote = e } else if e.hasLightControls { light = e }
+                                    }
                                 }
                             }
                         }
