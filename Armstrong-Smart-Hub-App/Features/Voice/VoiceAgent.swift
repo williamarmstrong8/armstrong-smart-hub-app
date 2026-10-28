@@ -19,8 +19,14 @@ final class VoiceAgent {
     private(set) var phase: Phase = .idle
     /// Whether the overlay is up. Stays true through the follow-up window.
     private(set) var presented = false
+    /// A card worth the whole screen. Lights aren't: the wall's own light cards already show the
+    /// change, so Jarvis stays a small orb in the corner for them.
+    var hasCard: Bool {
+        guard let kind = view?.kind ?? hint else { return false }
+        return kind != .lights
+    }
     /// Jarvis has a card to show, so it takes the screen. Until then it's a small orb in the corner.
-    var takingOver: Bool { presented && (view != nil || hint != nil) }
+    var takingOver: Bool { presented && hasCard }
     /// The card on screen, if any.
     private(set) var view: VoiceView?
     /// Bumped whenever a new card lands, so the same kind still re-animates.
