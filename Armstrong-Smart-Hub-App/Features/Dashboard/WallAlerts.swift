@@ -18,7 +18,7 @@ enum WallAlert: Identifiable, Equatable {
     }
 
     /// Bump to show the sample round again; each sample goes for good once its X is tapped.
-    static let testRound = 1
+    static let testRound = 2
 
     /// One of each popup with sample content, to see them all once.
     @MainActor
@@ -85,7 +85,8 @@ final class WallAlertsStore {
     }
 }
 
-/// One popup over the dimmed wall. Tapping outside does nothing: only the X closes it.
+/// A popup is the whole screen, in the cards' quiet style: a caps label, one big light line, a
+/// short note, and the X in the corner. Nothing else closes it.
 struct WallPopup: View {
     let alert: WallAlert
     let pi: PiStore
@@ -97,89 +98,88 @@ struct WallPopup: View {
     @Environment(AppSession.self) private var session
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.45).ignoresSafeArea()
-                .contentShape(.rect)
-                .onTapGesture {} // Stays up until the X.
+        ZStack(alignment: .topTrailing) {
+            BrickLook.page.ignoresSafeArea()
             content
-                .padding(36)
-                .frame(maxWidth: 580)
-                .background(BrickLook.card, in: RoundedRectangle(cornerRadius: 36, style: .continuous))
-                .overlay(alignment: .topTrailing) {
-                    Button(action: onClose) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(BrickLook.ink)
-                            .frame(width: 52, height: 52)
-                            .background(BrickLook.pill, in: .circle)
-                    }
-                    .buttonStyle(CardPressStyle())
-                    .padding(16)
-                    .accessibilityLabel("Close")
-                }
-                .shadow(color: .black.opacity(0.25), radius: 30, y: 12)
-                .padding(32)
-                .foregroundStyle(BrickLook.ink)
-                // The wall tints with its ink, which is near white in dark mode: filled buttons and
-                // the toggle came out white on white. The hub's blue reads in both modes.
-                .tint(Fit.action)
+                .frame(maxWidth: 640)
+                .padding(40)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 22, weight: .light))
+                    .frame(width: 60, height: 60)
+                    .background(BrickLook.card, in: .circle)
+            }
+            .buttonStyle(CardPressStyle())
+            .padding(28)
+            .accessibilityLabel("Close")
+        }
+        .foregroundStyle(BrickLook.ink)
+        // The wall tints with its ink, which is near white in dark mode; the hub's blue reads in both.
+        .tint(Fit.action)
+    }
+
+    private func headline(_ caps: String, _ title: String, _ note: String?) -> some View {
+        VStack(spacing: 14) {
+            BrickCaps(text: caps).foregroundStyle(BrickLook.soft)
+            Text(title)
+                .font(.system(size: 64, weight: .light))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.5)
+            if let note {
+                Text(note).font(.system(size: 20)).foregroundStyle(BrickLook.soft).multilineTextAlignment(.center)
+            }
         }
     }
 
     @ViewBuilder private var content: some View {
         switch alert {
         case .pi(let down, _):
-            VStack(spacing: 22) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 64)).foregroundStyle(.orange)
-                Text(down.count == 1 ? "\(down[0].name) is down" : "\(down.count) services are down")
-                    .font(.system(size: 40, weight: .light)).multilineTextAlignment(.center)
-                    .lineLimit(2).minimumScaleFactor(0.6)
-                VStack(spacing: 10) {
+            VStack(spacing: 40) {
+                headline("Raspberry Pi",
+                         down.count == 1 ? "\(down[0].name) is down" : "\(down.count) services down",
+                         down.count == 1 ? down[0].status : down.map(\.name).joined(separator: ", "))
+                VStack(spacing: 12) {
                     ForEach(down) { c in
-                        HStack(spacing: 14) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(c.name).font(.system(size: 20, weight: .semibold))
-                                Text(c.status).font(.system(size: 15)).foregroundStyle(BrickLook.soft).lineLimit(1)
-                            }
+                        HStack(spacing: 16) {
+                            Circle().fill(.orange).frame(width: 10, height: 10)
+                            Text(c.name).font(.system(size: 22, weight: .regular))
                             Spacer(minLength: 8)
                             if pi.busy == c.name {
                                 ProgressView()
                             } else {
                                 let action: PiStore.Action = c.running ? .restart : .start
                                 Button(action == .start ? "Start" : "Restart") {
-                                    Task {
-                                        await pi.control(c, action, api: session.api, toast: toast)
-                                    }
+                                    Task { await pi.control(c, action, api: session.api, toast: toast) }
                                 }
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 18, weight: .medium))
                                 .buttonStyle(.borderedProminent)
                                 .buttonBorderShape(.capsule)
+                                .controlSize(.large)
                             }
                         }
-                        .padding(16)
-                        .background(BrickLook.pill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 18)
+                        .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
                     }
                 }
             }
 
         case .wake:
-            VStack(spacing: 18) {
-                Image(systemName: "alarm.fill").font(.system(size: 56)).foregroundStyle(.orange)
-                Text("Set tomorrow's wake-up").font(.system(size: 36, weight: .light)).multilineTextAlignment(.center)
+            VStack(spacing: 32) {
+                headline("Wake-up", "Set tomorrow's alarm", nil)
                 WakeEditor(alarm: alarm) {
                     Task { await alarm.set(home: home, api: session.api, toast: toast) }
                 } onOff: {}
+                .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
             }
 
         case .birthday(let title, let calendar, _):
-            VStack(spacing: 16) {
-                Text("🎂").font(.system(size: 110))
-                Text(title).font(.system(size: 44, weight: .light)).multilineTextAlignment(.center)
-                    .lineLimit(3).minimumScaleFactor(0.6)
-                Text("Today · \(calendar)").font(.system(size: 18)).foregroundStyle(BrickLook.soft)
+            VStack(spacing: 28) {
+                Text("🎂").font(.system(size: 120))
+                headline("Birthday", title, "Today · \(calendar)")
             }
-            .padding(.vertical, 12)
         }
     }
 }

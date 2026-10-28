@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The layer over the dashboard while Jarvis is up. First just the orb, big and
-/// centered; once there's something to show, the orb tucks into a header with
-/// the conversation and the card takes the stage.
+/// The layer over the dashboard while Jarvis is up. First just a small orb in the bottom-right
+/// corner, over whatever is showing (the wall, a popup), which stays usable. Once there's a card
+/// to show, Jarvis takes the screen: the orb moves into a header and the card takes the stage.
 struct VoiceOverlay: View {
     let agent: VoiceAgent
 
@@ -11,7 +11,21 @@ struct VoiceOverlay: View {
 
     var body: some View {
         ZStack {
-            if agent.presented {
+            if agent.presented, !hasStage {
+                // Listening or thinking: just the orb, small, in the corner. Tap it to cancel.
+                VStack(alignment: .trailing, spacing: 12) {
+                    if let notice = agent.notice { NoticePill(text: notice) }
+                    orb
+                        .frame(width: 84, height: 84)
+                        .padding(10)
+                        .background(Circle().fill(.black.opacity(0.78)))
+                        .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
+                }
+                .environment(\.colorScheme, .dark)
+                .padding(28)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
+            } else if agent.presented {
                 // Tap anywhere outside the card to dismiss.
                 // Darken what's behind so everything can float without cards.
                 Color.black.opacity(0.62)
@@ -33,46 +47,36 @@ struct VoiceOverlay: View {
             }
         }
         .animation(.smooth(duration: 0.5), value: agent.presented)
+        .animation(.smooth(duration: 0.5), value: hasStage)
     }
 
     private var hasStage: Bool { agent.view != nil || agent.hint != nil }
 
+    /// The card gets the screen, with the orb and the conversation in a header above it.
     @ViewBuilder private var content: some View {
-        if hasStage {
-            // The card gets the screen; Jarvis shrinks to a small badge up top.
-            VStack(spacing: 20) {
-                HStack(alignment: .center, spacing: 14) {
-                    orb.frame(width: 52, height: 52)
-                    Captions(agent: agent, compact: true)
-                    Spacer(minLength: 0)
-                }
-                if let notice = agent.notice { NoticePill(text: notice) }
-
-                // Centered when it fits; scrolls only when a card runs long (a busy day).
-                // Glows and shadows (a lit bulb, a poster, a new event) reach past the cards, so the
-                // stage isn't clipped to its frame and keeps a margin inside it for them.
-                GeometryReader { geo in
-                    ScrollView {
-                        stage
-                            .padding(36)
-                            .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .center)
-                    }
-                    .scrollIndicators(.hidden)
-                    .scrollBounceBehavior(.basedOnSize)
-                    .scrollClipDisabled()
-                }
+        VStack(spacing: 20) {
+            HStack(alignment: .center, spacing: 14) {
+                orb.frame(width: 52, height: 52)
+                Captions(agent: agent, compact: true)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        } else {
-            VStack(spacing: 36) {
-                Spacer()
-                orb.frame(width: 340, height: 340)
-                Captions(agent: agent, compact: false)
-                    .frame(maxWidth: 720)
-                Spacer()
-                if let notice = agent.notice { NoticePill(text: notice) }
+            if let notice = agent.notice { NoticePill(text: notice) }
+
+            // Centered when it fits; scrolls only when a card runs long (a busy day).
+            // Glows and shadows (a lit bulb, a poster, a new event) reach past the cards, so the
+            // stage isn't clipped to its frame and keeps a margin inside it for them.
+            GeometryReader { geo in
+                ScrollView {
+                    stage
+                        .padding(36)
+                        .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .center)
+                }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollClipDisabled()
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var orb: some View {

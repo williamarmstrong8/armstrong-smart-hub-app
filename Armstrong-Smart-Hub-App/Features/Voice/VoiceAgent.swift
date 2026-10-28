@@ -19,6 +19,8 @@ final class VoiceAgent {
     private(set) var phase: Phase = .idle
     /// Whether the overlay is up. Stays true through the follow-up window.
     private(set) var presented = false
+    /// Jarvis has a card to show, so it takes the screen. Until then it's a small orb in the corner.
+    var takingOver: Bool { presented && (view != nil || hint != nil) }
     /// The card on screen, if any.
     private(set) var view: VoiceView?
     /// Bumped whenever a new card lands, so the same kind still re-animates.
