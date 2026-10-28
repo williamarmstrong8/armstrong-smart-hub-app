@@ -183,7 +183,8 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
             queuedBuffers = 0
             outputLevel = 0
         }
-        player.play()
+        // Playing on a stopped engine (after an interruption) raises an exception.
+        if engine.isRunning { player.play() }
     }
 
     /// Reads the smoothed levels; call from the UI's display loop.
