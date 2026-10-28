@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// Every card on the wall (weather, readiness, lights, the next event) is this tall.
+/// Every card on the wall (weather, readiness, lights, the next event) is one height: what fills
+/// the screen, set by the dashboard from the screen's height.
 enum WallCard {
     static let height: CGFloat = 228
+}
+
+extension EnvironmentValues {
+    @Entry var wallCardHeight: CGFloat = WallCard.height
 }
 
 /// A soft card on the wall: its label and an icon across the top and one big answer along the
@@ -11,6 +16,7 @@ private struct GlanceTile<Content: View, Corner: View>: View {
     let title: String
     @ViewBuilder var corner: Corner
     @ViewBuilder var content: Content
+    @Environment(\.wallCardHeight) private var height
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -27,7 +33,7 @@ private struct GlanceTile<Content: View, Corner: View>: View {
         .padding(.top, 16)
         .padding(.bottom, 20)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(height: WallCard.height)
+        .frame(height: height)
         .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
         .foregroundStyle(BrickLook.ink)
         .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))

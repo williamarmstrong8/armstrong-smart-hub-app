@@ -153,15 +153,18 @@ struct DashboardView: View {
     @State private var alerts = WallAlertsStore()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 30) {
-                header
-                glance
-                homeSection
-                transactionsSection
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 30) {
+                    header
+                    glance
+                    homeSection
+                    transactionsSection
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
+            .environment(\.wallCardHeight, cardHeight(screen: geo.size.height))
         }
         .refreshable {
             async let a: Void = home.refresh(api: session.api)
@@ -201,11 +204,31 @@ struct DashboardView: View {
     // MARK: Clock and status
 
     /// Only a set alarm, as quiet text in the corner; nothing otherwise.
-    private var header: some View {
-        HStack {
-            Spacer(minLength: 0)
-            WakeControl(alarm: wake, home: home, toast: toast)
+    @ViewBuilder private var header: some View {
+        if wake.scheduled != nil {
+            HStack {
+                Spacer(minLength: 0)
+                WakeControl(alarm: wake, home: home, toast: toast)
+            }
+            .frame(height: Self.headerHeight)
         }
+    }
+
+    private static let headerHeight: CGFloat = 20
+    private static let spacing: CGFloat = 30
+    private static let pillRow: CGFloat = 44
+
+    /// The card height that makes the glance row and the rows of lights (two across, the next
+    /// event beside them) fill the screen exactly. Anything else sits below, a scroll away.
+    private func cardHeight(screen: CGFloat) -> CGFloat {
+        let lights = home.shownEntities.filter { $0.control == .light }.count
+        let lightRows = max(1, (lights + 1) / 2)
+        var fixed: CGFloat = 24 * 2 + Self.spacing // padding, and the gap between the two sections
+        if wake.scheduled != nil { fixed += Self.headerHeight + Self.spacing }
+        if let p = home.state?.automations, !(p.scenes + p.scripts).isEmpty { fixed += Self.pillRow + Self.spacing }
+        fixed += CGFloat(lightRows - 1) * 14
+        let height = (screen - fixed) / CGFloat(1 + lightRows)
+        return min(max(height.rounded(.down), 180), 460)
     }
 
     // MARK: Glance
@@ -288,7 +311,7 @@ struct DashboardView: View {
         let lights = home.shownEntities.filter { $0.control == .light }
         HStack(alignment: .top, spacing: 14) {
             if home.state == nil {
-                ProgressView().frame(maxWidth: .infinity, minHeight: WallCard.height)
+                ProgressView().frame(maxWidth: .infinity, minHeight: 180)
             } else if !lights.isEmpty {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
                     ForEach(lights) { e in
