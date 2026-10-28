@@ -93,9 +93,9 @@ private let deviceGroups: [(title: String, kinds: Set<ControlKind>)] = [
     ("Switches", [.toggle]),
 ]
 
-/// The iPhone's pages, opened full size from the wall.
+/// Pages opened from the wall.
 private enum WallPage: String, Identifiable {
-    case weather, pi, fitness, finance, calendar
+    case pi
     var id: String { rawValue }
 }
 
@@ -129,7 +129,6 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 30) {
                         header
                         glance
-                        shortcuts
                         if !wide { habitsRow }
                         homeSection
                         transactionsSection
@@ -173,14 +172,8 @@ struct DashboardView: View {
                 Task { await finance.retag(t, to: c, api: session.api, toast: toast) }
             }
         }
-        .sheet(item: $page) { page in
-            switch page {
-            case .weather: WallSheet(title: "Weather") { if let w = weather.weather { WeatherCard(data: w) } }
-            case .pi: WallSheet(title: "Raspberry Pi") { PiPanel(store: pi) }
-            case .fitness: FitnessView()
-            case .finance: FinanceView()
-            case .calendar: CalendarView()
-            }
+        .sheet(item: $page) { _ in
+            WallSheet(title: "Raspberry Pi") { PiPanel(store: pi) }
         }
         .sheet(isPresented: $account) { SettingsView() }
         .habitEditor($editingHabit, store: habits)
@@ -228,29 +221,14 @@ struct DashboardView: View {
 
     private var glance: some View {
         // Three equal cards, as tall as the tallest.
+        // Only the Pi opens a page (its services and controls); the others are the whole answer.
         HStack(alignment: .top, spacing: 14) {
-            Button { page = .weather } label: { WeatherTile(store: weather) }
-                .disabled(weather.weather == nil)
-            Button { page = .fitness } label: { FitnessTile(store: fitness) }
+            WeatherTile(store: weather)
+            FitnessTile(store: fitness)
             Button { page = .pi } label: { PiTile(store: pi) }
+                .buttonStyle(CardPressStyle())
         }
         .fixedSize(horizontal: false, vertical: true)
-        .buttonStyle(CardPressStyle())
-    }
-
-    /// The iPhone's other pages, a tap away.
-    private var shortcuts: some View {
-        HStack(spacing: 10) {
-            shortcut(.fitness, "Fitness", "figure.run")
-            shortcut(.finance, "Finance", "wallet.bifold")
-            shortcut(.calendar, "Calendar", "calendar")
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func shortcut(_ target: WallPage, _ title: String, _ icon: String) -> some View {
-        Button { page = target } label: { BrickPill(text: title, icon: icon) }
-            .buttonStyle(CardPressStyle())
     }
 
     // MARK: Habits (portrait)
@@ -310,9 +288,10 @@ struct DashboardView: View {
                 if !items.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         WallHeading(title: group.title, meta: group.kinds.contains(.light) ? nil : summary(items))
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
+                        let lights = group.kinds.contains(.light)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: lights ? 230 : 170), spacing: 14)], spacing: 14) {
                             ForEach(items) { e in
-                                DeviceButton(entity: e, pending: home.pending.contains(e.id)) {
+                                DeviceButton(entity: e, pending: home.pending.contains(e.id), large: lights) {
                                     if e.isTV { remote = e } else { Task { await home.toggle(e, api: session.api, toast: toast) } }
                                 } onAdjust: {
                                     if e.isTV { remote = e } else if e.hasLightControls { light = e }
@@ -473,6 +452,8 @@ struct DeviceButton: View {
     let entity: HAEntity
     let pending: Bool
     var compact = false
+    /// The wall's lights: a bigger icon, name and card, readable from across the room.
+    var large = false
     let onTap: () -> Void
     let onAdjust: () -> Void
 
@@ -482,11 +463,11 @@ struct DeviceButton: View {
     var body: some View {
         let on = entity.isOn
         let tint = tintColor
-        VStack(alignment: .leading, spacing: compact ? 10 : 14) {
+        VStack(alignment: .leading, spacing: compact ? 10 : large ? 18 : 14) {
             HStack {
                 Image(systemName: entity.symbol)
-                    .font(compact ? .title3 : .title2)
-                    .frame(width: compact ? 40 : 48, height: compact ? 40 : 48)
+                    .font(compact ? .title3 : large ? .system(size: 30) : .title2)
+                    .frame(width: compact ? 40 : large ? 64 : 48, height: compact ? 40 : large ? 64 : 48)
                     .foregroundStyle(on ? .white : .secondary)
                     .background(on ? tint : Color(.tertiarySystemFill), in: .circle)
                 Spacer()
@@ -496,12 +477,13 @@ struct DeviceButton: View {
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(entity.name).font(compact ? .subheadline.weight(.semibold) : .headline).lineLimit(compact ? 1 : 2).multilineTextAlignment(.leading)
-                Text(entity.stateLabel).font(compact ? .caption : .subheadline).foregroundStyle(.secondary).monospacedDigit()
+                Text(entity.name).font(compact ? .subheadline.weight(.semibold) : large ? .system(size: 22, weight: .semibold) : .headline)
+                    .lineLimit(compact ? 1 : 2).multilineTextAlignment(.leading)
+                Text(entity.stateLabel).font(compact ? .caption : large ? .system(size: 17) : .subheadline).foregroundStyle(.secondary).monospacedDigit()
             }
         }
-        .padding(compact ? 14 : 16)
-        .frame(maxWidth: .infinity, minHeight: compact ? 108 : 140, alignment: .topLeading)
+        .padding(compact ? 14 : large ? 20 : 16)
+        .frame(maxWidth: .infinity, minHeight: compact ? 108 : large ? 184 : 140, alignment: .topLeading)
         .background(on ? tint.opacity(0.18) : Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(on ? tint.opacity(0.5) : .clear, lineWidth: 1.5))
         .contentShape(.rect(cornerRadius: 20))
@@ -667,23 +649,23 @@ private struct DayColumn: View {
         let date = DayFormat.parse(day) ?? .now
         let utc = TimeZone(identifier: "UTC")!
         let isToday = index == 0
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
                 Text(date.formatted(Date.FormatStyle(timeZone: utc).day()))
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 24, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(isToday ? .white : .primary)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 48, height: 48)
                     .background(isToday ? Color.googleBlue : .clear, in: .circle)
                 Text(index == 0 ? "Today" : index == 1 ? "Tomorrow" : date.formatted(Date.FormatStyle(timeZone: utc).weekday(.wide)))
-                    .font(.headline)
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(isToday ? Color.googleBlue : .secondary)
                     .lineLimit(1)
             }
 
             if events.isEmpty {
                 Text("Free")
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(.tertiary)
                     .padding(.leading, 4)
             } else {
@@ -692,7 +674,7 @@ private struct DayColumn: View {
                 }
                 if events.count > Self.maxShown {
                     Text("+\(events.count - Self.maxShown) more")
-                        .font(.subheadline.weight(.medium))
+                        .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(.secondary)
                         .padding(.leading, 4)
                 }
@@ -702,36 +684,37 @@ private struct DayColumn: View {
     }
 }
 
-/// A solid event chip: title, and when it starts (or "Now" while it's on).
+/// A solid event chip in the calendar's color, darkened where needed so the white text reads
+/// (Google's pastel calendars were too pale): title, and when it starts, or "Now" while it's on.
 private struct EventChip: View {
     let event: CalendarEvent
     let zone: String
     let now: Date
 
     var body: some View {
-        let color = Color(hex: event.color)
+        let color = Color(hexForWhiteText: event.color)
         let start = event.startDate
         let end = ISO.parse(event.end)
         let live = !event.allDay && start.map { $0 <= now } == true && end.map { $0 > now } == true
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(event.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+                .font(.system(size: 19, weight: .semibold))
+                .lineLimit(2)
             Text(live ? "Now" : timeText(start))
-                .font(.caption.weight(.medium))
+                .font(.system(size: 16, weight: .medium))
                 .monospacedDigit()
-                .opacity(0.85)
+                .opacity(0.9)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color, in: .rect(cornerRadius: 10))
+        .background(color, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             // The event that's on right now gets a ring.
-            if live { RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.7), lineWidth: 2) }
+            if live { RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.8), lineWidth: 2.5) }
         }
-        .opacity(end.map { $0 < now } == true ? 0.45 : 1)
+        .opacity(end.map { $0 < now } == true ? 0.55 : 1)
     }
 
     /// "6 PM" or "6:30 PM", like Google Calendar.

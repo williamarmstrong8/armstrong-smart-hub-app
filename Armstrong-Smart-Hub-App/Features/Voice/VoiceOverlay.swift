@@ -46,13 +46,17 @@ struct VoiceOverlay: View {
                 if let notice = agent.notice { NoticePill(text: notice) }
 
                 // Centered when it fits; scrolls only when a card runs long (a busy day).
+                // Glows and shadows (a lit bulb, a poster, a new event) reach past the cards, so the
+                // stage isn't clipped to its frame and keeps a margin inside it for them.
                 GeometryReader { geo in
                     ScrollView {
                         stage
+                            .padding(36)
                             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .center)
                     }
                     .scrollIndicators(.hidden)
                     .scrollBounceBehavior(.basedOnSize)
+                    .scrollClipDisabled()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

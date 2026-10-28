@@ -153,7 +153,8 @@ private struct EventChip: View {
     @State private var ring = false
 
     var body: some View {
-        let color = Color(hex: event.color)
+        // Darkened where needed: Google's pastel calendar colors left white text unreadable.
+        let color = Color(hexForWhiteText: event.color)
         VStack(alignment: .leading, spacing: 3) {
             Text(event.title)
                 .font(.system(size: (event.allDay ? 17 : 19) * (large ? 1.4 : 1), weight: .semibold))
