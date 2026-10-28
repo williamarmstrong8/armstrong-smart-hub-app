@@ -17,29 +17,31 @@ private struct GlanceTile<Content: View>: View {
             Spacer(minLength: 0)
         }
         .padding(20)
-        .frame(maxWidth: .infinity, minHeight: 176, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 150, maxHeight: .infinity, alignment: .topLeading)
         .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
         .foregroundStyle(BrickLook.ink)
         .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
     }
 }
 
-/// A big light number with a note beside it, the iPhone's hero style.
+/// One big light value with a short note under it, readable across the room.
 private struct BigValue: View {
     let value: String
-    var unit: String?
+    var note: String?
     var tint: Color = BrickLook.ink
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 52, weight: .light).monospacedDigit())
+                .font(.system(size: 64, weight: .light).monospacedDigit())
                 .foregroundStyle(tint)
                 .contentTransition(.numericText())
-            if let unit { Text(unit).font(.system(size: 16)).foregroundStyle(BrickLook.soft).lineLimit(1) }
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            if let note {
+                Text(note).font(.system(size: 18)).foregroundStyle(BrickLook.soft).lineLimit(1).minimumScaleFactor(0.8)
+            }
         }
-        .lineLimit(1)
-        .minimumScaleFactor(0.6)
     }
 }
 
@@ -56,89 +58,47 @@ private struct Placeholder: View {
 
 // MARK: Weather
 
+/// The temperature, big, and what it's doing outside. The hours and days are a tap away.
 struct WeatherTile: View {
     let store: WeatherStore
 
     var body: some View {
-        GlanceTile(title: store.weather?.place ?? "Weather") {
+        GlanceTile(title: "Outside") {
             if let w = store.weather {
-                HStack(alignment: .center) {
-                    BigValue(value: "\(w.current.temp)°", unit: w.current.label)
+                HStack(alignment: .center, spacing: 12) {
+                    BigValue(value: "\(w.current.temp)°", note: w.current.label)
                     Spacer(minLength: 0)
                     Image(systemName: WeatherLook.symbol(w.current.code, isDay: w.current.isDay))
                         .symbolRenderingMode(.multicolor)
-                        .font(.system(size: 34))
-                }
-                if let today = w.days.first {
-                    Text("H \(today.high)°  L \(today.low)°  ·  Feels \(w.current.feelsLike)°")
-                        .font(.system(size: 15)).foregroundStyle(BrickLook.soft).monospacedDigit().lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                // The next few hours; only as many as fit.
-                ViewThatFits(in: .horizontal) {
-                    hours(w, 6)
-                    hours(w, 5)
-                    hours(w, 4)
-                    hours(w, 3)
+                        .font(.system(size: 44))
                 }
             } else {
                 Placeholder(error: store.error)
             }
         }
     }
-
-    private func hours(_ w: WeatherData, _ count: Int) -> some View {
-        HStack(spacing: 14) {
-            ForEach(Array(w.hours.prefix(count).enumerated()), id: \.element.id) { i, h in
-                VStack(spacing: 4) {
-                    Text(WeatherLook.hour(h.time, first: i == 0)).font(.system(size: 12)).foregroundStyle(BrickLook.soft)
-                    Image(systemName: WeatherLook.symbol(h.code, isDay: h.isDay)).symbolRenderingMode(.multicolor).font(.system(size: 16))
-                    Text("\(h.temp)°").font(.system(size: 14)).monospacedDigit()
-                }
-                .fixedSize()
-            }
-        }
-        .padding(.top, 2)
-    }
 }
 
 // MARK: Fitness
 
+/// Today's Training Readiness, big, in its color, and the one word for it.
 struct FitnessTile: View {
     let store: FitnessStore
 
     var body: some View {
         GlanceTile(title: "Readiness") {
             if store.loaded {
-                BigValue(value: store.readinessScore.map(String.init) ?? "–", unit: Status.word(store.readinessScore), tint: Fit.readiness)
-                HStack(spacing: 16) {
-                    metric("moon.fill", store.sleepScore.map(String.init), Fit.sleep)
-                    metric("bolt.fill", store.energy.map(String.init), Fit.energy)
-                    metric("figure.walk", steps, BrickLook.ink)
-                }
-                .font(.system(size: 16)).monospacedDigit()
+                BigValue(value: store.readinessScore.map(String.init) ?? "–", note: Status.word(store.readinessScore), tint: Fit.readiness)
             } else {
                 Placeholder(error: store.error)
             }
-        }
-    }
-
-    /// Today's steps when the hub has them, else the newest day's.
-    private var steps: String? {
-        guard let s = (store.today ?? store.days.first(where: { $0.steps != nil }))?.steps else { return nil }
-        return s >= 10_000 ? String(format: "%.1fk", Double(s) / 1000) : s.formatted()
-    }
-
-    private func metric(_ icon: String, _ value: String?, _ tint: Color) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon).foregroundStyle(tint).font(.system(size: 13))
-            Text(value ?? "–").lineLimit(1)
         }
     }
 }
 
 // MARK: The Pi
 
+/// One answer: is everything on the Pi running? The numbers and controls are a tap away.
 struct PiTile: View {
     let store: PiStore
 
@@ -146,13 +106,10 @@ struct PiTile: View {
         GlanceTile(title: "Raspberry Pi", dot: dot) {
             if let s = store.status {
                 if s.available {
-                    let total = s.containers?.count ?? 0
-                    BigValue(value: "\(s.running)/\(total)", unit: s.troubled.isEmpty ? "running" : "\(s.troubled.count) down")
-                    VStack(alignment: .leading, spacing: 7) {
-                        if let t = s.temperature { UsageLine(label: "\(Int(t.rounded()))°C", fraction: (t - 30) / 55, warn: t >= 75) }
-                        if let m = s.memory { UsageLine(label: "Memory \(Int((m.fraction * 100).rounded()))%", fraction: m.fraction, warn: m.fraction > 0.9) }
-                        if let d = s.disk { UsageLine(label: "Disk \(Int((d.fraction * 100).rounded()))%", fraction: d.fraction, warn: d.fraction > 0.9) }
-                    }
+                    let down = s.troubled.count
+                    BigValue(value: down == 0 ? "All good" : "\(down) down",
+                             note: down == 0 ? "\(s.running) services running" : s.troubled.map(\.name).joined(separator: ", "),
+                             tint: down == 0 ? BrickLook.ink : .orange)
                 } else {
                     Text(s.reason ?? "Not available.").font(.system(size: 15)).foregroundStyle(BrickLook.soft).lineLimit(4)
                 }
@@ -166,30 +123,6 @@ struct PiTile: View {
         guard let s = store.status, s.available else { return store.error != nil ? .red : nil }
         if !s.troubled.isEmpty || (s.temperature ?? 0) >= 75 || (s.disk?.fraction ?? 0) > 0.95 { return .orange }
         return .green
-    }
-}
-
-/// A label over a thin bar.
-private struct UsageLine: View {
-    let label: String
-    let fraction: Double
-    var warn = false
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(label).font(.system(size: 13)).monospacedDigit().foregroundStyle(warn ? Color.orange : BrickLook.soft)
-                .frame(width: 88, alignment: .leading)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(BrickLook.track)
-                    Capsule().fill(warn ? Color.orange : BrickLook.bar)
-                        .frame(width: geo.size.width * min(max(fraction, 0.02), 1))
-                }
-            }
-            .frame(height: 5)
-        }
     }
 }
 
