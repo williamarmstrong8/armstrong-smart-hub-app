@@ -44,8 +44,30 @@ final class AppSession {
 
     private func wire() {
         api.onUnauthorized = { [weak self] in
-            Task { @MainActor in self?.signOutLocally() }
+            Task { @MainActor in await self?.confirmSignedOut() }
         }
+    }
+
+    private var confirming = false
+
+    /// A 401 signs out only once the hub says so twice, a few seconds apart. A hub that's
+    /// restarting or briefly can't reach its database mustn't drop the wall iPad (or the
+    /// phone) back to the login screen; a session that really ended still does.
+    private func confirmSignedOut() async {
+        guard !confirming, let url = serverURL, let token else { return }
+        confirming = true
+        defer { confirming = false }
+        try? await Task.sleep(for: .seconds(3))
+        // A client without the sign-out hook, so the check can't set off another check.
+        let check = APIClient(baseURL: url, token: token)
+        var status: Int?
+        if let result = try? await URLSession.shared.data(for: check.request("/api/mobile/me", timeout: 15)) {
+            let http = result.1 as? HTTPURLResponse
+            // Sent to the login page counts as signed out too.
+            status = http?.url?.path == "/login" ? 401 : http?.statusCode
+        }
+        guard status == 401, self.token == token else { return }
+        signOutLocally()
     }
 
     /// Accepts "hub.tail1234.ts.net", "https://…" or "http://localhost:3000".

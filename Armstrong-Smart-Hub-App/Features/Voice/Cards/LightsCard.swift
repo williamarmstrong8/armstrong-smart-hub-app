@@ -10,7 +10,7 @@ struct LightsCard: View {
         let on = lights.filter(\.on).count
         VStack(alignment: .leading, spacing: 48) {
             CardHeader(title: "Lights", detail: on == 0 ? "All off" : "\(on) of \(lights.count) on", symbol: "lightbulb.2")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 300), spacing: 56)], spacing: 64) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 190, maximum: 300), spacing: 40)], spacing: 52) {
                 ForEach(lights) { light in
                     LightTileView(light: light, changed: changed.contains(light.id))
                 }
@@ -46,7 +46,7 @@ private struct LightTileView: View {
             .frame(width: 140, height: 140)
 
             VStack(spacing: 4) {
-                Text(light.name).font(.title2.weight(.semibold)).lineLimit(1)
+                Text(light.name).font(.title2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
                 Text(light.on ? "\(light.brightnessPct ?? 100)%" : "Off")
                     .font(.title3.weight(.medium)).monospacedDigit()
                     .foregroundStyle(.secondary)

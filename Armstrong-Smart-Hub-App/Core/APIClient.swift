@@ -98,17 +98,27 @@ final class APIClient: @unchecked Sendable {
         }
     }
 
+    /// Network failures worth one more try: the tailnet waking up, Wi-Fi roaming, a dropped socket.
+    private static let transient: Set<URLError.Code> = [
+        .timedOut, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost,
+        .dnsLookupFailed, .notConnectedToInternet, .secureConnectionFailed,
+    ]
+
     /// The response body, once the status and content type check out.
     func data(_ req: URLRequest) async throws -> Data {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: req)
+            (data, response) = try await fetch(req)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
+            HubLink.report(ok: false, error: error.localizedDescription)
             throw APIError(message: "Can't reach the hub. Check that you're on the tailnet.")
         }
+        HubLink.report(ok: true)
         guard let http = response as? HTTPURLResponse else { throw APIError(message: "No response from the hub.") }
         if http.statusCode == 401 {
             onUnauthorized?()
@@ -136,6 +146,17 @@ final class APIClient: @unchecked Sendable {
             throw APIError(message: "The hub returned \(http.statusCode).")
         }
         return data
+    }
+
+    /// Reads (GETs) that hit a transient network error get one more try after a short pause:
+    /// a hiccup shouldn't show as an error, and changes are never sent twice.
+    private func fetch(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: req)
+        } catch let error as URLError where Self.transient.contains(error.code) && (req.httpMethod ?? "GET") == "GET" {
+            try await Task.sleep(for: .seconds(1.5))
+            return try await session.data(for: req)
+        }
     }
 
     /// Streams a response line by line (the agent's server-sent events).

@@ -95,6 +95,132 @@ struct HabitsCardData: Decodable, Sendable {
     let changedId: String?
 }
 
+// MARK: Weather (lib/weather.ts)
+
+struct WeatherHour: Decodable, Identifiable, Equatable, Sendable {
+    /// Hub-local "2026-10-28T16:00".
+    let time: String
+    let temp: Int
+    let code: Int
+    let isDay: Bool
+    let precipChance: Int?
+    var id: String { time }
+}
+
+struct WeatherDay: Decodable, Identifiable, Equatable, Sendable {
+    let day: String
+    let high: Int
+    let low: Int
+    let code: Int
+    let precipChance: Int?
+    var id: String { day }
+}
+
+struct WeatherData: Decodable, Equatable, Sendable {
+    struct Current: Decodable, Equatable, Sendable {
+        let temp: Int
+        let feelsLike: Int
+        let code: Int
+        let isDay: Bool
+        let humidity: Int?
+        let windMph: Int?
+        let label: String
+    }
+    let place: String
+    let current: Current
+    let hours: [WeatherHour]
+    let days: [WeatherDay]
+    let sunrise: String?
+    let sunset: String?
+}
+
+// MARK: Fitness and the Pi
+
+struct FitnessCardData: Decodable, Equatable, Sendable {
+    struct DaySteps: Decodable, Identifiable, Equatable, Sendable {
+        let day: String
+        let steps: Int?
+        var id: String { day }
+    }
+    struct Workout: Decodable, Equatable, Sendable {
+        let sport: String
+        let startTime: String
+        let minutes: Int?
+        let distanceMeters: Double?
+    }
+    let readiness: Int?
+    let readinessLevel: String?
+    let sleepScore: Int?
+    let sleepSeconds: Int?
+    let bodyBattery: Int?
+    let stepsDay: String?
+    let steps: Int?
+    let stepGoal: Int?
+    let restingHr: Int?
+    let hrv: Int?
+    let week: [DaySteps]
+    let lastWorkout: Workout?
+}
+
+struct PiContainer: Decodable, Identifiable, Equatable, Sendable {
+    let name: String
+    let state: String
+    let status: String
+    let health: String?
+    let image: String
+    var id: String { name }
+    var running: Bool { state == "running" }
+    var troubled: Bool { !running || health == "unhealthy" }
+}
+
+/// /api/mobile/pi: how the Pi is doing, or why the hub can't see it.
+struct PiStatus: Decodable, Equatable, Sendable {
+    struct Usage: Decodable, Equatable, Sendable {
+        let used: Double
+        let total: Double
+        var fraction: Double { total > 0 ? used / total : 0 }
+    }
+    let available: Bool
+    let reason: String?
+    let host: String?
+    let temperature: Double?
+    let load: [Double]?
+    let cores: Int?
+    let memory: Usage?
+    let swap: Usage?
+    let disk: Usage?
+    let uptimeSeconds: Int?
+    let hubUptimeSeconds: Int?
+    let containers: [PiContainer]?
+    let dockerError: String?
+
+    private enum Keys: String, CodingKey {
+        case available, reason, host, temperature, load, cores, memory, swap, disk, uptimeSeconds, hubUptimeSeconds, containers, dockerError
+    }
+    private struct MB: Decodable { let usedMB: Double; let totalMB: Double }
+    private struct GB: Decodable { let usedGB: Double; let totalGB: Double }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        available = try c.decode(Bool.self, forKey: .available)
+        reason = try c.decodeIfPresent(String.self, forKey: .reason)
+        host = try c.decodeIfPresent(String.self, forKey: .host)
+        temperature = try c.decodeIfPresent(Double.self, forKey: .temperature)
+        load = try c.decodeIfPresent([Double].self, forKey: .load)
+        cores = try c.decodeIfPresent(Int.self, forKey: .cores)
+        memory = try c.decodeIfPresent(MB.self, forKey: .memory).map { Usage(used: $0.usedMB, total: $0.totalMB) }
+        swap = try c.decodeIfPresent(MB.self, forKey: .swap).map { Usage(used: $0.usedMB, total: $0.totalMB) }
+        disk = try c.decodeIfPresent(GB.self, forKey: .disk).map { Usage(used: $0.usedGB, total: $0.totalGB) }
+        uptimeSeconds = try c.decodeIfPresent(Int.self, forKey: .uptimeSeconds)
+        hubUptimeSeconds = try c.decodeIfPresent(Int.self, forKey: .hubUptimeSeconds)
+        containers = try c.decodeIfPresent([PiContainer].self, forKey: .containers)
+        dockerError = try c.decodeIfPresent(String.self, forKey: .dockerError)
+    }
+
+    var running: Int { containers?.filter(\.running).count ?? 0 }
+    var troubled: [PiContainer] { containers?.filter(\.troubled) ?? [] }
+}
+
 /// What the overlay shows after the orb: one card per kind of request.
 enum VoiceView: Decodable, Sendable {
     case lights([LightTile], changed: [String])
@@ -102,8 +228,11 @@ enum VoiceView: Decodable, Sendable {
     case finance(FinanceCardData)
     case calendar(CalendarCardData)
     case habits(HabitsCardData)
+    case weather(WeatherData)
+    case fitness(FitnessCardData)
+    case pi(PiStatus, changed: String?, action: String?)
 
-    enum Kind: String, Decodable, Sendable { case lights, movie, finance, calendar, habits }
+    enum Kind: String, Decodable, Sendable { case lights, movie, finance, calendar, habits, weather, fitness, pi }
 
     var kind: Kind {
         switch self {
@@ -112,10 +241,13 @@ enum VoiceView: Decodable, Sendable {
         case .finance: .finance
         case .calendar: .calendar
         case .habits: .habits
+        case .weather: .weather
+        case .fitness: .fitness
+        case .pi: .pi
         }
     }
 
-    private enum Keys: String, CodingKey { case kind, lights, changed, movie, stage }
+    private enum Keys: String, CodingKey { case kind, lights, changed, movie, stage, weather, fitness, pi, action }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -130,6 +262,14 @@ enum VoiceView: Decodable, Sendable {
             self = .calendar(try CalendarCardData(from: decoder))
         case .habits:
             self = .habits(try HabitsCardData(from: decoder))
+        case .weather:
+            self = .weather(try c.decode(WeatherData.self, forKey: .weather))
+        case .fitness:
+            self = .fitness(try c.decode(FitnessCardData.self, forKey: .fitness))
+        case .pi:
+            self = .pi(try c.decode(PiStatus.self, forKey: .pi),
+                       changed: try c.decodeIfPresent(String.self, forKey: .changed),
+                       action: try c.decodeIfPresent(String.self, forKey: .action))
         }
     }
 }
@@ -148,15 +288,31 @@ struct VoiceSession: Decodable, Sendable {
     var isFresh: Bool { Date().timeIntervalSince1970 < expiresAt - 60 }
 }
 
+/// A view this app version can't draw (a newer hub) is dropped rather than failing the reply.
 struct VoiceToolReply: Decodable, Sendable {
     let output: JSONObject
     let view: VoiceView?
+
+    private enum Keys: String, CodingKey { case output, view }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        output = try c.decode(JSONObject.self, forKey: .output)
+        view = try? c.decodeIfPresent(VoiceView.self, forKey: .view)
+    }
 }
 
 struct VoiceIntentReply: Decodable, Sendable {
     let screen: String
     let probability: Double
     let view: VoiceView?
+
+    private enum Keys: String, CodingKey { case screen, probability, view }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        screen = try c.decode(String.self, forKey: .screen)
+        probability = try c.decode(Double.self, forKey: .probability)
+        view = try? c.decodeIfPresent(VoiceView.self, forKey: .view)
+    }
 }
 
 /// Any JSON object, kept as raw bytes so it can be forwarded without a schema.

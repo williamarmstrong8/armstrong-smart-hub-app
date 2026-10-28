@@ -7,6 +7,7 @@ struct VoiceOverlay: View {
     let agent: VoiceAgent
 
     @Namespace private var space
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         ZStack {
@@ -22,8 +23,9 @@ struct VoiceOverlay: View {
                 content
                     // Always light-on-dark over the darkened dashboard.
                     .environment(\.colorScheme, .dark)
-                    .padding(.horizontal, 56)
-                    .padding(.vertical, 28)
+                    // Tighter on the iPad mini, roomier on bigger iPads.
+                    .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 24)
+                    .padding(.vertical, 24)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
@@ -41,6 +43,7 @@ struct VoiceOverlay: View {
                     Captions(agent: agent, compact: true)
                     Spacer(minLength: 0)
                 }
+                if let notice = agent.notice { NoticePill(text: notice) }
 
                 // Centered when it fits; scrolls only when a card runs long (a busy day).
                 GeometryReader { geo in
@@ -56,7 +59,7 @@ struct VoiceOverlay: View {
         } else {
             VStack(spacing: 36) {
                 Spacer()
-                orb.frame(width: 380, height: 380)
+                orb.frame(width: 340, height: 340)
                 Captions(agent: agent, compact: false)
                     .frame(maxWidth: 720)
                 Spacer()
@@ -102,6 +105,9 @@ struct VoiceOverlay: View {
         // Kept alive across updates, so a new event animates into the day already on screen.
         case .calendar(let data): CalendarCard(data: data)
         case .habits(let data): HabitsCard(data: data)
+        case .weather(let data): WeatherCard(data: data)
+        case .fitness(let data): FitnessCard(data: data)
+        case .pi(let pi, let changed, let action): PiCard(pi: pi, changed: changed, action: action)
         }
     }
 }
@@ -123,7 +129,7 @@ private struct Captions: View {
             if !agent.reply.isEmpty {
                 Text(agent.reply)
                     .font(compact ? .headline : .system(size: 30, weight: .semibold, design: .rounded))
-                    .lineLimit(compact ? 1 : 4)
+                    .lineLimit(compact ? 2 : 4)
                     .transition(.opacity)
             } else if agent.heard.isEmpty || !compact {
                 Text(status)
@@ -159,16 +165,20 @@ private struct PlaceholderCard: View {
             CardHeader(title: title, detail: "Working on it…", symbol: symbol)
             switch kind {
             case .movie:
-                HStack(spacing: 36) {
-                    block(width: 380, height: 570, radius: 28)
+                // Flexible blocks, so the placeholder never runs off a narrow screen.
+                HStack(alignment: .top, spacing: 36) {
+                    RoundedRectangle(cornerRadius: 28)
+                        .fill(.white.opacity(0.08))
+                        .aspectRatio(2 / 3, contentMode: .fit)
+                        .frame(maxWidth: 340)
+                        .opacity(shimmer ? 0.5 : 1)
                     VStack(alignment: .leading, spacing: 14) {
-                        block(width: 320, height: 40, radius: 10)
-                        block(width: 200, height: 22, radius: 8)
-                        block(width: 420, height: 18, radius: 6)
-                        block(width: 380, height: 18, radius: 6)
+                        block(width: nil, height: 40, radius: 10)
+                        block(width: nil, height: 22, radius: 8).padding(.trailing, 80)
+                        block(width: nil, height: 18, radius: 6)
+                        block(width: nil, height: 18, radius: 6).padding(.trailing, 40)
                     }
                 }
-            default:
                 HStack(spacing: 16) {
                     ForEach(0..<3, id: \.self) { _ in block(width: nil, height: 160, radius: 28) }
                 }
@@ -195,6 +205,9 @@ private struct PlaceholderCard: View {
         case .finance: "Money"
         case .calendar: "Calendar"
         case .habits: "Habits"
+        case .weather: "Weather"
+        case .fitness: "Fitness"
+        case .pi: "Raspberry Pi"
         }
     }
 
@@ -205,6 +218,9 @@ private struct PlaceholderCard: View {
         case .finance: "chart.bar.xaxis"
         case .calendar: "calendar"
         case .habits: "checkmark.circle"
+        case .weather: "cloud.sun"
+        case .fitness: "figure.run"
+        case .pi: "server.rack"
         }
     }
 }
@@ -219,10 +235,13 @@ struct CardHeader: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(size: 48, weight: .bold, design: .rounded))
-                .lineLimit(1)
+                .lineLimit(2)
+                .minimumScaleFactor(0.6)
             Text(detail)
                 .font(.title2.weight(.medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
                 .contentTransition(.numericText())
         }
     }
@@ -261,11 +280,19 @@ struct VoiceButton: View {
         .buttonBorderShape(.capsule)
         .overlay(alignment: .topTrailing) {
             Circle()
-                .fill(agent.setupError != nil ? Color.orange : agent.wakeReady ? Color.green : Color.secondary)
+                .fill(dot)
                 .frame(width: 9, height: 9)
                 .offset(x: -2, y: 2)
         }
         .accessibilityLabel(agent.wakeReady ? "Talk to Jarvis. Listening for Hey Jarvis." : "Talk to Jarvis")
-        .help(agent.setupError ?? "")
+        .help(help)
+    }
+
+    private var dot: Color {
+        switch agent.status { case .ready: .green; case .starting: .secondary; case .noMic, .offline: .orange }
+    }
+
+    private var help: String {
+        switch agent.status { case .noMic(let why), .offline(let why): why; default: "" }
     }
 }

@@ -144,32 +144,11 @@ struct HomeView: View {
         }
     }
 
-    /// One word and one sentence on how you're doing, from the watch's readiness, sleep and Body Battery.
-    private var status: (title: String, summary: String)? {
-        let watch = fitness.snapshot?.watch
-        let metrics = fitness.snapshot?.metrics
-        let readiness = watch?.readiness?.score ?? metrics?.readiness.score
-        let sleep = watch?.sleep?.overall ?? fitness.lastNight?.score
-        let energy = fitness.currentBodyBattery ?? metrics?.bodyBattery?.current ?? fitness.snapshot?.insights?.stress.bodyBattery?.current
-        guard readiness != nil || sleep != nil || energy != nil else { return nil }
-        let drained = (energy ?? 100) < 30
-        let slept = (sleep ?? 0) >= 75
-        let ready = readiness ?? 0
-        if drained || ready < 40 {
-            return ("Run down", drained ? "Battery is low. Take it easy and get to bed early." : "Your body is asking for rest today.")
-        }
-        if ready >= 75 && (energy ?? 100) >= 60 {
-            return ("Energized", slept ? "Slept well and ready to push. A good day to train." : "Ready to go, even on a short night.")
-        }
-        if slept { return ("Rested", "Slept well and recovered. Steady day ahead.") }
-        return ("Steady", "A middling night. Fine for an easy day.")
-    }
-
     /// How you're doing, from the watch, with the rest of the house under it.
     private var hero: some View {
         let shown = store.shownEntities
         let active = shown.filter { $0.isOn && $0.control != .light }.count
-        let status = status
+        let status = fitness.dayStatus
         return BrickHero(caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
                          title: status?.title ?? "Home", subtitle: status?.summary) {
             if active > 0 { BrickPill(text: "\(active) active", icon: "bolt.fill") }

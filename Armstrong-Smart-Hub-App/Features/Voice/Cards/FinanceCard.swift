@@ -12,7 +12,8 @@ struct FinanceCard: View {
         VStack(alignment: .leading, spacing: 44) {
             CardHeader(title: data.title, detail: data.subtitle, symbol: "chart.bar.xaxis")
 
-            HStack(alignment: .top, spacing: 40) {
+            // Wraps when three big numbers won't fit side by side.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 32, alignment: .topLeading)], alignment: .leading, spacing: 28) {
                 ForEach(Array(data.stats.enumerated()), id: \.element.id) { i, stat in
                     StatTile(stat: stat, currency: data.currency, delay: Double(i) * 0.08)
                 }
@@ -20,7 +21,7 @@ struct FinanceCard: View {
 
             if let chart = data.chart, !chart.points.isEmpty {
                 FinanceChartView(chart: chart, currency: data.currency, progress: progress)
-                    .frame(height: chart.style == .hbar ? CGFloat(chart.points.count) * 66 : 340)
+                    .frame(height: chart.style == .hbar ? CGFloat(chart.points.count) * 54 : 260)
             }
 
             if !data.rows.isEmpty {
@@ -59,14 +60,14 @@ private struct StatTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(stat.label).font(.title3.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+            Text(stat.label).font(.title3.weight(.medium)).foregroundStyle(.secondary).lineLimit(2).minimumScaleFactor(0.8)
             CountingNumber(value: value, format: stat.format, currency: currency)
-                .font(.system(size: 84, weight: .semibold, design: .rounded))
+                .font(.system(size: 72, weight: .semibold, design: .rounded))
                 .foregroundStyle(stat.tone == .positive ? Color.positive : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             if let detail = stat.detail {
-                Text(detail).font(.body).foregroundStyle(stat.tone == .negative ? Color.negative : .secondary).lineLimit(1)
+                Text(detail).font(.body).foregroundStyle(stat.tone == .negative ? Color.negative : .secondary).lineLimit(2)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
