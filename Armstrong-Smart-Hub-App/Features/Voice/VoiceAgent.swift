@@ -85,6 +85,18 @@ final class VoiceAgent {
 
     private static let followUpSeconds: Double = 8
 
+    // Talking over Jarvis. While it speaks, the service's voice detection needs much louder
+    // sound, and anything it still hears only stops Jarvis if the mic agrees: loud for most of
+    // the next 0.6 s. A cough, the TV or a door doesn't cut it off.
+    private static let speakingThreshold = 0.85
+    private static let bargeInLevel: Float = 0.5
+    private var gate: SocketGate?
+    private var sessionConfig: [String: Any] = [:]
+    private var loudVAD = false
+    /// Sound the service took for speech over Jarvis, not (yet) judged a real interruption.
+    private var ignoringSpeech = false
+    private var bargeIn: Task<Void, Never>?
+
     func levels() -> (mic: Float, output: Float) { audio.levels() }
 
     // MARK: Lifecycle
@@ -295,14 +307,15 @@ final class VoiceAgent {
         let (stream, continuation) = AsyncStream.makeStream(of: RealtimeEvent.self)
         let audio = audio
         let gate = SocketGate()
+        self.gate = gate
+        sessionConfig = config.value
+        loudVAD = false
+        ignoringSpeech = false
         client.onEvent = { event in
             switch event.type {
-            case "speech-started":
-                // Talking over Jarvis stops it mid-sentence; drop the rest of that reply.
-                gate.dropAudio = true
-                audio.flushPlayback()
             case "response-created":
-                gate.dropAudio = false
+                // A reply to noise heard over Jarvis is silenced (and cancelled on the main actor).
+                gate.startResponse()
             case "audio-delta", "audio-chunk":
                 if !gate.dropAudio, let delta = event.delta, let data = Data(base64Encoded: delta) {
                     audio.play(pcm16: data)
@@ -341,31 +354,46 @@ final class VoiceAgent {
         lastActivity = .now
         switch event.type {
         case "speech-started":
-            followUp?.cancel()
-            followUp = nil
-            userSpeaking = true
-            beginTurn()
-            reply = ""
-            withAnimation(.easeOut(duration: 0.25)) { phase = .listening }
+            // Heard over Jarvis: keep talking unless the mic says it's really you.
+            if audio.isPlaying {
+                ignoringSpeech = true
+                gate?.muteNextResponse = true
+                checkBargeIn()
+                return
+            }
+            interrupted()
 
         case "speech-stopped":
+            if ignoringSpeech { return }
             userSpeaking = false
             withAnimation(.easeOut(duration: 0.25)) { phase = .thinking }
 
         case "input-transcription-completed":
+            if ignoringSpeech {
+                ignoringSpeech = false
+                return
+            }
             let text = (event.transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return }
             withAnimation(.easeOut(duration: 0.2)) { heard = text }
             route(text, turn: turn)
 
         case "response-created":
+            if gate?.currentMuted == true {
+                client?.cancelResponse()
+                return
+            }
             responseHadCalls = false
             responseFinished = false
             reply = ""
 
         case "audio-delta", "audio-chunk":
             // Already queued for playback on the socket's queue.
-            if phase != .speaking { withAnimation(.easeOut(duration: 0.2)) { phase = .speaking } }
+            if gate?.currentMuted == true { return }
+            if phase != .speaking {
+                withAnimation(.easeOut(duration: 0.2)) { phase = .speaking }
+                setLoudVAD(true)
+            }
 
         case "audio-transcript-delta", "text-delta":
             reply += event.delta ?? ""
@@ -473,6 +501,50 @@ final class VoiceAgent {
         }
     }
 
+    /// You started talking (for real): Jarvis stops and listens.
+    private func interrupted() {
+        ignoringSpeech = false
+        followUp?.cancel()
+        followUp = nil
+        userSpeaking = true
+        beginTurn()
+        reply = ""
+        withAnimation(.easeOut(duration: 0.25)) { phase = .listening }
+    }
+
+    /// Samples the mic for 0.6 s after the service heard speech over Jarvis. Loud for most of it
+    /// means someone is talking: cut Jarvis off and listen. Otherwise it was noise; carry on.
+    private func checkBargeIn() {
+        bargeIn?.cancel()
+        bargeIn = Task {
+            var loud = 0
+            for _ in 0..<12 {
+                try? await Task.sleep(for: .milliseconds(50))
+                if Task.isCancelled { return }
+                if audio.levels().mic >= Self.bargeInLevel { loud += 1 }
+            }
+            guard loud >= 8, phase != .idle, ignoringSpeech else { return }
+            ignoringSpeech = false
+            gate?.muteNextResponse = false
+            gate?.dropCurrent()
+            audio.flushPlayback()
+            client?.cancelResponse()
+            setLoudVAD(false)
+            interrupted()
+        }
+    }
+
+    /// Sends the session again with only the voice detection's threshold changed: much higher
+    /// while Jarvis is talking, the usual one otherwise.
+    private func setLoudVAD(_ loud: Bool) {
+        guard loud != loudVAD, let client, var vad = sessionConfig["turnDetection"] as? [String: Any] else { return }
+        loudVAD = loud
+        var config = sessionConfig
+        if loud { vad["threshold"] = Self.speakingThreshold }
+        config["turnDetection"] = vad
+        client.updateSession(config)
+    }
+
     /// After Jarvis finishes speaking, keep listening briefly for a follow-up.
     private func scheduleFollowUp() {
         followUp?.cancel()
@@ -482,6 +554,7 @@ final class VoiceAgent {
                 if Task.isCancelled { return }
             }
             if Task.isCancelled { return }
+            setLoudVAD(false)
             withAnimation(.easeOut(duration: 0.3)) { phase = .listening }
             try? await Task.sleep(for: .seconds(Self.followUpSeconds))
             if Task.isCancelled { return }
@@ -537,6 +610,11 @@ final class VoiceAgent {
         followUp = nil
         watchdog?.cancel()
         watchdog = nil
+        bargeIn?.cancel()
+        bargeIn = nil
+        ignoringSpeech = false
+        loudVAD = false
+        gate = nil
         userSpeaking = false
         audio.endStreaming()
         pipe.reset()
@@ -563,10 +641,37 @@ final class VoiceAgent {
     }
 }
 
-/// State touched only from the socket's serial delegate queue.
+/// State shared between the socket's queue (which plays audio as it arrives) and the main actor
+/// (which decides what counts as an interruption).
 nonisolated private final class SocketGate: @unchecked Sendable {
-    var dropAudio = false
-    var closeReason: String?
+    private let lock = NSLock()
+    private var _dropAudio = false
+    private var _muteNext = false
+    private var _currentMuted = false
+    private var _closeReason: String?
+
+    var dropAudio: Bool { lock.withLock { _dropAudio } }
+    var currentMuted: Bool { lock.withLock { _currentMuted } }
+    var closeReason: String? {
+        get { lock.withLock { _closeReason } }
+        set { lock.withLock { _closeReason = newValue } }
+    }
+    /// The next reply answers noise heard over Jarvis: play none of it.
+    var muteNextResponse: Bool {
+        get { lock.withLock { _muteNext } }
+        set { lock.withLock { _muteNext = newValue } }
+    }
+
+    func startResponse() {
+        lock.withLock {
+            _currentMuted = _muteNext
+            _muteNext = false
+            _dropAudio = _currentMuted
+        }
+    }
+
+    /// A real interruption: drop what's left of the reply in flight.
+    func dropCurrent() { lock.withLock { _dropAudio = true } }
 }
 
 /// Hands mic audio from the audio thread to the socket, holding it until the socket opens.
