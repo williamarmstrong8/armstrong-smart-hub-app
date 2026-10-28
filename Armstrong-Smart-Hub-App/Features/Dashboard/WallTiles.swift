@@ -1,23 +1,27 @@
 import SwiftUI
 
-/// The wall's glance row: three soft cards, each opening its page.
-private struct GlanceTile<Content: View>: View {
+/// The wall's glance row: three soft cards the same height, each with its label and an icon
+/// across the top and one big answer along the bottom.
+private struct GlanceTile<Content: View, Corner: View>: View {
     let title: String
-    var dot: Color?
+    @ViewBuilder var corner: Corner
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                BrickCaps(text: title).foregroundStyle(BrickLook.soft)
-                Spacer(minLength: 4)
-                if let dot { Circle().fill(dot).frame(width: 9, height: 9) }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center) {
+                BrickCaps(text: title).foregroundStyle(BrickLook.soft).lineLimit(1)
+                Spacer(minLength: 8)
+                corner
             }
+            .frame(height: 36)
+            Spacer(minLength: 12)
             content
-            Spacer(minLength: 0)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, minHeight: 150, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 22)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
+        .frame(maxWidth: .infinity, minHeight: 168, maxHeight: .infinity, alignment: .topLeading)
         .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
         .foregroundStyle(BrickLook.ink)
         .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
@@ -31,17 +35,20 @@ private struct BigValue: View {
     var tint: Color = BrickLook.ink
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(value)
-                .font(.system(size: 64, weight: .light).monospacedDigit())
+                .font(.system(size: 60, weight: .light).monospacedDigit())
                 .foregroundStyle(tint)
                 .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-            if let note {
-                Text(note).font(.system(size: 18)).foregroundStyle(BrickLook.soft).lineLimit(1).minimumScaleFactor(0.8)
-            }
+            Text(note ?? " ")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(BrickLook.soft)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -58,20 +65,21 @@ private struct Placeholder: View {
 
 // MARK: Weather
 
-/// The temperature, big, and what it's doing outside. The hours and days are a tap away.
+/// The temperature, big, and what it's doing outside.
 struct WeatherTile: View {
     let store: WeatherStore
 
     var body: some View {
+        let w = store.weather
         GlanceTile(title: "Outside") {
-            if let w = store.weather {
-                HStack(alignment: .center, spacing: 12) {
-                    BigValue(value: "\(w.current.temp)°", note: w.current.label)
-                    Spacer(minLength: 0)
-                    Image(systemName: WeatherLook.symbol(w.current.code, isDay: w.current.isDay))
-                        .symbolRenderingMode(.multicolor)
-                        .font(.system(size: 44))
-                }
+            if let w {
+                Image(systemName: WeatherLook.symbol(w.current.code, isDay: w.current.isDay))
+                    .symbolRenderingMode(.multicolor)
+                    .font(.system(size: 30))
+            }
+        } content: {
+            if let w {
+                BigValue(value: "\(w.current.temp)°", note: w.days.first.map { "\(w.current.label) · H \($0.high)° L \($0.low)°" } ?? w.current.label)
             } else {
                 Placeholder(error: store.error)
             }
@@ -87,6 +95,8 @@ struct FitnessTile: View {
 
     var body: some View {
         GlanceTile(title: "Readiness") {
+            Image(systemName: "figure.run").font(.system(size: 24)).foregroundStyle(Fit.readiness)
+        } content: {
             if store.loaded {
                 BigValue(value: store.readinessScore.map(String.init) ?? "–", note: Status.word(store.readinessScore), tint: Fit.readiness)
             } else {
@@ -98,12 +108,17 @@ struct FitnessTile: View {
 
 // MARK: The Pi
 
-/// One answer: is everything on the Pi running? The numbers and controls are a tap away.
+/// One answer: is everything on the Pi running? Tap for the services and their controls.
 struct PiTile: View {
     let store: PiStore
 
     var body: some View {
-        GlanceTile(title: "Raspberry Pi", dot: dot) {
+        GlanceTile(title: "Raspberry Pi") {
+            HStack(spacing: 8) {
+                if let dot { Circle().fill(dot).frame(width: 10, height: 10) }
+                Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(BrickLook.soft)
+            }
+        } content: {
             if let s = store.status {
                 if s.available {
                     let down = s.troubled.count
@@ -111,7 +126,7 @@ struct PiTile: View {
                              note: down == 0 ? "\(s.running) services running" : s.troubled.map(\.name).joined(separator: ", "),
                              tint: down == 0 ? BrickLook.ink : .orange)
                 } else {
-                    Text(s.reason ?? "Not available.").font(.system(size: 15)).foregroundStyle(BrickLook.soft).lineLimit(4)
+                    Text(s.reason ?? "Not available.").font(.system(size: 15)).foregroundStyle(BrickLook.soft).lineLimit(3)
                 }
             } else {
                 Placeholder(error: store.error)
