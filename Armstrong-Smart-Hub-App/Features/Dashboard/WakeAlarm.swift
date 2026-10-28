@@ -251,5 +251,7 @@ struct WakeEditor: View {
         }
         .padding(20)
         .frame(width: 320)
+        // Its own tint: the wall's ink tint made the Set button and toggle white in dark mode.
+        .tint(Fit.action)
     }
 }
