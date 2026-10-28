@@ -93,13 +93,10 @@ final class VoiceAgent {
 
     private static let followUpSeconds: Double = 8
 
-    // Talking over Jarvis. While it speaks, the service's voice detection needs much louder
-    // sound, so a cough, the TV or a door doesn't register. Anything that still does is you:
-    // Jarvis stops, listens, and answers.
-    private static let speakingThreshold = 0.85
+    // Talking over Jarvis: the mic only sends loud sound while it speaks (VoiceAudio), so its own
+    // echo and room noise never reach the service. Anything that does is you: Jarvis stops,
+    // listens, and answers.
     private var gate: SocketGate?
-    private var sessionConfig: [String: Any] = [:]
-    private var loudVAD = false
 
     func levels() -> (mic: Float, output: Float) { audio.levels() }
 
@@ -312,8 +309,6 @@ final class VoiceAgent {
         let audio = audio
         let gate = SocketGate()
         self.gate = gate
-        sessionConfig = config.value
-        loudVAD = false
         client.onEvent = { event in
             switch event.type {
             case "response-created":
@@ -361,7 +356,6 @@ final class VoiceAgent {
                 gate?.dropCurrent()
                 audio.flushPlayback()
                 client?.cancelResponse()
-                setLoudVAD(false)
             }
             interrupted()
 
@@ -382,10 +376,7 @@ final class VoiceAgent {
 
         case "audio-delta", "audio-chunk":
             // Already queued for playback on the socket's queue.
-            if phase != .speaking {
-                withAnimation(.easeOut(duration: 0.2)) { phase = .speaking }
-                setLoudVAD(true)
-            }
+            if phase != .speaking { withAnimation(.easeOut(duration: 0.2)) { phase = .speaking } }
 
         case "audio-transcript-delta", "text-delta":
             reply += event.delta ?? ""
@@ -503,17 +494,6 @@ final class VoiceAgent {
         withAnimation(.easeOut(duration: 0.25)) { phase = .listening }
     }
 
-    /// Sends the session again with only the voice detection's threshold changed: much higher
-    /// while Jarvis is talking, the usual one otherwise.
-    private func setLoudVAD(_ loud: Bool) {
-        guard loud != loudVAD, let client, var vad = sessionConfig["turnDetection"] as? [String: Any] else { return }
-        loudVAD = loud
-        var config = sessionConfig
-        if loud { vad["threshold"] = Self.speakingThreshold }
-        config["turnDetection"] = vad
-        client.updateSession(config)
-    }
-
     /// After Jarvis finishes speaking, keep listening briefly for a follow-up.
     private func scheduleFollowUp() {
         followUp?.cancel()
@@ -523,7 +503,6 @@ final class VoiceAgent {
                 if Task.isCancelled { return }
             }
             if Task.isCancelled { return }
-            setLoudVAD(false)
             withAnimation(.easeOut(duration: 0.3)) { phase = .listening }
             try? await Task.sleep(for: .seconds(Self.followUpSeconds))
             if Task.isCancelled { return }
@@ -579,7 +558,6 @@ final class VoiceAgent {
         followUp = nil
         watchdog?.cancel()
         watchdog = nil
-        loudVAD = false
         gate = nil
         userSpeaking = false
         audio.endStreaming()

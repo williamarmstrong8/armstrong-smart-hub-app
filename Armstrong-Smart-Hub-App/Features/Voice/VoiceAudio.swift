@@ -47,11 +47,16 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
     private static let bargeInLevel: Float = 0.55
     private static let gateHold: CFAbsoluteTime = 0.7
     private static let echoTail: CFAbsoluteTime = 0.4
-    private var lastPlaybackAt: CFAbsoluteTime = 0
+    /// When the speech queued so far finishes, by the clock. Counting buffers back from their
+    /// completion callbacks could stick (a route change drops buffers without calling back),
+    /// leaving the app sure Jarvis was still talking and the mic muted for good.
+    private var playUntil: CFAbsoluteTime = 0
+    /// Output latency and the player's start, on top of the queued audio's own length.
+    private static let playSlack: CFAbsoluteTime = 0.25
     private var gateOpenUntil: CFAbsoluteTime = 0
     private var held = Data()
 
-    var isPlaying: Bool { lock.withLock { queuedBuffers > 0 } }
+    var isPlaying: Bool { lock.withLock { CFAbsoluteTimeGetCurrent() < playUntil + Self.playSlack } }
     var isRunning: Bool { engine.isRunning }
     /// The mic delivered audio in the last few seconds. False after an interruption (a call,
     /// Siri, the app going to the background) that left the engine stopped or the tap silent.
@@ -176,15 +181,13 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
         lock.withLock {
             queuedBuffers += 1
             outputLevel = outputLevel * 0.5 + level * 0.5
+            playUntil = max(playUntil, CFAbsoluteTimeGetCurrent()) + Double(frames) / Self.streamRate
         }
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             guard let self else { return }
             self.lock.withLock {
                 self.queuedBuffers = max(0, self.queuedBuffers - 1)
-                if self.queuedBuffers == 0 {
-                    self.outputLevel = 0
-                    self.lastPlaybackAt = CFAbsoluteTimeGetCurrent()
-                }
+                if self.queuedBuffers == 0 { self.outputLevel = 0 }
             }
         }
         if !player.isPlaying { player.play() }
@@ -197,7 +200,7 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
             queuedBuffers = 0
             outputLevel = 0
             // Cut off because you're talking: no echo to guard against, so let it all through.
-            lastPlaybackAt = 0
+            playUntil = 0
             gateOpenUntil = 0
             held = Data()
         }
@@ -248,7 +251,7 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
                 return nil
             }
             let now = CFAbsoluteTimeGetCurrent()
-            let speaking = queuedBuffers > 0 || now - lastPlaybackAt < Self.echoTail
+            let speaking = now < playUntil + Self.playSlack + Self.echoTail
             guard speaking else {
                 held = Data()
                 return data
