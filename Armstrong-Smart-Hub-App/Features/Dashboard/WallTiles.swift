@@ -65,7 +65,8 @@ private struct Placeholder: View {
 
 // MARK: Weather
 
-/// The temperature, big, and what it's doing outside.
+/// The morning's weather, big: the temperature now, what it's doing, and today's low to high
+/// as a bar with a marker for where it is now.
 struct WeatherTile: View {
     let store: WeatherStore
 
@@ -75,15 +76,58 @@ struct WeatherTile: View {
             if let w {
                 Image(systemName: WeatherLook.symbol(w.current.code, isDay: w.current.isDay))
                     .symbolRenderingMode(.multicolor)
-                    .font(.system(size: 30))
+                    .font(.system(size: 34))
             }
         } content: {
             if let w {
-                BigValue(value: "\(w.current.temp)°", note: w.days.first.map { "\(w.current.label) · H \($0.high)° L \($0.low)°" } ?? w.current.label)
+                VStack(alignment: .leading, spacing: 18) {
+                    BigValue(value: "\(w.current.temp)°", note: w.current.label)
+                    if let today = w.days.first {
+                        DayRange(low: today.low, high: today.high, now: w.current.temp)
+                    }
+                }
             } else {
                 Placeholder(error: store.error)
             }
         }
+    }
+}
+
+/// "L 44°" — a cool-to-warm bar with a dot for now — "H 58°".
+private struct DayRange: View {
+    let low: Int
+    let high: Int
+    let now: Int
+
+    var body: some View {
+        HStack(spacing: 14) {
+            label("arrow.down", "\(low)°")
+            GeometryReader { geo in
+                let span = Double(max(high - low, 1))
+                let at = min(max(Double(now - low) / span, 0), 1)
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(LinearGradient(colors: [.cyan, .green, .yellow, .orange], startPoint: .leading, endPoint: .trailing))
+                        .frame(height: 10)
+                    Circle()
+                        .fill(BrickLook.ink)
+                        .overlay(Circle().strokeBorder(BrickLook.card, lineWidth: 3))
+                        .frame(width: 22, height: 22)
+                        .offset(x: (geo.size.width - 22) * at)
+                }
+                .frame(maxHeight: .infinity)
+            }
+            .frame(height: 22)
+            label("arrow.up", "\(high)°")
+        }
+    }
+
+    private func label(_ icon: String, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(BrickLook.soft)
+            Text(text).font(.system(size: 26, weight: .light).monospacedDigit())
+        }
+        .fixedSize()
     }
 }
 
@@ -103,41 +147,6 @@ struct FitnessTile: View {
                 Placeholder(error: store.error)
             }
         }
-    }
-}
-
-// MARK: The Pi
-
-/// One answer: is everything on the Pi running? Tap for the services and their controls.
-struct PiTile: View {
-    let store: PiStore
-
-    var body: some View {
-        GlanceTile(title: "Raspberry Pi") {
-            HStack(spacing: 8) {
-                if let dot { Circle().fill(dot).frame(width: 10, height: 10) }
-                Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(BrickLook.soft)
-            }
-        } content: {
-            if let s = store.status {
-                if s.available {
-                    let down = s.troubled.count
-                    BigValue(value: down == 0 ? "All good" : "\(down) down",
-                             note: down == 0 ? "\(s.running) services running" : s.troubled.map(\.name).joined(separator: ", "),
-                             tint: down == 0 ? BrickLook.ink : .orange)
-                } else {
-                    Text(s.reason ?? "Not available.").font(.system(size: 15)).foregroundStyle(BrickLook.soft).lineLimit(3)
-                }
-            } else {
-                Placeholder(error: store.error)
-            }
-        }
-    }
-
-    private var dot: Color? {
-        guard let s = store.status, s.available else { return store.error != nil ? .red : nil }
-        if !s.troubled.isEmpty || (s.temperature ?? 0) >= 75 || (s.disk?.fraction ?? 0) > 0.95 { return .orange }
-        return .green
     }
 }
 

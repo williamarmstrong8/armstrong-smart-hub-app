@@ -119,38 +119,28 @@ struct DashboardView: View {
     @State private var editingHabit: HabitEditTarget?
     @State private var account = false
     @State private var page: WallPage?
+    @State private var alerts = WallAlertsStore()
 
     var body: some View {
-        GeometryReader { geo in
-            // Landscape keeps the habits in their own column; portrait puts them under the glance.
-            let wide = geo.size.width > geo.size.height
-            HStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 30) {
-                        header
-                        glance
-                        if !wide { habitsRow }
-                        homeSection
-                        transactionsSection
-                        CalendarSection(calendar: calendar)
-                    }
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 24)
-                }
-                .refreshable {
-                    async let a: Void = home.refresh(api: session.api)
-                    async let b: Void = refresh()
-                    async let c: Void = pi.load(api: session.api)
-                    _ = await (a, b, c)
-                }
-
-                if wide {
-                    HabitsColumn(store: habits, toast: toast) { editingHabit = $0 }
-                        .frame(width: min(max(geo.size.width * 0.22, 220), 280))
-                        .background(BrickLook.sheet.ignoresSafeArea())
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 30) {
+                header
+                glance
+                homeSection
+                transactionsSection
+                CalendarSection(calendar: calendar)
             }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
         }
+        .refreshable {
+            async let a: Void = home.refresh(api: session.api)
+            async let b: Void = refresh()
+            async let c: Void = pi.load(api: session.api)
+            _ = await (a, b, c)
+        }
+        // Popups (a service down, tomorrow's wake-up, a birthday), one at a time, under Jarvis.
+        .overlay { popups }
         // Jarvis takes the stage: the dashboard softens and steps back.
         .blur(radius: voice.presented ? 24 : 0)
         .scaleEffect(voice.presented ? 0.97 : 1)
@@ -206,47 +196,80 @@ struct DashboardView: View {
                 .onLongPressGesture { account = true }
             }
             Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: 12) {
-                HStack(spacing: 12) {
+            // Where the buttons used to be: today's habits, small, then the alarm and status.
+            VStack(alignment: .trailing, spacing: 14) {
+                habitsStrip
+                HStack(spacing: 16) {
                     WakeControl(alarm: wake, home: home, toast: toast)
-                    VoiceButton(agent: voice)
+                    // Tapping the status opens the Pi's services and their controls.
+                    LinkStatus(voice: voice).contentShape(.rect).onTapGesture { page = .pi }
                 }
-                LinkStatus(voice: voice)
             }
             .padding(.top, 8)
         }
     }
 
-    // MARK: Glance
-
-    private var glance: some View {
-        // Three equal cards, as tall as the tallest.
-        // Only the Pi opens a page (its services and controls); the others are the whole answer.
-        HStack(alignment: .top, spacing: 14) {
-            WeatherTile(store: weather)
-            FitnessTile(store: fitness)
-            Button { page = .pi } label: { PiTile(store: pi) }
-                .buttonStyle(CardPressStyle())
-        }
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    // MARK: Habits (portrait)
-
+    /// Today's habits as small circles. Tap to fill; hold to edit.
     @ViewBuilder
-    private var habitsRow: some View {
+    private var habitsStrip: some View {
         if habits.loaded, !habits.habits.isEmpty {
-            let today = habits.today
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], spacing: 18) {
-                ForEach(habits.habits) { habit in
-                    HabitButton(habit: habit, done: habits.isDone(habit.id, today), saving: habits.isSaving(habit.id, today), size: 88) {
-                        Task { await habits.toggle(habit, today, api: session.api, toast: toast) }
-                    }
-                    .contextMenu { Button("Edit", systemImage: "pencil") { editingHabit = .habit(habit) } }
-                }
+            // Names under the circles when they fit, emoji-only circles when there are many.
+            ViewThatFits(in: .horizontal) {
+                habitCircles(size: 48, names: true)
+                habitCircles(size: 42, names: false)
             }
             .animation(.spring(duration: 0.4, bounce: 0.2), value: habits.done)
             .sensoryFeedback(.success, trigger: habits.doneToday) { old, new in new > old }
+        }
+    }
+
+    private func habitCircles(size: CGFloat, names: Bool) -> some View {
+        let today = habits.today
+        return HStack(alignment: .top, spacing: names ? 6 : 10) {
+            ForEach(habits.habits) { habit in
+                HabitButton(habit: habit, done: habits.isDone(habit.id, today), saving: habits.isSaving(habit.id, today),
+                            size: size, showsName: names) {
+                    Task { await habits.toggle(habit, today, api: session.api, toast: toast) }
+                }
+                .frame(width: names ? 68 : size)
+                .contextMenu { Button("Edit", systemImage: "pencil") { editingHabit = .habit(habit) } }
+            }
+        }
+    }
+
+    // MARK: Glance
+
+    /// What the time of day calls for: the weather from 5 AM, readiness joining it at 8,
+    /// both gone at 10 PM when the wall winds down for the night.
+    private var glance: some View {
+        TimelineView(.everyMinute) { context in
+            let hour = Calendar.current.component(.hour, from: context.date)
+            let weatherTime = hour >= 5 && hour < 22
+            let readinessTime = hour >= 8 && hour < 22
+            HStack(alignment: .top, spacing: 14) {
+                if weatherTime { WeatherTile(store: weather) }
+                if readinessTime { FitnessTile(store: fitness).frame(maxWidth: 300) }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .animation(.smooth(duration: 0.6), value: readinessTime)
+        }
+    }
+
+    // MARK: Popups
+
+    private var popups: some View {
+        TimelineView(.everyMinute) { context in
+            let queue = WallAlert.queue(now: context.date, pi: pi.status, alarm: wake, calendar: calendar, dismissed: alerts.dismissed)
+            ZStack {
+                if let alert = queue.first {
+                    WallPopup(alert: alert, pi: pi, alarm: wake, home: home, toast: toast) {
+                        withAnimation(.smooth(duration: 0.35)) { alerts.dismiss(alert) }
+                    }
+                    .id(alert.id)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                }
+            }
+            .animation(.smooth(duration: 0.35), value: queue.first?.id)
         }
     }
 
@@ -730,58 +753,14 @@ private struct EventChip: View {
     }
 }
 
-/// Today's habits, one per row. Tapping one fills its circle and it moves to
-/// the bottom of the list; tapping a filled one undoes it.
-private struct HabitsColumn: View {
-    let store: HabitsStore
-    let toast: Toast
-    let onEdit: (HabitEditTarget) -> Void
-
-    @Environment(AppSession.self) private var session
-
-    var body: some View {
-        let today = store.today
-        let todo = store.habits.filter { !store.isDone($0.id, today) }
-        let done = store.habits.filter { store.isDone($0.id, today) }
-        // Centered top to bottom; scrolls only if there are more habits than fit.
-        GeometryReader { geo in
-        ScrollView {
-            VStack(spacing: 28) {
-                if !store.loaded, let error = store.error {
-                    Text(error).font(.footnote).foregroundStyle(.red)
-                } else if !store.loaded {
-                    ProgressView()
-                } else if store.habits.isEmpty {
-                    Text("No habits yet. Add them from the Habits tab on your phone.")
-                        .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                }
-
-                // Same ids in a new order, so SwiftUI animates each habit sliding down.
-                ForEach(todo + done) { habit in
-                    let isDone = store.isDone(habit.id, today)
-                    HabitButton(habit: habit, done: isDone, saving: store.isSaving(habit.id, today)) {
-                        Task { await store.toggle(habit, today, api: session.api, toast: toast) }
-                    }
-                    .contextMenu { Button("Edit", systemImage: "pencil") { onEdit(.habit(habit)) } }
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 28)
-            .frame(maxWidth: .infinity, minHeight: geo.size.height)
-            .animation(.spring(duration: 0.5, bounce: 0.2), value: store.done)
-            .sensoryFeedback(.success, trigger: done.count) { old, new in new > old }
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        }
-    }
-}
-
 /// A habit as the dashboard's big circle: tap to fill it for today.
 struct HabitButton: View {
     let habit: Habit
     let done: Bool
     let saving: Bool
     var size: CGFloat = 110
+    /// Off for the wall header's small circles, where the emoji says which habit it is.
+    var showsName = true
     let onTap: () -> Void
 
     var body: some View {
@@ -801,11 +780,13 @@ struct HabitButton: View {
                     }
                 }
                 .frame(width: size, height: size)
-                Text(habit.name)
-                    .font(size > 90 ? .headline : .subheadline.weight(.semibold))
-                    .foregroundStyle(done ? color : .primary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+                if showsName {
+                    Text(habit.name)
+                        .font(size > 90 ? .headline : size > 60 ? .subheadline.weight(.semibold) : .caption.weight(.semibold))
+                        .foregroundStyle(done ? color : .primary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
             }
             .frame(maxWidth: .infinity)
             .contentShape(.rect)
