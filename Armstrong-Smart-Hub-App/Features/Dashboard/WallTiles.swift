@@ -65,8 +65,8 @@ private struct Placeholder: View {
 
 // MARK: Lights
 
-/// A light on the wall, styled like the weather and readiness cards: its name in caps, a bulb in
-/// its own color, and how bright it is, big. Tap toggles; hold for brightness and color.
+/// A light on the wall, styled like the weather and readiness cards: its name big, how bright it
+/// is under it, and a bulb in its own color. Tap toggles; hold for brightness and color.
 struct WallLightCard: View {
     let entity: HAEntity
     let onTap: () -> Void
@@ -77,16 +77,14 @@ struct WallLightCard: View {
     var body: some View {
         let on = entity.isOn
         let tint = entity.rgbColor.map { Color(rgb: $0) } ?? .orange
-        GlanceTile(title: entity.name) {
+        GlanceTile(title: "") {
             Image(systemName: on ? "lightbulb.fill" : "lightbulb")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(on ? .white : BrickLook.soft)
-                .frame(width: 40, height: 40)
-                .background(on ? tint : BrickLook.pill, in: .circle)
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(on ? tint : BrickLook.soft)
                 .contentTransition(.symbolEffect(.replace))
         } content: {
-            BigValue(value: on ? "\(entity.brightnessPct)%" : "Off",
-                     note: entity.isUnavailable ? "Unavailable" : on ? "On" : " ",
+            BigValue(value: entity.name,
+                     note: entity.isUnavailable ? "Unavailable" : on ? "\(entity.brightnessPct)%" : "Off",
                      tint: on ? BrickLook.ink : BrickLook.soft)
         }
         .scaleEffect(pressed ? 0.97 : 1)

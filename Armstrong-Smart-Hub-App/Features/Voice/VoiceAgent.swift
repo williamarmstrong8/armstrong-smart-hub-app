@@ -51,6 +51,10 @@ final class VoiceAgent {
     /// Called after a tool changed something, so the dashboard can refresh that section.
     var onAction: ((VoiceView.Kind) -> Void)?
 
+    /// Tools that run here on the iPad instead of on the hub (the wake-up alarm lives in
+    /// AlarmKit on this device). Returns nil for a tool it doesn't handle.
+    var localTool: ((_ name: String, _ arguments: String) async -> (output: [String: Any], view: VoiceView?)?)?
+
     private var api: APIClient?
     /// Replaced with a fresh one whenever the mic stops delivering audio.
     private var audio = VoiceAudio()
@@ -402,6 +406,12 @@ final class VoiceAgent {
             let output: String
             if let refusal = guardCall(name, arguments: arguments) {
                 output = refusal
+            } else if let local = await localTool?(name, arguments) {
+                if let v = local.view {
+                    toolViewThisTurn = true
+                    show(v)
+                }
+                output = JSONObject(local.output).jsonString
             } else {
                 do {
                     guard let api else { return }
