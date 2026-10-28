@@ -81,6 +81,24 @@ enum WeatherLook {
         }
     }
 
+    /// The hub's words for a WMO code (lib/weather.ts), for the days ahead.
+    static func label(_ code: Int) -> String {
+        switch code {
+        case 0: "Clear"
+        case 1: "Mostly clear"
+        case 2: "Partly cloudy"
+        case 3: "Overcast"
+        case 45, 48: "Fog"
+        case 51, 53, 55, 56, 57: "Drizzle"
+        case 61, 63, 66, 80, 81: "Rain"
+        case 65, 67, 82: "Heavy rain"
+        case 71, 73, 77, 85: "Snow"
+        case 75, 86: "Heavy snow"
+        case 95, 96, 99: "Thunderstorms"
+        default: "Cloudy"
+        }
+    }
+
     /// Multicolor symbols carry their own colors; this tints the rest.
     static func tint(_ code: Int, isDay: Bool = true) -> Color {
         switch code {

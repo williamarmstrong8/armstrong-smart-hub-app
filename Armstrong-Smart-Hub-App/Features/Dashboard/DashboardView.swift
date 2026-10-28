@@ -192,19 +192,25 @@ struct DashboardView: View {
 
     // MARK: Glance
 
-    /// What the time of day calls for: the weather from 5 AM, readiness joining it at 8,
-    /// both gone at 10 PM when the wall winds down for the night.
+    /// What the time of day calls for: the weather from 5 AM, readiness joining it at 8; from
+    /// 10 PM, tomorrow's forecast and how the day went.
     private var glance: some View {
         TimelineView(.everyMinute) { context in
             let hour = Calendar.current.component(.hour, from: context.date)
-            let weatherTime = hour >= 5 && hour < 22
+            let night = hour >= 22 || hour < 5
             let readinessTime = hour >= 8 && hour < 22
             HStack(alignment: .top, spacing: 14) {
-                if weatherTime { WeatherTile(store: weather) }
-                if readinessTime { FitnessTile(store: fitness).frame(maxWidth: 300) }
+                if night {
+                    ForecastTile(store: weather, now: context.date)
+                    DayEndTile(store: fitness).frame(maxWidth: 300)
+                } else {
+                    WeatherTile(store: weather)
+                    if readinessTime { FitnessTile(store: fitness).frame(maxWidth: 300) }
+                }
             }
             .fixedSize(horizontal: false, vertical: true)
             .animation(.smooth(duration: 0.6), value: readinessTime)
+            .animation(.smooth(duration: 0.6), value: night)
         }
     }
 

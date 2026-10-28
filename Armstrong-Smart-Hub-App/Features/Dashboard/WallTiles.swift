@@ -93,27 +93,29 @@ struct WeatherTile: View {
     }
 }
 
-/// "L 44°" — a cool-to-warm bar with a dot for now — "H 58°".
+/// "L 44°" — a cool-to-warm bar with a dot for now (when it's today) — "H 58°".
 private struct DayRange: View {
     let low: Int
     let high: Int
-    let now: Int
+    var now: Int?
 
     var body: some View {
         HStack(spacing: 14) {
             label("arrow.down", "\(low)°")
             GeometryReader { geo in
                 let span = Double(max(high - low, 1))
-                let at = min(max(Double(now - low) / span, 0), 1)
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(LinearGradient(colors: [.cyan, .green, .yellow, .orange], startPoint: .leading, endPoint: .trailing))
                         .frame(height: 10)
-                    Circle()
-                        .fill(BrickLook.ink)
-                        .overlay(Circle().strokeBorder(BrickLook.card, lineWidth: 3))
-                        .frame(width: 22, height: 22)
-                        .offset(x: (geo.size.width - 22) * at)
+                    if let now {
+                        let at = min(max(Double(now - low) / span, 0), 1)
+                        Circle()
+                            .fill(BrickLook.ink)
+                            .overlay(Circle().strokeBorder(BrickLook.card, lineWidth: 3))
+                            .frame(width: 22, height: 22)
+                            .offset(x: (geo.size.width - 22) * at)
+                    }
                 }
                 .frame(maxHeight: .infinity)
             }
@@ -131,7 +133,81 @@ private struct DayRange: View {
     }
 }
 
+/// At night: the next day's forecast. The high big, what it'll do, the low-to-high bar, and
+/// the chance of rain when it's worth knowing. Before 5 AM "next" is the day that just began.
+struct ForecastTile: View {
+    let store: WeatherStore
+    let now: Date
+
+    var body: some View {
+        let early = Calendar.current.component(.hour, from: now) < 5
+        let day = store.weather.flatMap { w in w.days.count > (early ? 0 : 1) ? w.days[early ? 0 : 1] : nil }
+        GlanceTile(title: early ? "Today" : "Tomorrow") {
+            if let day {
+                Image(systemName: WeatherLook.symbol(day.code))
+                    .symbolRenderingMode(.multicolor)
+                    .font(.system(size: 34))
+            }
+        } content: {
+            if let day {
+                VStack(alignment: .leading, spacing: 18) {
+                    BigValue(value: "\(day.high)°", note: note(day))
+                    DayRange(low: day.low, high: day.high)
+                }
+            } else {
+                Placeholder(error: store.error)
+            }
+        }
+    }
+
+    private func note(_ d: WeatherDay) -> String {
+        var parts = [WeatherLook.label(d.code), "Low \(d.low)°"]
+        if let rain = d.precipChance, rain >= 30 { parts.append("\(rain)% rain") }
+        return parts.joined(separator: " · ")
+    }
+}
+
 // MARK: Fitness
+
+/// At night: how the day went. Steps when the hub has today's count (usually after the watch's
+/// midnight sync), otherwise Body Battery, otherwise last night's sleep.
+struct DayEndTile: View {
+    let store: FitnessStore
+
+    var body: some View {
+        let today = store.today
+        GlanceTile(title: "Your day") {
+            Image(systemName: icon).font(.system(size: 24)).foregroundStyle(tint)
+        } content: {
+            if store.loaded {
+                if let steps = today?.steps {
+                    BigValue(value: steps.formatted(), note: stepsNote(today))
+                } else if let energy = store.energy {
+                    BigValue(value: "\(energy)", note: "Body Battery", tint: Fit.energy)
+                } else {
+                    BigValue(value: store.sleepScore.map(String.init) ?? "–", note: "Last night's sleep", tint: Fit.sleep)
+                }
+            } else {
+                Placeholder(error: store.error)
+            }
+        }
+    }
+
+    private var icon: String {
+        store.today?.steps != nil ? "figure.walk" : store.energy != nil ? "bolt.fill" : "moon.fill"
+    }
+
+    private var tint: Color {
+        store.today?.steps != nil ? Fit.activity : store.energy != nil ? Fit.energy : Fit.sleep
+    }
+
+    private func stepsNote(_ day: FitnessDay?) -> String {
+        var parts = ["steps"]
+        if let goal = day?.stepGoal, goal > 0 { parts = ["of \(goal.formatted()) steps"] }
+        if let energy = store.energy { parts.append("Battery \(energy)") }
+        return parts.joined(separator: " · ")
+    }
+}
 
 /// Today's Training Readiness, big, in its color, and the one word for it.
 struct FitnessTile: View {
