@@ -262,8 +262,8 @@
 			buildRules = (
 			);
 			fileSystemSynchronizedGroups = (
-				000000000000000000000080 /* BrickShield */,
 				000000000000000000000070 /* BrickShared */,
+				000000000000000000000080 /* BrickShield */,
 			);
 			name = BrickShield;
 			productName = BrickShield;

@@ -14,7 +14,8 @@ struct CalendarCard: View {
             if data.days.count == 1, let day = data.days.first {
                 DayAgenda(day: day, zone: zone, addedId: data.addedId, removedId: data.removedId, wide: true)
             } else {
-                HStack(alignment: .top, spacing: 36) {
+                // Several days wrap into rows instead of squeezing a week into one line.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 32, alignment: .top)], alignment: .leading, spacing: 36) {
                     ForEach(data.days) { day in
                         DayAgenda(day: day, zone: zone, addedId: data.addedId, removedId: data.removedId, wide: false)
                     }
@@ -156,7 +157,7 @@ private struct EventChip: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(event.title)
                 .font(.system(size: (event.allDay ? 17 : 19) * (large ? 1.4 : 1), weight: .semibold))
-                .lineLimit(1)
+                .lineLimit(2)
             if !event.allDay {
                 Text(timeText)
                     .font(.system(size: large ? 21 : 15, weight: .medium))

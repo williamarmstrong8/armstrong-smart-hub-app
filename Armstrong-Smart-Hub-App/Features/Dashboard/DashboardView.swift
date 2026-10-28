@@ -11,49 +11,73 @@ enum KeepAwake {
     }
 }
 
-/// The iPad's always-on hub: clock and agenda, home controls and new
-/// transactions on the left, today's habits down the right.
+/// The iPad's always-on hub on the wall, in the iPhone app's look: the time and how you're
+/// doing, a glance at the weather, your fitness and the Pi, then the house, new transactions
+/// and the next three days, with today's habits down the side.
 struct DashboardTab: View {
     @Environment(AppSession.self) private var session
+    @Environment(\.scenePhase) private var scenePhase
     @State private var home = HomeStore()
     @State private var finance = FinanceStore()
     @State private var habits = HabitsStore()
+    @State private var weather = WeatherStore()
+    @State private var pi = PiStore()
+    @State private var fitness = FitnessStore()
     @State private var calendar: CalendarResponse? = DiskCache.read(calendarCacheName)
     @State private var wake = WakeAlarm()
     @State private var voice = VoiceAgent()
+    @State private var link = HubLink.shared
 
     var body: some View {
-        DashboardView(home: home, finance: finance, habits: habits, calendar: calendar, wake: wake, voice: voice) { await refreshSlow() }
-            .task { await home.poll(api: session.api) }
+        DashboardView(home: home, finance: finance, habits: habits, weather: weather, pi: pi, fitness: fitness,
+                      calendar: calendar, wake: wake, voice: voice) { await refreshSlow() }
+            // Home polls on its own; restarted whenever the app comes back to the front.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                voice.resume()
+                await home.poll(api: session.api)
+            }
             .task {
                 // "Hey Jarvis": when it changes something, refresh that part of the dashboard.
                 voice.onAction = { kind in
                     switch kind {
-                    case .lights: Task { await home.refresh(api: session.api) }
+                    case .lights, .movie: Task { await home.refresh(api: session.api) }
                     case .habits: Task { await habits.load(api: session.api) }
                     case .calendar: Task { await refreshSlow() }
-                    case .movie: Task { await home.refresh(api: session.api) }
-                    case .finance: break
+                    case .pi: Task { await pi.load(api: session.api) }
+                    case .finance, .weather, .fitness: break
                     }
                 }
                 await voice.start(api: session.api)
             }
-            .task {
-                // Finance, habits and the calendar change slowly; Home polls on its own.
+            .task(id: scenePhase) {
+                // The rest changes slowly: every few minutes, and at once when the app comes
+                // back to the front or the hub answers again after being out of reach.
+                guard scenePhase == .active else { return }
                 while !Task.isCancelled {
                     await refreshSlow()
-                    try? await Task.sleep(for: .seconds(300))
+                    await link.wait(300)
+                }
+            }
+            .task(id: scenePhase) {
+                // The Pi's temperature and services, more often than the rest.
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    await pi.load(api: session.api)
+                    try? await Task.sleep(for: .seconds(60))
                 }
             }
     }
 
     private func refreshSlow() async {
         habits.rollDay()
-        async let f: Void = finance.load(api: session.api)
-        async let h: Void = habits.load(api: session.api)
         let api = session.api
+        async let f: Void = finance.load(api: api)
+        async let h: Void = habits.load(api: api)
+        async let w: Void = weather.load(api: api)
+        async let fit: Void = fitness.load(api: api)
         async let c: Data? = try? api.data(api.request("/api/mobile/calendar"))
-        _ = await (f, h)
+        _ = await (f, h, w, fit)
         if let raw = await c, let cal = try? APIClient.decoder.decode(CalendarResponse.self, from: raw) {
             calendar = cal
             DiskCache.write(raw, calendarCacheName)
@@ -69,10 +93,19 @@ private let deviceGroups: [(title: String, kinds: Set<ControlKind>)] = [
     ("Switches", [.toggle]),
 ]
 
+/// The iPhone's pages, opened full size from the wall.
+private enum WallPage: String, Identifiable {
+    case weather, pi, fitness, finance, calendar
+    var id: String { rawValue }
+}
+
 struct DashboardView: View {
     let home: HomeStore
     let finance: FinanceStore
     let habits: HabitsStore
+    let weather: WeatherStore
+    let pi: PiStore
+    let fitness: FitnessStore
     let calendar: CalendarResponse?
     let wake: WakeAlarm
     let voice: VoiceAgent
@@ -85,27 +118,38 @@ struct DashboardView: View {
     @State private var retagging: Transaction?
     @State private var editingHabit: HabitEditTarget?
     @State private var account = false
+    @State private var page: WallPage?
 
     var body: some View {
         GeometryReader { geo in
+            // Landscape keeps the habits in their own column; portrait puts them under the glance.
+            let wide = geo.size.width > geo.size.height
             HStack(spacing: 0) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 32) {
+                    VStack(alignment: .leading, spacing: 30) {
                         header
+                        glance
+                        shortcuts
+                        if !wide { habitsRow }
                         homeSection
                         transactionsSection
                         CalendarSection(calendar: calendar)
                     }
-                    .padding(28)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 24)
                 }
                 .refreshable {
                     async let a: Void = home.refresh(api: session.api)
                     async let b: Void = refresh()
-                    _ = await (a, b)
+                    async let c: Void = pi.load(api: session.api)
+                    _ = await (a, b, c)
                 }
 
-                HabitsColumn(store: habits, toast: toast) { editingHabit = $0 }
-                    .frame(width: min(max(geo.size.width * 0.24, 230), 300))
+                if wide {
+                    HabitsColumn(store: habits, toast: toast) { editingHabit = $0 }
+                        .frame(width: min(max(geo.size.width * 0.22, 220), 280))
+                        .background(BrickLook.sheet.ignoresSafeArea())
+                }
             }
         }
         // Jarvis takes the stage: the dashboard softens and steps back.
@@ -113,7 +157,9 @@ struct DashboardView: View {
         .scaleEffect(voice.presented ? 0.97 : 1)
         .allowsHitTesting(!voice.presented)
         .animation(.smooth(duration: 0.5), value: voice.presented)
-        .background(Color(.systemGroupedBackground))
+        .background(BrickLook.page.ignoresSafeArea())
+        .foregroundStyle(BrickLook.ink)
+        .tint(BrickLook.ink)
         .overlay { VoiceOverlay(agent: voice) }
         .persistentSystemOverlays(.hidden)
         .onAppear { KeepAwake.hold() }
@@ -127,34 +173,102 @@ struct DashboardView: View {
                 Task { await finance.retag(t, to: c, api: session.api, toast: toast) }
             }
         }
+        .sheet(item: $page) { page in
+            switch page {
+            case .weather: WallSheet(title: "Weather") { if let w = weather.weather { WeatherCard(data: w) } }
+            case .pi: WallSheet(title: "Raspberry Pi") { PiPanel(store: pi) }
+            case .fitness: FitnessView()
+            case .finance: FinanceView()
+            case .calendar: CalendarView()
+            }
+        }
         .sheet(isPresented: $account) { SettingsView() }
         .habitEditor($editingHabit, store: habits)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in habits.rollDay() }
         .toast(toast)
     }
 
-    // MARK: Clock and agenda
+    // MARK: Clock and status
 
     private var header: some View {
         HStack(alignment: .top, spacing: 24) {
             TimelineView(.everyMinute) { context in
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
+                    BrickCaps(text: context.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                        .foregroundStyle(BrickLook.soft)
                     Text(context.date.formatted(date: .omitted, time: .shortened))
-                        .font(.system(size: 80, weight: .semibold, design: .rounded))
+                        .font(.system(size: 92, weight: .light))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                    Text(context.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                        .font(.title3).foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    if let status = fitness.dayStatus {
+                        Text("\(status.title). \(status.summary)")
+                            .font(.system(size: 18))
+                            .foregroundStyle(BrickLook.soft)
+                            .lineLimit(2)
+                    }
                 }
                 // A long press on the clock opens account settings (sign out).
                 .onLongPressGesture { account = true }
             }
             Spacer(minLength: 0)
-            HStack(spacing: 12) {
-                VoiceButton(agent: voice)
-                WakeControl(alarm: wake, home: home, toast: toast)
+            VStack(alignment: .trailing, spacing: 12) {
+                HStack(spacing: 12) {
+                    WakeControl(alarm: wake, home: home, toast: toast)
+                    VoiceButton(agent: voice)
+                }
+                LinkStatus(voice: voice)
             }
-            .padding(.top, 12)
+            .padding(.top, 8)
+        }
+    }
+
+    // MARK: Glance
+
+    private var glance: some View {
+        // Three equal cards, as tall as the tallest.
+        HStack(alignment: .top, spacing: 14) {
+            Button { page = .weather } label: { WeatherTile(store: weather) }
+                .disabled(weather.weather == nil)
+            Button { page = .fitness } label: { FitnessTile(store: fitness) }
+            Button { page = .pi } label: { PiTile(store: pi) }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .buttonStyle(CardPressStyle())
+    }
+
+    /// The iPhone's other pages, a tap away.
+    private var shortcuts: some View {
+        HStack(spacing: 10) {
+            shortcut(.fitness, "Fitness", "figure.run")
+            shortcut(.finance, "Finance", "wallet.bifold")
+            shortcut(.calendar, "Calendar", "calendar")
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func shortcut(_ target: WallPage, _ title: String, _ icon: String) -> some View {
+        Button { page = target } label: { BrickPill(text: title, icon: icon) }
+            .buttonStyle(CardPressStyle())
+    }
+
+    // MARK: Habits (portrait)
+
+    @ViewBuilder
+    private var habitsRow: some View {
+        if habits.loaded, !habits.habits.isEmpty {
+            let today = habits.today
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], spacing: 18) {
+                ForEach(habits.habits) { habit in
+                    HabitButton(habit: habit, done: habits.isDone(habit.id, today), saving: habits.isSaving(habit.id, today), size: 88) {
+                        Task { await habits.toggle(habit, today, api: session.api, toast: toast) }
+                    }
+                    .contextMenu { Button("Edit", systemImage: "pencil") { editingHabit = .habit(habit) } }
+                }
+            }
+            .animation(.spring(duration: 0.4, bounce: 0.2), value: habits.done)
+            .sensoryFeedback(.success, trigger: habits.doneToday) { old, new in new > old }
         }
     }
 
@@ -163,7 +277,9 @@ struct DashboardView: View {
     @ViewBuilder
     private var homeSection: some View {
         if let error = home.loadError ?? home.state?.errors.entities {
-            ErrorBanner(message: error) { Task { await home.refresh(api: session.api) } }
+            ErrorBanner(message: home.entities.isEmpty ? error : "\(error) Showing the last known state.") {
+                Task { await home.refresh(api: session.api) }
+            }
         }
         if let payload = home.state?.automations, !(payload.scenes + payload.scripts).isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -177,15 +293,13 @@ struct DashboardView: View {
                                 } catch { toast.error(error) }
                             }
                         } label: {
-                            Label(item.name, systemImage: item.id.hasPrefix("scene.") ? "sparkles" : "play.circle")
-                                .font(.headline)
-                                .padding(.vertical, 6)
+                            BrickPill(text: item.name, icon: item.id.hasPrefix("scene.") ? "sparkles" : "play.circle")
                         }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
+                        .buttonStyle(CardPressStyle())
                     }
                 }
             }
+            .scrollClipDisabled()
         }
         if home.state == nil {
             ProgressView().frame(maxWidth: .infinity, minHeight: 160)
@@ -195,8 +309,7 @@ struct DashboardView: View {
                 let items = shown.filter { group.kinds.contains($0.control) }
                 if !items.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        // Lights read fine at a glance; the count is only kept for the other groups.
-                        SectionHeader(title: group.title, meta: group.kinds.contains(.light) ? nil : summary(items))
+                        WallHeading(title: group.title, meta: group.kinds.contains(.light) ? nil : summary(items))
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
                             ForEach(items) { e in
                                 DeviceButton(entity: e, pending: home.pending.contains(e.id)) {
@@ -225,19 +338,18 @@ struct DashboardView: View {
         if let r = finance.response, let d = r.dashboard, !d.toReview.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("New transactions").font(.title3.weight(.semibold))
-                    Text("\(d.toReview.count)").font(.subheadline.weight(.semibold)).monospacedDigit()
-                        .padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.15), in: .capsule)
+                    WallHeading(title: "New transactions", meta: "\(d.toReview.count) to review")
                     Spacer()
                     if d.toReview.count > 1 {
                         Button("Keep all suggestions") {
                             Task { await finance.confirmAll(api: session.api, toast: toast) }
                         }
+                        .font(.system(size: 16, weight: .medium))
                         .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
                     }
                 }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 360), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 12) {
                     ForEach(d.toReview) { t in
                         TagCard(transaction: t, chips: chips(for: t, quick: r.quickCategories)) { c in
                             Task { await finance.retag(t, to: c, api: session.api, toast: toast) }
@@ -261,6 +373,96 @@ struct DashboardView: View {
         var list = t.category == "Uncategorized" ? [] : [t.category]
         for c in ranked where !list.contains(c) && c != "Uncategorized" { list.append(c) }
         return Array(list.prefix(6))
+    }
+}
+
+/// A section's name on the wall: the iPhone's light title with a caps note beside it.
+private struct WallHeading: View {
+    let title: String
+    var meta: String?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title).font(.system(size: 26, weight: .regular))
+            if let meta { BrickCaps(text: meta).foregroundStyle(BrickLook.soft).monospacedDigit() }
+        }
+    }
+}
+
+/// A page opened from the wall that isn't one of the iPhone's tabs.
+private struct WallSheet<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                content.padding(28)
+            }
+            .brickBackdrop()
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+/// Whether the hub and "Hey Jarvis" are working, in words, so a dead wall says why.
+private struct LinkStatus: View {
+    let voice: VoiceAgent
+    @State private var link = HubLink.shared
+
+    var body: some View {
+        // Side by side when there's room, stacked in portrait.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                item(hubColor, hubText)
+                item(voiceColor, voiceText)
+            }
+            VStack(alignment: .trailing, spacing: 6) {
+                item(hubColor, hubText)
+                item(voiceColor, voiceText)
+            }
+        }
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(BrickLook.soft)
+        .animation(.smooth, value: link.state)
+        .animation(.smooth, value: voice.status)
+    }
+
+    private func item(_ color: Color, _ text: String) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(text).lineLimit(1)
+        }
+    }
+
+    private var hubColor: Color {
+        switch link.state { case .online: .green; case .reconnecting: .orange; case .offline: .red }
+    }
+
+    private var hubText: String {
+        switch link.state {
+        case .online: "Pi connected"
+        case .reconnecting: "Reconnecting…"
+        case .offline: link.networkUp ? "Pi unreachable" : "No network"
+        }
+    }
+
+    private var voiceColor: Color {
+        switch voice.status { case .ready: .green; case .starting: .orange; case .noMic, .offline: .red }
+    }
+
+    private var voiceText: String {
+        switch voice.status {
+        case .ready: "Listening for Hey Jarvis"
+        case .starting: "Starting mic…"
+        case .noMic: "Mic off"
+        case .offline: "Jarvis offline"
+        }
     }
 }
 
@@ -396,7 +598,7 @@ private struct TagCard: View {
             }
         }
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+        .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
     }
 }
 
@@ -439,7 +641,7 @@ private struct CalendarSection: View {
             let byDay = Dictionary(uniqueKeysWithValues: calendar.days.map { ($0.day, $0.events) })
             let days = (0..<3).map { addDays(today, $0) }
             VStack(alignment: .leading, spacing: 16) {
-                Text("Calendar").font(.title3.weight(.semibold))
+                WallHeading(title: "Calendar")
                 TimelineView(.everyMinute) { context in
                     HStack(alignment: .top, spacing: 20) {
                         ForEach(Array(days.enumerated()), id: \.element) { i, day in

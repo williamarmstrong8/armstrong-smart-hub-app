@@ -28,15 +28,35 @@ final class VoiceAgent {
     private(set) var heard = ""
     private(set) var reply = ""
     private(set) var notice: String?
-    /// The wake word is loaded and listening.
+    /// The wake word is loaded and the mic is delivering audio to it.
     private(set) var wakeReady = false
+    /// Mic permission or the wake word model: needs a fix, not a retry.
     private(set) var setupError: String?
+    /// The mic wouldn't start; retried every few seconds.
+    private(set) var audioError: String?
+    /// The hub couldn't mint a voice session; retried with backoff.
+    private(set) var sessionError: String?
+
+    enum Status: Equatable { case starting, ready, noMic(String), offline(String) }
+
+    /// One line for the dashboard: can you say "Hey Jarvis" right now, and if not, why.
+    var status: Status {
+        if let setupError { return .noMic(setupError) }
+        if let audioError { return .noMic(audioError) }
+        if !wakeReady { return .starting }
+        if let sessionError { return .offline(sessionError) }
+        return .ready
+    }
 
     /// Called after a tool changed something, so the dashboard can refresh that section.
     var onAction: ((VoiceView.Kind) -> Void)?
 
     private var api: APIClient?
-    private let audio = VoiceAudio()
+    /// Replaced with a fresh one whenever the mic stops delivering audio.
+    private var audio = VoiceAudio()
+    private var restartingAudio = false
+    private var health: Task<Void, Never>?
+    private var watchdog: Task<Void, Never>?
     private var detector: WakeWordDetector?
     private var client: RealtimeClient?
     private let pipe = StreamPipe()
@@ -52,6 +72,12 @@ final class VoiceAgent {
     private var pendingCalls = 0
     private var responseHadCalls = false
     private var responseFinished = false
+
+    // Watchdog bookkeeping: a conversation that stalls ends itself, so the wake word comes back.
+    private var activatedAt = Date.distantPast
+    private var lastActivity = Date.distantPast
+    private var socketOpen = false
+    private var userSpeaking = false
 
     private static let followUpSeconds: Double = 8
 
@@ -77,28 +103,75 @@ final class VoiceAgent {
             setupError = error.localizedDescription
         }
 
-        let detector = detector
-        let pipe = pipe
-        audio.onWakeAudio = { samples in detector?.process(samples) }
-        audio.onStreamAudio = { data in pipe.send(data) }
-        do {
-            // Activating the audio session blocks, so keep it off the main thread.
-            let audio = audio
-            try await Task.detached(priority: .userInitiated) { try audio.start() }.value
-            wakeReady = detector != nil
-        } catch {
-            setupError = "Couldn't start the microphone: \(error.localizedDescription)"
-        }
-
+        await startAudio()
         prefetchSession()
+
+        // Every few seconds: is the mic still feeding the wake word? An interruption, the app
+        // going to the background, or a route change can leave it silent with no error.
+        health?.cancel()
+        health = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                await self?.checkHealth()
+            }
+        }
     }
 
     func stop() {
         end(immediately: true)
+        health?.cancel()
         audio.stop()
         prefetchTask?.cancel()
         started = false
         wakeReady = false
+    }
+
+    /// The app came back to the front: check the mic now and get a voice session if there isn't one.
+    func resume() {
+        guard started else { return }
+        Task { await checkHealth() }
+        if prefetched?.isFresh != true { prefetchSession() }
+    }
+
+    // MARK: Audio
+
+    private func startAudio() async {
+        let fresh = VoiceAudio()
+        let detector = detector
+        let pipe = pipe
+        fresh.onWakeAudio = { samples in detector?.process(samples) }
+        fresh.onStreamAudio = { data in pipe.send(data) }
+        do {
+            // Activating the audio session blocks, so keep it off the main thread.
+            try await Task.detached(priority: .userInitiated) { try fresh.start() }.value
+            audio = fresh
+            audioError = nil
+            wakeReady = detector != nil
+        } catch {
+            audioError = "Couldn't start the microphone: \(error.localizedDescription)"
+            wakeReady = false
+        }
+    }
+
+    /// Tears the mic down and builds it again from scratch.
+    private func restartAudio() async {
+        guard !restartingAudio else { return }
+        restartingAudio = true
+        defer { restartingAudio = false }
+        let old = audio
+        await Task.detached(priority: .userInitiated) { old.stop() }.value
+        await startAudio()
+    }
+
+    private func checkHealth() async {
+        // Never swap the mic out from under a conversation.
+        guard started, setupError == nil, phase == .idle, !presented else { return }
+        if !audio.micIsFlowing {
+            wakeReady = false
+            await restartAudio()
+        } else if !wakeReady, detector != nil {
+            wakeReady = true
+        }
     }
 
     /// Tap-to-talk, and dismissing by tapping away.
@@ -109,22 +182,28 @@ final class VoiceAgent {
     // MARK: Session tokens
 
     /// Keeps one single-use secret ready so the socket can open the moment the wake word fires.
+    /// Failures retry quickly at first, backing off to a minute, and right away when the hub or
+    /// the network comes back.
     private func prefetchSession() {
         prefetchTask?.cancel()
         prefetchTask = Task { [weak self] in
+            var backoff: Double = 5
             while !Task.isCancelled {
                 guard let self, let api = self.api else { return }
                 do {
                     let session: VoiceSession = try await api.post("/api/mobile/voice/session")
                     self.prefetched = session
+                    self.sessionError = nil
+                    backoff = 5
                     // Refresh a little before it expires.
                     let wait = max(30, session.expiresAt - Date().timeIntervalSince1970 - 90)
                     try await Task.sleep(for: .seconds(wait))
                 } catch is CancellationError {
                     return
                 } catch {
-                    self.setupError = error.localizedDescription
-                    try? await Task.sleep(for: .seconds(60))
+                    self.sessionError = error.localizedDescription
+                    await HubLink.shared.wait(backoff)
+                    backoff = min(backoff * 2, 60)
                 }
             }
         }
@@ -137,7 +216,17 @@ final class VoiceAgent {
             return s
         }
         guard let api else { throw APIError(message: "Not signed in.") }
-        let s: VoiceSession = try await api.post("/api/mobile/voice/session")
+        // One retry: the wake word often fires right as the tailnet wakes up.
+        let s: VoiceSession
+        do {
+            s = try await api.post("/api/mobile/voice/session")
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            try await Task.sleep(for: .seconds(1))
+            s = try await api.post("/api/mobile/voice/session")
+        }
+        sessionError = nil
         prefetchSession()
         return s
     }
@@ -147,7 +236,20 @@ final class VoiceAgent {
     func activate() {
         guard phase == .idle else { return }
         followUp?.cancel()
+        followUp = nil
         notice = nil
+        activatedAt = .now
+        lastActivity = .now
+        socketOpen = false
+        userSpeaking = false
+        watchdog?.cancel()
+        watchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, self.presented else { return }
+                self.watch()
+            }
+        }
         heard = ""
         reply = ""
         hint = nil
@@ -177,9 +279,10 @@ final class VoiceAgent {
         let client = RealtimeClient()
         let config = session.config
         let pipe = pipe
-        client.onOpen = { [weak client] in
+        client.onOpen = { [weak client, weak self] in
             client?.updateSession(config.value)
             pipe.open(client)
+            Task { @MainActor in self?.socketOpen = true }
         }
         // Events must be handled in the order they arrive (a tool call before its
         // response-done), so they go through one stream instead of a Task each.
@@ -231,14 +334,18 @@ final class VoiceAgent {
 
     private func handle(_ event: RealtimeEvent) {
         guard phase != .idle else { return }
+        lastActivity = .now
         switch event.type {
         case "speech-started":
             followUp?.cancel()
+            followUp = nil
+            userSpeaking = true
             beginTurn()
             reply = ""
             withAnimation(.easeOut(duration: 0.25)) { phase = .listening }
 
         case "speech-stopped":
+            userSpeaking = false
             withAnimation(.easeOut(duration: 0.25)) { phase = .thinking }
 
         case "input-transcription-completed":
@@ -305,7 +412,7 @@ final class VoiceAgent {
                     if let v = result.view {
                         toolViewThisTurn = true
                         show(v)
-                        if name != "showLights", name != "showHabits", name != "showCalendar", name != "showFinance", name != "findTitle" {
+                        if !name.hasPrefix("show"), name != "findTitle" {
                             onAction?(v.kind)
                         }
                     }
@@ -318,8 +425,13 @@ final class VoiceAgent {
         }
     }
 
-    /// Downloads only go through for the title whose poster is on screen awaiting a yes.
+    /// Downloads only go through for the title whose poster is on screen awaiting a yes, and
+    /// Pi services only change with the Pi on screen.
     private func guardCall(_ name: String, arguments: String) -> String? {
+        if name == "controlPi" {
+            if case .pi = view { return nil }
+            return JSONObject(["error": "Not confirmed. Call showPi, ask, and only change a service after a clear yes."]).jsonString
+        }
         guard name == "downloadTitle" else { return nil }
         struct Args: Decodable { let id: Int }
         let id = (try? JSONDecoder().decode(Args.self, from: Data(arguments.utf8)))?.id
@@ -367,6 +479,31 @@ final class VoiceAgent {
         }
     }
 
+    /// Once a second while the overlay is up: end a conversation that has stalled, so the
+    /// overlay never hangs open with the wake word switched off.
+    private func watch() {
+        guard notice == nil else { return } // Already failing; it ends itself.
+        let now = Date.now
+        let quiet = now.timeIntervalSince(lastActivity)
+        switch phase {
+        case .idle:
+            return
+        case .connecting:
+            if now.timeIntervalSince(activatedAt) > 12 { fail("Couldn't reach the voice service. Try again in a moment.") }
+        case .listening:
+            if !socketOpen {
+                if now.timeIntervalSince(activatedAt) > 12 { fail("Couldn't reach the voice service. Try again in a moment.") }
+            } else if followUp == nil, !audio.isPlaying, quiet > (userSpeaking ? 60 : 12) {
+                // Woken by mistake, or nothing more to say.
+                end()
+            }
+        case .thinking:
+            if quiet > (pendingCalls > 0 ? 75 : 30) { fail("Jarvis stopped answering. Try again.") }
+        case .speaking:
+            if !audio.isPlaying, quiet > 15, followUp == nil { scheduleFollowUp() }
+        }
+    }
+
     private func socketClosed(_ reason: String?) {
         guard phase != .idle else { return }
         if view == nil, reply.isEmpty { notice = "Lost the connection to the voice service." }
@@ -385,6 +522,9 @@ final class VoiceAgent {
     func end(immediately: Bool = false) {
         followUp?.cancel()
         followUp = nil
+        watchdog?.cancel()
+        watchdog = nil
+        userSpeaking = false
         audio.endStreaming()
         pipe.reset()
         client?.close()

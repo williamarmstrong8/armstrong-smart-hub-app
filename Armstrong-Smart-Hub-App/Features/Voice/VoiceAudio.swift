@@ -37,8 +37,14 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
     private static let prerollBytes = Int(streamRate * 0.3) * 2
     private var queuedBuffers = 0
 
+    /// When the mic last delivered a buffer.
+    private var lastMicAt: CFAbsoluteTime = 0
+
     var isPlaying: Bool { lock.withLock { queuedBuffers > 0 } }
     var isRunning: Bool { engine.isRunning }
+    /// The mic delivered audio in the last few seconds. False after an interruption (a call,
+    /// Siri, the app going to the background) that left the engine stopped or the tap silent.
+    var micIsFlowing: Bool { engine.isRunning && lock.withLock { CFAbsoluteTimeGetCurrent() - lastMicAt < 3 } }
 
     func start() throws {
         let session = AVAudioSession.sharedInstance()
@@ -75,12 +81,23 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
             self?.restart()
         }
 
+        // A call, Siri or another app's audio stops the engine; start again when it's over.
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: session, queue: nil
+        ) { [weak self] note in
+            let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let type = raw.flatMap { AVAudioSession.InterruptionType(rawValue: $0) }
+            if type == .ended { self?.restart() }
+        }
+
         engine.prepare()
         try engine.start()
         player.play()
+        lock.withLock { lastMicAt = CFAbsoluteTimeGetCurrent() }
     }
 
     private var configObserver: NSObjectProtocol?
+    private var interruptionObserver: NSObjectProtocol?
 
     /// Taps the mic in whatever format it currently delivers (nil = the node's own),
     /// so a format change can never make the tap throw.
@@ -95,6 +112,7 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
 
     private func restart() {
         guard !engine.isRunning else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
         installMicTap()
         engine.prepare()
         do {
@@ -109,7 +127,9 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
 
     func stop() {
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        if let interruptionObserver { NotificationCenter.default.removeObserver(interruptionObserver) }
         configObserver = nil
+        interruptionObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         player.stop()
         engine.stop()
@@ -184,7 +204,10 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
 
     private func handleMic(_ buffer: AVAudioPCMBuffer) {
         let level = Self.level(buffer)
-        lock.withLock { micLevel = micLevel * 0.6 + level * 0.4 }
+        lock.withLock {
+            micLevel = micLevel * 0.6 + level * 0.4
+            lastMicAt = CFAbsoluteTimeGetCurrent()
+        }
 
         if converterInput != buffer.format {
             converterInput = buffer.format

@@ -7,9 +7,15 @@ struct MovieCard: View {
     let stage: MovieStage
 
     @State private var shown = false
+    @State private var width: CGFloat = 900
+
+    /// Side by side on a landscape iPad; poster over the text when portrait.
+    private var wide: Bool { width >= 760 }
+    private var posterWidth: CGFloat { wide ? min(340, width * 0.36) : min(280, width * 0.55) }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 56) {
+        let layout = wide ? AnyLayout(HStackLayout(alignment: .center, spacing: 48)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 28))
+        layout {
             AsyncImage(url: movie.posterURL.flatMap(URL.init(string:)), transaction: SwiftUI.Transaction(animation: .easeOut(duration: 0.4))) { phase in
                 if let image = phase.image {
                     image.resizable().scaledToFill().transition(.opacity)
@@ -20,7 +26,7 @@ struct MovieCard: View {
                     }
                 }
             }
-            .frame(width: 380, height: 570)
+            .frame(width: posterWidth, height: posterWidth * 1.5)
             .clipShape(.rect(cornerRadius: 28))
             .shadow(color: .white.opacity(0.12), radius: 40)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
@@ -29,23 +35,25 @@ struct MovieCard: View {
 
             VStack(alignment: .leading, spacing: 14) {
                 Text(movie.title)
-                    .font(.system(size: 60, weight: .bold, design: .rounded))
+                    .font(.system(size: wide ? 56 : 44, weight: .bold, design: .rounded))
                     .lineLimit(2)
-                    .minimumScaleFactor(0.7)
-                Text(meta).font(.title2).foregroundStyle(.secondary)
+                    .minimumScaleFactor(0.6)
+                Text(meta).font(.title2).foregroundStyle(.secondary).lineLimit(2)
                 if let overview = movie.overview {
-                    Text(overview).font(.title3).foregroundStyle(.secondary).lineLimit(5)
+                    Text(overview).font(.title3).foregroundStyle(.secondary).lineLimit(wide ? 5 : 3)
                 }
-                Spacer(minLength: 12)
+                if wide { Spacer(minLength: 12) }
                 StageBadge(stage: stage)
                     .id(stage)
                     .transition(.asymmetric(insertion: .scale(scale: 0.8).combined(with: .opacity), removal: .opacity))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 570)
+            .frame(height: wide ? posterWidth * 1.5 : nil)
             .opacity(shown ? 1 : 0)
             .offset(x: shown ? 0 : 24)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .animation(.spring(duration: 0.5, bounce: 0.25), value: stage)
         .onAppear {
             withAnimation(.spring(duration: 0.7, bounce: 0.2)) { shown = true }
