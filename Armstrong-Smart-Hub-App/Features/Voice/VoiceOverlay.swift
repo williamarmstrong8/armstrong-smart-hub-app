@@ -21,6 +21,9 @@ struct VoiceOverlay: View {
                     .transition(.opacity)
 
                 content
+                    // A tap anywhere, cards included, closes Jarvis and cancels what it was doing.
+                    .contentShape(.rect)
+                    .onTapGesture { agent.end() }
                     // Always light-on-dark over the darkened dashboard.
                     .environment(\.colorScheme, .dark)
                     // Tighter on the iPad mini, roomier on bigger iPads.
@@ -97,8 +100,6 @@ struct VoiceOverlay: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
-        .contentShape(.rect)
-        .onTapGesture {} // Taps on the card don't dismiss.
     }
 
     @ViewBuilder private func card(_ view: VoiceView) -> some View {
