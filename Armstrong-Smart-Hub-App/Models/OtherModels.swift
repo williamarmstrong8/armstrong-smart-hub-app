@@ -13,6 +13,8 @@ struct CalendarEvent: Decodable, Identifiable, Sendable {
     let calendar: String
     let color: String
     let url: String?
+    /// A contact's birthday. Optional: older hubs and cached copies don't send it.
+    let birthday: Bool?
 
     var startDate: Date? { ISO.parse(start) }
 }

@@ -178,7 +178,11 @@ struct HomeView: View {
             if store.state == nil {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)
             } else {
-                DeviceGroups(store: store, large: false, onOpen: open, onToggle: toggle)
+                // Together, so no birthday today leaves no gap.
+                VStack(alignment: .leading, spacing: 0) {
+                    BirthdayCards()
+                    DeviceGroups(store: store, large: false, onOpen: open, onToggle: toggle)
+                }
             }
 
             habitsSection

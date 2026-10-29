@@ -21,6 +21,7 @@ struct CalendarView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     topBar.padding(.bottom, -14)
+                    if let data, hasAgenda(data) { CalendarHero(data: data) }
                     TodoSection(items: $todos)
                     if habits.loaded, !habits.habits.isEmpty {
                         HabitMonth(store: habits) { pickedDay = PickedDay(day: $0) }
@@ -51,6 +52,11 @@ struct CalendarView: View {
             }
             .labelStyle(.iconOnly)
         }
+    }
+
+    /// Connected, loaded and not empty: the agenda shows, led by "Next up" at the top of the page.
+    private func hasAgenda(_ data: CalendarResponse) -> Bool {
+        !["unconfigured", "not_connected", "missing_scope"].contains(data.status) && data.error == nil && !data.days.isEmpty
     }
 
     @ViewBuilder
@@ -85,7 +91,6 @@ struct CalendarView: View {
                 MessageView(title: "Nothing coming up", systemImage: "calendar",
                             message: "Nothing on your calendar for the next \(data.upcomingDays) days.")
             } else {
-                CalendarHero(data: data)
                 ForEach(data.days) { day in
                     HStack(alignment: .top, spacing: 14) {
                         DateMarker(day: day.day, isToday: day.day == data.today)

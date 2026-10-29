@@ -19,20 +19,18 @@ struct TodoSection: View {
                     Text("\(open) open").font(.footnote).foregroundStyle(BrickLook.soft).monospacedDigit()
                 }
             }
-            BrickCard(padding: 18) {
-                VStack(alignment: .leading, spacing: 14) {
-                    if let items {
-                        ForEach(items) { item in
-                            row(item)
-                        }
-                    } else if error == nil {
-                        ProgressView().frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 14) {
+                if let items {
+                    ForEach(items) { item in
+                        row(item)
                     }
-                    if let error {
-                        Text(error).font(.footnote).foregroundStyle(.red)
-                    }
-                    addField
+                } else if error == nil {
+                    ProgressView().frame(maxWidth: .infinity)
                 }
+                if let error {
+                    Text(error).font(.footnote).foregroundStyle(.red)
+                }
+                addField
             }
         }
         .animation(.spring(duration: 0.4, bounce: 0.15), value: items)
