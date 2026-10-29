@@ -119,6 +119,7 @@ struct VoiceOverlay: View {
         case .fitness(let data): FitnessCard(data: data)
         case .pi(let pi, let changed, let action): PiCard(pi: pi, changed: changed, action: action)
         case .alarm(let data): AlarmCard(data: data)
+        case .todos(let items, let changed): TodosCard(items: items, changed: changed)
         }
     }
 }
@@ -221,6 +222,7 @@ private struct PlaceholderCard: View {
         case .fitness: "Fitness"
         case .pi: "Raspberry Pi"
         case .alarm: "Wake-up"
+        case .todos: "To-do"
         }
     }
 
@@ -235,6 +237,7 @@ private struct PlaceholderCard: View {
         case .fitness: "figure.run"
         case .pi: "server.rack"
         case .alarm: "alarm"
+        case .todos: "checklist"
         }
     }
 }

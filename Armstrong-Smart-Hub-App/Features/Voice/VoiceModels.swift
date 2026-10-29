@@ -223,6 +223,13 @@ struct PiStatus: Decodable, Equatable, Sendable {
     var troubled: [PiContainer] { containers?.filter(\.troubled) ?? [] }
 }
 
+/// One to-do item (lib/todos.ts).
+struct TodoItem: Decodable, Identifiable, Equatable, Sendable {
+    let id: String
+    let text: String
+    let done: Bool
+}
+
 /// The wake-up alarm Jarvis just set (or turned off, when `time` is nil). Made on the iPad,
 /// which owns the alarm; the hub never sends it.
 struct AlarmCardData: Equatable, Sendable {
@@ -241,8 +248,9 @@ enum VoiceView: Decodable, Sendable {
     case fitness(FitnessCardData)
     case pi(PiStatus, changed: String?, action: String?)
     case alarm(AlarmCardData)
+    case todos([TodoItem], changed: [String])
 
-    enum Kind: String, Decodable, Sendable { case lights, movie, finance, calendar, habits, weather, fitness, pi, alarm }
+    enum Kind: String, Decodable, Sendable { case lights, movie, finance, calendar, habits, weather, fitness, pi, alarm, todos }
 
     var kind: Kind {
         switch self {
@@ -255,10 +263,11 @@ enum VoiceView: Decodable, Sendable {
         case .fitness: .fitness
         case .pi: .pi
         case .alarm: .alarm
+        case .todos: .todos
         }
     }
 
-    private enum Keys: String, CodingKey { case kind, lights, changed, movie, stage, weather, fitness, pi, action }
+    private enum Keys: String, CodingKey { case kind, lights, changed, movie, stage, weather, fitness, pi, action, items }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -283,6 +292,8 @@ enum VoiceView: Decodable, Sendable {
                        action: try c.decodeIfPresent(String.self, forKey: .action))
         case .alarm:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "Alarm cards are made on the iPad")
+        case .todos:
+            self = .todos(try c.decode([TodoItem].self, forKey: .items), changed: (try? c.decode([String].self, forKey: .changed)) ?? [])
         }
     }
 }
