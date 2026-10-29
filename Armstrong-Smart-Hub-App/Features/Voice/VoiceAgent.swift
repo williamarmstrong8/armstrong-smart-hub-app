@@ -91,7 +91,9 @@ final class VoiceAgent {
     private var socketOpen = false
     private var userSpeaking = false
 
-    private static let followUpSeconds: Double = 8
+    private var lastLogged = ""
+
+    private static let followUpSeconds: Double = 12
     /// End right after this reply instead of listening for a follow-up (bedtime).
     private var endAfterReply = false
 
@@ -376,6 +378,9 @@ final class VoiceAgent {
             route(text, turn: turn)
 
         case "response-created":
+            // A reply is on its way: whatever countdown an earlier one started no longer applies.
+            followUp?.cancel()
+            followUp = nil
             responseHadCalls = false
             responseFinished = false
             reply = ""
@@ -392,10 +397,14 @@ final class VoiceAgent {
             call(name, callId: callId, arguments: event.arguments ?? "{}")
 
         case "response-done":
+            // Cut off because you talked over it. Its "done" must not start the countdown that
+            // closes the conversation, or Jarvis hangs up while answering what you just said.
+            if event.status == "cancelled" { return }
             if responseHadCalls {
                 responseFinished = true
                 if pendingCalls == 0 { client?.createResponse() }
             } else {
+                remember(heard: heard, reply: reply)
                 scheduleFollowUp()
             }
 
@@ -498,6 +507,17 @@ final class VoiceAgent {
         beginTurn()
         reply = ""
         withAnimation(.easeOut(duration: 0.25)) { phase = .listening }
+    }
+
+    /// Sends the finished exchange to the hub, which logs it and learns from it (its memory).
+    private func remember(heard: String, reply: String) {
+        // The transcript can land after the reply; never log the previous request twice.
+        guard let api, !heard.isEmpty, heard != lastLogged else { return }
+        lastLogged = heard
+        Task {
+            struct Body: Encodable { let heard: String; let reply: String }
+            let _: Empty? = try? await api.post("/api/mobile/voice/log", body: Body(heard: heard, reply: reply))
+        }
     }
 
     /// After Jarvis finishes speaking, keep listening briefly for a follow-up.

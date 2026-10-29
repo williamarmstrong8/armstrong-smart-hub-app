@@ -32,7 +32,8 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
     private let playFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: streamRate, channels: 1, interleaved: false)!
 
     private var streaming = false
-    /// The last ~300 ms of 24 kHz audio, so the first word after "Jarvis" isn't clipped.
+    /// The last ~300 ms of 24 kHz audio not yet sent: before the wake word, or held back while
+    /// Jarvis talks. Whenever sending starts it goes first, so your first word isn't clipped.
     private var preroll = Data()
     private static let prerollBytes = Int(streamRate * 0.3) * 2
     private var queuedBuffers = 0
@@ -41,12 +42,11 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
     private var lastMicAt: CFAbsoluteTime = 0
 
     // Jarvis hearing itself. Echo cancellation leaves a trace of its own voice in the mic, and
-    // the service took that for you talking over it. While it plays (and briefly after), only
-    // loud mic audio is sent; the rest goes up as silence, keeping the stream's timing. Opening
-    // sends the last 300 ms first, so your first word isn't clipped.
+    // the service took that for you talking over it. While it plays, only loud mic audio is
+    // sent; the rest goes up as silence, keeping the stream's timing. The moment it stops,
+    // the mic is live again: an answer said right away ("yes") is heard whole.
     private static let bargeInLevel: Float = 0.55
     private static let gateHold: CFAbsoluteTime = 0.7
-    private static let echoTail: CFAbsoluteTime = 0.4
     /// When the speech queued so far finishes, by the clock. Counting buffers back from their
     /// completion callbacks could stick (a route change drops buffers without calling back),
     /// leaving the app sure Jarvis was still talking and the mic muted for good.
@@ -54,7 +54,6 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
     /// Output latency and the player's start, on top of the queued audio's own length.
     private static let playSlack: CFAbsoluteTime = 0.25
     private var gateOpenUntil: CFAbsoluteTime = 0
-    private var held = Data()
 
     var isPlaying: Bool { lock.withLock { CFAbsoluteTimeGetCurrent() < playUntil + Self.playSlack } }
     var isRunning: Bool { engine.isRunning }
@@ -202,7 +201,6 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
             // Cut off because you're talking: no echo to guard against, so let it all through.
             playUntil = 0
             gateOpenUntil = 0
-            held = Data()
         }
         // Playing on a stopped engine (after an interruption) raises an exception.
         if engine.isRunning { player.play() }
@@ -245,26 +243,18 @@ nonisolated final class VoiceAudio: @unchecked Sendable {
         guard let stream = convert(buffer, with: streamConverter, to: streamFormat), let ch = stream.int16ChannelData?[0] else { return }
         let data = Data(bytes: ch, count: Int(stream.frameLength) * 2)
         let out: Data? = lock.withLock {
-            guard streaming else {
+            let now = CFAbsoluteTimeGetCurrent()
+            let speaking = now < playUntil + Self.playSlack
+            if streaming, speaking, level >= Self.bargeInLevel { gateOpenUntil = now + Self.gateHold }
+            guard streaming, !speaking || now < gateOpenUntil else {
                 preroll.append(data)
                 if preroll.count > Self.prerollBytes { preroll.removeFirst(preroll.count - Self.prerollBytes) }
-                return nil
+                return streaming ? Data(count: data.count) : nil
             }
-            let now = CFAbsoluteTimeGetCurrent()
-            let speaking = now < playUntil + Self.playSlack + Self.echoTail
-            guard speaking else {
-                held = Data()
-                return data
-            }
-            if level >= Self.bargeInLevel { gateOpenUntil = now + Self.gateHold }
-            if now < gateOpenUntil {
-                let head = held
-                held = Data()
-                return head + data
-            }
-            held.append(data)
-            if held.count > Self.prerollBytes { held.removeFirst(held.count - Self.prerollBytes) }
-            return Data(count: data.count)
+            // Audio held back while Jarvis spoke is mostly its echo; only a barge-in sends it.
+            let head = speaking ? preroll : Data()
+            preroll = Data()
+            return head + data
         }
         if let out { onStreamAudio?(out) }
     }
