@@ -12,14 +12,7 @@ struct TodoSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                BrickCaps(text: "To-do").foregroundStyle(BrickLook.soft)
-                Spacer()
-                if let open = items?.filter({ !$0.done }).count, open > 0 {
-                    Text("\(open) open").font(.footnote).foregroundStyle(BrickLook.soft).monospacedDigit()
-                }
-            }
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 18) {
                 if let items {
                     ForEach(items) { item in
                         row(item)
@@ -40,13 +33,13 @@ struct TodoSection: View {
         Button {
             Task { await send("PATCH", Change(id: item.id, done: !item.done)) }
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 Image(systemName: item.done ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 22, weight: .light))
+                    .font(.system(size: 30, weight: .light))
                     .foregroundStyle(item.done ? Color.green : BrickLook.soft)
                     .contentTransition(.symbolEffect(.replace))
                 Text(item.text)
-                    .font(.system(size: 17))
+                    .font(.system(size: 24))
                     .strikethrough(item.done, color: BrickLook.soft)
                     .foregroundStyle(item.done ? BrickLook.soft : BrickLook.ink)
                     .multilineTextAlignment(.leading)
@@ -66,11 +59,11 @@ struct TodoSection: View {
     private var addField: some View {
         HStack(spacing: 14) {
             Image(systemName: "plus")
-                .font(.system(size: 18, weight: .light))
+                .font(.system(size: 24, weight: .light))
                 .foregroundStyle(BrickLook.soft)
-                .frame(width: 22)
+                .frame(width: 30)
             TextField("Add a to-do", text: $draft)
-                .font(.system(size: 17))
+                .font(.system(size: 24))
                 .focused($adding)
                 .submitLabel(.done)
                 .onSubmit(add)

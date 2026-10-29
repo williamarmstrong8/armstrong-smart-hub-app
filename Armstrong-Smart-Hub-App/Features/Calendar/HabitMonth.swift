@@ -19,7 +19,6 @@ struct HabitMonth: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            BrickCaps(text: "Habits").foregroundStyle(BrickLook.soft)
             VStack(spacing: 14) {
                 header
                 weekdays
@@ -38,14 +37,14 @@ struct HabitMonth: View {
                 .disabled(!canStep(-1))
             Spacer()
             Text(monthDate.formatted(Date.FormatStyle(timeZone: .gmt).month(.wide).year()))
-                .font(.headline)
+                .font(.system(size: 28, weight: .semibold))
                 .contentTransition(.numericText())
             Spacer()
             Button("Next month", systemImage: "chevron.right") { step(1) }
                 .disabled(!canStep(1))
         }
         .labelStyle(.iconOnly)
-        .font(.system(size: 17, weight: .medium))
+        .font(.system(size: 22, weight: .medium))
     }
 
     private var weekdays: some View {
