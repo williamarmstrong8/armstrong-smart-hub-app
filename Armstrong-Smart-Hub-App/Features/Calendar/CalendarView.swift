@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The Google Calendar agenda from the Calendar page, next 14 days, with the to-do list on top.
+/// The Google Calendar agenda from the Calendar page, next 14 days, with the to-do list and a
+/// month of habits on top.
 struct CalendarView: View {
     @Environment(AppSession.self) private var session
     @Environment(\.openURL) private var openURL
@@ -8,6 +9,9 @@ struct CalendarView: View {
     /// The last agenda on the phone shows until the hub answers.
     @State private var data: CalendarResponse? = DiskCache.read(calendarCacheName)
     @State private var todos: [TodoItem]?
+    @State private var habits = HabitsStore()
+    @State private var pickedDay: PickedDay?
+    @State private var toast = Toast()
     @State private var error: String?
 
     var body: some View {
@@ -18,6 +22,9 @@ struct CalendarView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     topBar.padding(.bottom, -14)
                     TodoSection(items: $todos)
+                    if habits.loaded, !habits.habits.isEmpty {
+                        HabitMonth(store: habits) { pickedDay = PickedDay(day: $0) }
+                    }
                     calendar
                 }
                 .padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 16)
@@ -32,6 +39,8 @@ struct CalendarView: View {
                 await load(refresh: true)
             }
             .refreshable { await load(refresh: true) }
+            .sheet(item: $pickedDay) { HabitDaySheet(store: habits, day: $0.day, toast: toast) }
+            .toast(toast)
         }
     }
 
@@ -98,7 +107,9 @@ struct CalendarView: View {
     /// so a calendar connected in the browser (or an event added elsewhere) shows right away.
     private func load(refresh: Bool = false) async {
         let api = session.api
+        habits.rollDay()
         async let list: TodoList? = try? api.get("/api/mobile/todos")
+        async let board: Void = habits.load(api: api)
         do {
             let raw = try await api.data(api.request("/api/mobile/calendar\(refresh ? "?refresh=1" : "")"))
             data = try APIClient.decoder.decode(CalendarResponse.self, from: raw)
@@ -110,6 +121,7 @@ struct CalendarView: View {
         }
         // A list that won't load still shows (empty), so adding says what went wrong.
         if let items = await list?.items { todos = items } else if todos == nil { todos = [] }
+        await board
     }
 }
 
