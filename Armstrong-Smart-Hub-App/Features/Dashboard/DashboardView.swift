@@ -1,5 +1,40 @@
 import SwiftUI
 
+/// The wall at night: screen black and at zero brightness, and the idle timer back on so the
+/// iPad locks itself after its Auto-Lock time. Waking puts the brightness back and keeps the
+/// screen on again. (An app can't switch the iPad off; this is the nearest thing.)
+@MainActor
+@Observable
+final class WallSleep {
+    private(set) var asleep = false
+    /// Sleep as soon as the conversation that asked for it ends.
+    var pending = false
+    private var brightness: CGFloat = 0.5
+
+    private var screen: UIScreen? {
+        UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
+    }
+
+    func sleep() {
+        pending = false
+        guard !asleep else { return }
+        asleep = true
+        if let screen {
+            brightness = screen.brightness
+            screen.brightness = 0
+        }
+        KeepAwake.release()
+    }
+
+    func wake() {
+        pending = false
+        guard asleep else { return }
+        asleep = false
+        screen?.brightness = max(brightness, 0.2)
+        KeepAwake.hold()
+    }
+}
+
 /// Keeps the screen on while the dashboard is showing.
 @MainActor
 enum KeepAwake {
@@ -18,7 +53,6 @@ struct DashboardTab: View {
     @Environment(AppSession.self) private var session
     @Environment(\.scenePhase) private var scenePhase
     @State private var home = HomeStore()
-    @State private var finance = FinanceStore()
     @State private var habits = HabitsStore()
     @State private var weather = WeatherStore()
     @State private var pi = PiStore()
@@ -27,10 +61,17 @@ struct DashboardTab: View {
     @State private var wake = WakeAlarm()
     @State private var voice = VoiceAgent()
     @State private var link = HubLink.shared
+    @State private var sleep = WallSleep()
 
     var body: some View {
-        DashboardView(home: home, finance: finance, habits: habits, weather: weather, pi: pi, fitness: fitness,
-                      calendar: calendar, wake: wake, voice: voice) { await refreshSlow() }
+        DashboardView(home: home, habits: habits, weather: weather, pi: pi, fitness: fitness,
+                      calendar: calendar, wake: wake, voice: voice, sleep: sleep) { await refreshSlow() }
+            // Bedtime: once Jarvis has said goodnight, the wall goes dark. Jarvis waking up (or
+            // the iPad being unlocked in the morning) brings it back.
+            .onChange(of: voice.presented) { _, up in
+                if up { sleep.wake() } else if sleep.pending { sleep.sleep() }
+            }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { sleep.wake() } }
             // Home polls on its own; restarted whenever the app comes back to the front.
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
@@ -45,12 +86,13 @@ struct DashboardTab: View {
                     case .habits: Task { await habits.load(api: session.api) }
                     case .calendar: Task { await refreshSlow() }
                     case .pi: Task { await pi.load(api: session.api) }
-                    case .finance, .weather, .fitness, .alarm: break
+                    case .finance, .weather, .fitness, .alarm, .todos: break
                     }
                 }
                 // "Wake me at 6:30": the alarm is this iPad's, so Jarvis sets it here.
                 voice.localTool = { name, arguments in
                     switch name {
+                    case "bedtime": return await bedtime()
                     case "setWakeAlarm": return await setAlarm(arguments)
                     case "showWakeAlarm":
                         wake.expireIfPast()
@@ -108,15 +150,31 @@ struct DashboardTab: View {
         return (output, .alarm(AlarmCardData(time: date, secondAlarm: wake.followUpScheduled)))
     }
 
+    /// "It's bedtime": William's room lamp off, then the wall sleeps once Jarvis says goodnight.
+    private func bedtime() async -> (output: [String: Any], view: VoiceView?) {
+        var output: [String: Any] = ["ok": true]
+        if let lamp = home.entity(WakeAlarm.lampEntity) {
+            if lamp.isOn { await home.toggle(lamp, api: session.api, toast: Toast()) }
+            output["lampOff"] = true
+        } else {
+            output["lampOff"] = false
+            output["note"] = "William's room lamp isn't among the lights the wall can see."
+        }
+        wake.expireIfPast()
+        output["alarm"] = wake.scheduled.map { $0.formatted(date: .omitted, time: .shortened) as Any } ?? NSNull()
+        sleep.pending = true
+        voice.finishAfterReply()
+        return (output, nil)
+    }
+
     private func refreshSlow() async {
         habits.rollDay()
         let api = session.api
-        async let f: Void = finance.load(api: api)
         async let h: Void = habits.load(api: api)
         async let w: Void = weather.load(api: api)
         async let fit: Void = fitness.load(api: api)
         async let c: Data? = try? api.data(api.request("/api/mobile/calendar"))
-        _ = await (f, h, w, fit)
+        _ = await (h, w, fit)
         if let raw = await c, let cal = try? APIClient.decoder.decode(CalendarResponse.self, from: raw) {
             calendar = cal
             DiskCache.write(raw, calendarCacheName)
@@ -134,7 +192,6 @@ private let deviceGroups: [(title: String, kinds: Set<ControlKind>)] = [
 
 struct DashboardView: View {
     let home: HomeStore
-    let finance: FinanceStore
     let habits: HabitsStore
     let weather: WeatherStore
     let pi: PiStore
@@ -142,13 +199,13 @@ struct DashboardView: View {
     let calendar: CalendarResponse?
     let wake: WakeAlarm
     let voice: VoiceAgent
+    let sleep: WallSleep
     let refresh: () async -> Void
 
     @Environment(AppSession.self) private var session
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
-    @State private var retagging: Transaction?
     @State private var account = false
     @State private var alerts = WallAlertsStore()
 
@@ -159,7 +216,6 @@ struct DashboardView: View {
                     header
                     glance
                     homeSection
-                    transactionsSection
                 }
                 .padding(.horizontal, 28)
                 .padding(.vertical, 24)
@@ -184,6 +240,16 @@ struct DashboardView: View {
         .foregroundStyle(BrickLook.ink)
         .tint(BrickLook.ink)
         .overlay { VoiceOverlay(agent: voice) }
+        // Asleep for the night: black, over everything. A tap wakes it.
+        .overlay {
+            if sleep.asleep {
+                Color.black.ignoresSafeArea()
+                    .contentShape(.rect)
+                    .onTapGesture { sleep.wake() }
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 1.2), value: sleep.asleep)
         .persistentSystemOverlays(.hidden)
         .onAppear { KeepAwake.hold() }
         .onDisappear { KeepAwake.release() }
@@ -191,11 +257,6 @@ struct DashboardView: View {
             LightSheet(entityID: e.id, store: home, toast: toast).presentationDetents([.medium, .large])
         }
         .sheet(item: $remote) { e in RemoteSheet(entity: home.entity(e.id) ?? e) }
-        .sheet(item: $retagging) { t in
-            CategoryPicker(transaction: t, options: finance.categoryOptions) { c in
-                Task { await finance.retag(t, to: c, api: session.api, toast: toast) }
-            }
-        }
         .sheet(isPresented: $account) { SettingsView() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in habits.rollDay() }
         .toast(toast)
@@ -360,51 +421,6 @@ struct DashboardView: View {
         return on > 0 ? "\(on) of \(items.count) on" : "All off"
     }
 
-    // MARK: New transactions
-
-    @ViewBuilder
-    private var transactionsSection: some View {
-        if let r = finance.response, let d = r.dashboard, !d.toReview.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    WallHeading(title: "New transactions", meta: "\(d.toReview.count) to review")
-                    Spacer()
-                    if d.toReview.count > 1 {
-                        Button("Keep all suggestions") {
-                            Task { await finance.confirmAll(api: session.api, toast: toast) }
-                        }
-                        .font(.system(size: 16, weight: .medium))
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
-                    }
-                }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 12) {
-                    ForEach(d.toReview) { t in
-                        TagCard(transaction: t, chips: chips(for: t, quick: r.quickCategories)) { c in
-                            Task { await finance.retag(t, to: c, api: session.api, toast: toast) }
-                        } onMore: {
-                            retagging = t
-                        }
-                        .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.9).combined(with: .opacity)))
-                    }
-                }
-                .animation(.spring(duration: 0.35), value: d.toReview.map(\.id))
-            }
-            .transition(.opacity)
-        } else if let error = finance.error {
-            ErrorBanner(message: "Finances: \(error)") { Task { await finance.load(api: session.api) } }
-        }
-    }
-
-    /// The suggestion first, then the likeliest other tags.
-    private func chips(for t: Transaction, quick: QuickCategories?) -> [String] {
-        let ranked = (t.netEffect > 0 ? quick?.in : quick?.out) ?? []
-        var list = t.category == "Uncategorized" ? [] : [t.category]
-        for c in ranked where !list.contains(c) && c != "Uncategorized" { list.append(c) }
-        return Array(list.prefix(6))
-    }
-}
-
 /// A section's name on the wall: the iPhone's light title with a caps note beside it.
 private struct WallHeading: View {
     let title: String
@@ -504,56 +520,6 @@ struct CardPressStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.spring(duration: 0.2), value: configuration.isPressed)
-    }
-}
-
-/// One new transaction with big tag buttons. One tap tags it and it slides away.
-private struct TagCard: View {
-    let transaction: Transaction
-    let chips: [String]
-    let onTag: (String) -> Void
-    let onMore: () -> Void
-
-    var body: some View {
-        let t = transaction
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(t.payee).font(.headline).lineLimit(1)
-                    Text("\(Fmt.shortDate(t.date)) · \(t.accountName)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer()
-                Text(Fmt.signed(t.netEffect, t.currency))
-                    .font(.title3.weight(.semibold)).monospacedDigit()
-                    .foregroundStyle(t.netEffect > 0 ? Color.positive : .primary)
-            }
-            FlowLayout(spacing: 8) {
-                ForEach(Array(chips.enumerated()), id: \.element) { i, c in
-                    let suggested = i == 0 && c == t.category
-                    Button { onTag(c) } label: {
-                        Label(c, systemImage: suggested ? "checkmark" : CategoryStyle.symbol(c))
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .foregroundStyle(suggested ? .white : .primary)
-                            .background(suggested ? CategoryStyle.color(c) : Color(.tertiarySystemFill), in: .capsule)
-                    }
-                    .buttonStyle(CardPressStyle())
-                    .accessibilityHint(suggested ? "Suggested tag" : "")
-                }
-                Button(action: onMore) {
-                    Label("Other", systemImage: "ellipsis")
-                        .font(.subheadline.weight(.medium))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color(.tertiarySystemFill), in: .capsule)
-                }
-                .buttonStyle(CardPressStyle())
-                .foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
-        .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
     }
 }
 

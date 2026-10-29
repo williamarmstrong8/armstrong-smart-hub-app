@@ -92,6 +92,11 @@ final class VoiceAgent {
     private var userSpeaking = false
 
     private static let followUpSeconds: Double = 8
+    /// End right after this reply instead of listening for a follow-up (bedtime).
+    private var endAfterReply = false
+
+    /// Ends the conversation as soon as Jarvis finishes its current reply.
+    func finishAfterReply() { endAfterReply = true }
 
     // Talking over Jarvis: the mic only sends loud sound while it speaks (VoiceAudio), so its own
     // echo and room noise never reach the service. Anything that does is you: Jarvis stops,
@@ -255,6 +260,7 @@ final class VoiceAgent {
         followUp?.cancel()
         followUp = nil
         notice = nil
+        endAfterReply = false
         activatedAt = .now
         lastActivity = .now
         socketOpen = false
@@ -503,6 +509,7 @@ final class VoiceAgent {
                 if Task.isCancelled { return }
             }
             if Task.isCancelled { return }
+            if endAfterReply { return end() }
             withAnimation(.easeOut(duration: 0.3)) { phase = .listening }
             try? await Task.sleep(for: .seconds(Self.followUpSeconds))
             if Task.isCancelled { return }
