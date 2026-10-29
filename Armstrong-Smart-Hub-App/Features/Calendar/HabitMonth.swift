@@ -20,12 +20,10 @@ struct HabitMonth: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             BrickCaps(text: "Habits").foregroundStyle(BrickLook.soft)
-            BrickCard(padding: 16) {
-                VStack(spacing: 14) {
-                    header
-                    weekdays
-                    grid
-                }
+            VStack(spacing: 14) {
+                header
+                weekdays
+                grid
             }
         }
         .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { g in
