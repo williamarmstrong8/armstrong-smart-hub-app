@@ -420,6 +420,7 @@ struct DashboardView: View {
         if items[0].control == .lock { return on > 0 ? "\(on) unlocked" : "All locked" }
         return on > 0 ? "\(on) of \(items.count) on" : "All off"
     }
+}
 
 /// A section's name on the wall: the iPhone's light title with a caps note beside it.
 private struct WallHeading: View {
