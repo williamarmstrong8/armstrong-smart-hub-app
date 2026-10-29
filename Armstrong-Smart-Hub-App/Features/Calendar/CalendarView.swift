@@ -1,44 +1,38 @@
 import SwiftUI
 
-/// The Google Calendar agenda from the Calendar page, next 14 days.
+/// The Google Calendar agenda from the Calendar page, next 14 days, with the to-do list on top.
 struct CalendarView: View {
     @Environment(AppSession.self) private var session
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     /// The last agenda on the phone shows until the hub answers.
     @State private var data: CalendarResponse? = DiskCache.read(calendarCacheName)
-    @State private var fetched = false
+    @State private var todos: [TodoItem]?
     @State private var error: String?
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // The agenda scrolls its own top bar away, like every other tab; the other states keep it here.
-                if !showsAgenda {
-                    topBar.padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 8)
+            // One scroll view for every state, so pulling down always reloads: also the
+            // "Connect Google Calendar" message, once it's connected in the browser.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    topBar.padding(.bottom, -14)
+                    TodoSection(items: $todos)
+                    calendar
                 }
-                Group {
-                    if let data {
-                        agenda(data)
-                    } else if let error {
-                        MessageView(title: "Couldn't load your calendar", systemImage: "calendar.badge.exclamationmark", message: error,
-                                    actionTitle: "Try again") { Task { await load() } }
-                    } else {
-                        ProgressView().frame(maxHeight: .infinity)
-                    }
-                }
+                .padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 16)
             }
             .background(BrickLook.page.ignoresSafeArea())
             .foregroundStyle(BrickLook.ink)
             .tint(BrickLook.ink)
             .toolbar(.hidden, for: .navigationBar)
-            .task { if !fetched { await load() } }
+            // On first show and every time the app comes back to the front.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                await load(refresh: true)
+            }
             .refreshable { await load(refresh: true) }
         }
-    }
-
-    private var showsAgenda: Bool {
-        guard let data, !["unconfigured", "not_connected", "missing_scope"].contains(data.status) else { return false }
-        return data.error == nil && !data.days.isEmpty
     }
 
     private var topBar: some View {
@@ -47,6 +41,18 @@ struct CalendarView: View {
                 openURL(URL(string: "https://calendar.google.com")!)
             }
             .labelStyle(.iconOnly)
+        }
+    }
+
+    @ViewBuilder
+    private var calendar: some View {
+        if let data {
+            agenda(data)
+        } else if let error {
+            MessageView(title: "Couldn't load your calendar", systemImage: "calendar.badge.exclamationmark", message: error,
+                        actionTitle: "Try again") { Task { await load(refresh: true) } }
+        } else {
+            ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
         }
     }
 
@@ -70,42 +76,40 @@ struct CalendarView: View {
                 MessageView(title: "Nothing coming up", systemImage: "calendar",
                             message: "Nothing on your calendar for the next \(data.upcomingDays) days.")
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        topBar.padding(.bottom, -14)
-                        CalendarHero(data: data)
-                        ForEach(data.days) { day in
-                            HStack(alignment: .top, spacing: 14) {
-                                DateMarker(day: day.day, isToday: day.day == data.today)
-                                VStack(spacing: 8) {
-                                    ForEach(day.events) { event in
-                                        EventCard(event: event, zone: data.timeZone)
-                                            .onTapGesture {
-                                                if let s = event.url, let url = URL(string: s) { openURL(url) }
-                                            }
+                CalendarHero(data: data)
+                ForEach(data.days) { day in
+                    HStack(alignment: .top, spacing: 14) {
+                        DateMarker(day: day.day, isToday: day.day == data.today)
+                        VStack(spacing: 8) {
+                            ForEach(day.events) { event in
+                                EventCard(event: event, zone: data.timeZone)
+                                    .onTapGesture {
+                                        if let s = event.url, let url = URL(string: s) { openURL(url) }
                                     }
-                                }
                             }
                         }
                     }
-                    .padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 16)
                 }
             }
         }
     }
 
+    /// The agenda and the to-do list together. `refresh` makes the hub drop its cached events,
+    /// so a calendar connected in the browser (or an event added elsewhere) shows right away.
     private func load(refresh: Bool = false) async {
+        let api = session.api
+        async let list: TodoList? = try? api.get("/api/mobile/todos")
         do {
-            let api = session.api
             let raw = try await api.data(api.request("/api/mobile/calendar\(refresh ? "?refresh=1" : "")"))
             data = try APIClient.decoder.decode(CalendarResponse.self, from: raw)
-            fetched = true
             error = nil
             DiskCache.write(raw, calendarCacheName)
         } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription
         }
+        // A list that won't load still shows (empty), so adding says what went wrong.
+        if let items = await list?.items { todos = items } else if todos == nil { todos = [] }
     }
 }
 
