@@ -1,20 +1,20 @@
 import SwiftUI
 
 #if os(iOS)
-/// Brick's own look: warm gray page, a lighter rounded sheet on top, soft cards, slate bars.
+/// Compatibility names for shared hub surfaces; only chart colors belong to Brick.
 enum BrickLook {
-    static let page = Fit.adaptive(0xD5D1D0, 0x161414)
-    static let sheet = Fit.adaptive(0xDCD8D7, 0x1E1C1C)
-    static let card = Fit.adaptive(0xE5E2E0, 0x2A2727)
-    static let pill = Fit.adaptive(0xE3DFDD, 0x2E2B2B)
-    static let ink = Fit.adaptive(0x262322, 0xECE8E6)
-    static let soft = Fit.adaptive(0x868180, 0x8F8A89)
-    static let line = Fit.adaptive(0xC9C4C3, 0x3A3636)
-    static let bar = Fit.adaptive(0x43505C, 0xA9B7C4)
-    static let track = Fit.adaptive(0xD9D5D3, 0x3A3636)
-    static let live = Fit.adaptive(0x5E7D6A, 0x7FB08F)
+    static let page = HubDesign.page
+    static let sheet = HubDesign.surface
+    static let card = HubDesign.raised
+    static let pill = HubDesign.track
+    static let ink = HubDesign.ink
+    static let soft = HubDesign.secondary
+    static let line = HubDesign.separator
+    static let bar = HubDesign.adaptive(0x43505C, 0xA9B7C4)
+    static let track = HubDesign.track
+    static let live = HubDesign.positive
 
-    static let cardRadius: CGFloat = 26
+    static let cardRadius = HubLayout.cardRadius
     /// The top sheet's bottom corners on Brick and Fitness: Brick's 64-point button's
     /// radius plus the gap around it, so the two curves run parallel.
     static let sheetRadius: CGFloat = 64 / 2 + Fit.gutter
@@ -28,7 +28,7 @@ struct BrickHeading: View {
     var chevron = false
     var body: some View {
         HStack(spacing: 8) {
-            Text(title).font(.system(size: 26, weight: .regular))
+            Text(title).font(.title2.weight(.regular))
             if chevron { Image(systemName: "chevron.down").font(.system(size: 15, weight: .medium)) }
         }
         .foregroundStyle(BrickLook.ink)
@@ -39,13 +39,13 @@ struct BrickHeading: View {
 struct BrickCaps: View {
     var text: String
     var body: some View {
-        Text(text.uppercased()).font(.system(size: 13, weight: .medium)).tracking(1.2)
+        Text(text.uppercased()).font(.caption.weight(.medium)).tracking(1)
     }
 }
 
 /// A soft rounded surface.
 struct BrickCard<Content: View>: View {
-    var padding: CGFloat = 22
+    var padding: CGFloat = HubLayout.cardPadding
     @ViewBuilder var content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content }
@@ -66,10 +66,10 @@ struct BrickRow: View {
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon).font(.system(size: 20, weight: .light)).frame(width: 26)
-            Text(title).font(.system(size: 18))
+            Text(title).font(.body).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            if dot { Circle().fill(Color.blue).frame(width: 9, height: 9) }
-            if let value { Text(value).font(.system(size: 18)).foregroundStyle(BrickLook.soft).monospacedDigit() }
+            if dot { Circle().fill(HubDesign.action).frame(width: 9, height: 9) }
+            if let value { Text(value).font(.body).foregroundStyle(BrickLook.soft).monospacedDigit() }
             if chevron { Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium)).foregroundStyle(BrickLook.soft) }
         }
         .foregroundStyle(BrickLook.ink)
@@ -98,55 +98,41 @@ struct BrickPage<Content: View>: View {
     var title: String
     @ViewBuilder var content: Content
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) { content }
-                .padding(.horizontal, Fit.gutter)
-                .padding(.top, 12)
-                .padding(.bottom, 48)
-                // A page with little on it (no schedules yet) would otherwise shrink to its content.
-                .frame(maxWidth: .infinity)
+        ScrollView(.vertical) {
+            LazyVStack(spacing: HubLayout.sectionGap) { content }
+                .padding(.horizontal, HubLayout.gutter)
+                .padding(.top, HubLayout.topInset)
+                .padding(.bottom, HubLayout.bottomInset)
+                .containerRelativeFrame(.horizontal)
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(BrickLook.page.ignoresSafeArea())
-        .foregroundStyle(BrickLook.ink)
-        .tint(BrickLook.ink)
+        .hubPageStyle()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BrickLook.page, for: .navigationBar)
     }
 }
 
-/// Brick's look for a List or Form: warm page, soft card rows, slate tint.
+/// Compatibility modifiers for the shared list and page treatments.
 extension View {
-    func brickList() -> some View {
-        self.scrollContentBackground(.hidden)
-            .background(BrickLook.page.ignoresSafeArea())
-            .foregroundStyle(BrickLook.ink)
-            .tint(BrickLook.ink)
-            .listRowSeparatorTint(BrickLook.line)
-    }
-
-    /// Brick's page behind a scroll view or stack in a sheet.
-    func brickBackdrop() -> some View {
-        self.background(BrickLook.page.ignoresSafeArea())
-            .foregroundStyle(BrickLook.ink)
-            .tint(BrickLook.ink)
-    }
+    func brickList() -> some View { hubListStyle() }
+    func brickBackdrop() -> some View { hubPageStyle() }
 }
 
 /// The top row every tab shares: account on the left, the page's own buttons on the right.
 struct BrickTopBar<Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
     var body: some View {
-        HStack {
-            AccountButton().frame(width: 28, height: 28)
-            Spacer()
-            trailing.frame(minWidth: 28, minHeight: 28)
+        HStack(spacing: 8) {
+            AccountButton()
+            Spacer(minLength: 8)
+            trailing
         }
-        // A fixed row height, so the account button sits at the same spot whatever the trailing button's size.
-        .frame(height: 32)
-        .font(.system(size: 22, weight: .light))
-        .foregroundStyle(BrickLook.ink)
+        .buttonStyle(HubToolbarButtonStyle())
+        .frame(minHeight: HubLayout.minHitTarget)
+        .font(.title3.weight(.regular))
+        .foregroundStyle(HubDesign.ink)
     }
 }
 
@@ -159,7 +145,7 @@ struct BrickPill: View {
             if let icon { Image(systemName: icon) }
             Text(text)
         }
-        .font(.system(size: 16)).monospacedDigit()
+        .font(.subheadline).monospacedDigit()
         .foregroundStyle(BrickLook.soft)
         .padding(.horizontal, 16).padding(.vertical, 11)
         .background(BrickLook.pill, in: .capsule)
@@ -174,22 +160,27 @@ struct BrickHero<Pills: View>: View {
     var subtitle: String?
     var subtitleColor: Color = BrickLook.soft
     @ViewBuilder var pills: Pills
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 44
 
     var body: some View {
         VStack(spacing: 12) {
             BrickCaps(text: caption).foregroundStyle(BrickLook.soft)
             Text(title)
-                .font(.system(size: 56, weight: .light).monospacedDigit())
+                .font(.system(size: titleSize, weight: .light).monospacedDigit())
                 .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.5).lineLimit(2)
-                .contentTransition(.numericText())
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
             if let subtitle {
-                Text(subtitle).font(.system(size: 18)).foregroundStyle(subtitleColor).multilineTextAlignment(.center)
+                Text(subtitle).font(.body).foregroundStyle(subtitleColor).multilineTextAlignment(.center)
             }
-            HStack(spacing: 10) { pills }.padding(.top, 10)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { pills }
+                VStack(spacing: 8) { pills }
+            }
+            .padding(.top, 8)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
+        .padding(.vertical, HubLayout.sectionGap)
     }
 }
 

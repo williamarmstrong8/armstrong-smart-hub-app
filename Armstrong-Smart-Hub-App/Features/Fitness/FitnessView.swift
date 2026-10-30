@@ -9,6 +9,7 @@ struct FitnessView: View {
     @Environment(AppSession.self) private var session
     @Environment(WatchLink.self) private var watch
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var store = FitnessStore()
     @State private var checkins = CheckinStore.shared
     @State private var showingWatch = false
@@ -18,36 +19,39 @@ struct FitnessView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
+            ScrollView(.vertical) {
+                VStack(spacing: HubLayout.sectionGap) {
+                    // Keep the hero and its account/watch presentation eagerly mounted.
                     sheet
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: HubLayout.sectionGap) {
                         if watch.savedWatchID == nil {
                             workoutsSection
                             routinesButton
                         } else {
                             if let error = store.error, !store.loaded {
-                                ErrorBanner(message: error).padding(.bottom, 24)
+                                ErrorBanner(message: error)
                             }
-                            MorningCheckin(store: checkins)
-                            today
-                            // Straight on the page, not on a card. It reads the watch's live
-                            // numbers itself, so a heartbeat redraws one row, not this page.
-                            OverviewList(store: store).padding(.bottom, 36)
+                            VStack(spacing: 0) {
+                                // MorningCheckin owns its trailing space; don't double it.
+                                MorningCheckin(store: checkins)
+                                today
+                            }
+                            // Live updates stay inside individual overview rows.
+                            OverviewList(store: store)
+                            // Keep the carousel's horizontal scroll targets together.
                             workoutsSection
                             syncStatus
-                            routinesButton.padding(.top, 24)
+                            routinesButton
                         }
                     }
                     .environment(\.fitnessCards, true)
-                    .padding(.horizontal, Fit.gutter)
-                    .padding(.top, 48)
+                    .padding(.horizontal, HubLayout.gutter)
                 }
-                .padding(.bottom, 40)
+                .padding(.bottom, HubLayout.bottomInset)
+                .containerRelativeFrame(.horizontal)
             }
-            .background(BrickLook.page.ignoresSafeArea())
-            .foregroundStyle(BrickLook.ink)
-            .tint(BrickLook.ink)
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .hubPageStyle()
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
@@ -89,10 +93,10 @@ struct FitnessView: View {
                 }
             }
             .refreshable {
-                // Return right away so the system spinner doesn't hold the page
-                // open; the watch hero shows the sync instead.
-                Task { await autoSync(force: true) }
-                Task { await workouts.load(api: session.api) }
+                // Keep refresh active until both independent loads finish.
+                async let synced: Void = autoSync(force: true)
+                async let logged: Void = workouts.load(api: session.api)
+                await (synced, logged)
             }
             .onChange(of: watch.files.lastSync) {
                 Task { await store.load(api: session.api) }
@@ -142,12 +146,15 @@ struct FitnessView: View {
 
     /// Sync status, centered at the bottom of the page.
     private var syncStatus: some View {
-        Text(watch.files.progress ?? watchStatus)
-            .font(.caption).foregroundStyle(.secondary)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-            .contentShape(.rect)
-            .onTapGesture { showingWatch = true }
+        Button { showingWatch = true } label: {
+            Text(watch.files.progress ?? watchStatus)
+                .font(.caption).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens watch details")
     }
 
     /// A good sync stays fresh this long; opening the page or returning to the
@@ -222,32 +229,56 @@ struct FitnessView: View {
         VStack(spacing: 0) {
             BrickTopBar {
                 if watch.savedWatchID != nil {
-                    Button { showingWatch = true } label: { TablerIcon(name: "device-watch", size: 22) }
-                        .accessibilityLabel("Watch")
+                    Button { showingWatch = true } label: {
+                        TablerIcon(name: "device-watch", size: 22)
+                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                            .contentShape(.rect)
+                    }
+                    .accessibilityLabel("Watch")
                 }
             }
-            .padding(.top, 12)
+            .buttonStyle(.plain)
+            .frame(minHeight: HubLayout.minHitTarget)
+            .padding(.top, HubLayout.topInset)
             WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil)
-                .padding(.horizontal, -16).padding(.top, 4)
+                .padding(.top, 4)
             if watch.savedWatchID != nil {
-                BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
+                    .font(.caption.weight(.medium)).tracking(1.2)
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(BrickLook.soft).padding(.top, 14)
-                Text(watchTitle).font(.system(size: 34, weight: .light)).padding(.top, 12)
-                    .onTapGesture { showingWatch = true }
-                TodayScores(store: store).padding(.top, 34)
+                Button { showingWatch = true } label: {
+                    Text(watchTitle)
+                        .font(.largeTitle.weight(.light))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens watch details")
+                .padding(.top, HubLayout.topInset)
+                TodayScores(store: store)
+                    .hubAnimation(value: store.snapshot?.watch?.readiness?.score ?? store.snapshot?.metrics?.readiness.score)
+                    .hubAnimation(value: store.snapshot?.watch?.sleep?.overall ?? store.lastNight?.score)
+                    .hubAnimation(value: store.currentBodyBattery ?? store.snapshot?.metrics?.bodyBattery?.current ?? store.snapshot?.insights?.stress.bodyBattery?.current)
+                    .transaction { transaction in
+                        // ScoreRing also has its own animation in the shared component.
+                        if reduceMotion {
+                            transaction.animation = nil
+                            transaction.disablesAnimations = true
+                        }
+                    }
+                    .padding(.top, HubLayout.sectionGap)
             } else {
-                welcome.padding(.top, 20)
+                welcome.padding(.top, HubLayout.sectionGap)
             }
-            Spacer(minLength: 0).frame(height: 40)
         }
-        .padding(.horizontal, Fit.gutter)
+        .padding(.horizontal, HubLayout.gutter)
+        .padding(.bottom, HubLayout.sectionGap)
         .frame(maxWidth: .infinity)
         .background {
-            // Reaches up under the status bar and past the top when pulled down.
             UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
                 .fill(BrickLook.sheet)
-                .padding(.top, -600)
-                .shadow(color: .black.opacity(0.10), radius: 18, y: 10)
         }
     }
 
@@ -260,7 +291,6 @@ struct FitnessView: View {
         return WeekStrip(store: checkins, workoutDays: days,
                          trailing: streak > 1 ? "\(streak)-day streak" : "\(done) of 7 days",
                          trailingTint: streak > 1 ? Fit.action : nil)
-            .padding(.bottom, 36)
     }
 
 }

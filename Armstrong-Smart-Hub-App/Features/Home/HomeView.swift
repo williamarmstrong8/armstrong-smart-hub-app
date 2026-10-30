@@ -27,33 +27,27 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 40) {
-                    topBar.padding(.bottom, -32)
-                    content
-                }
-                .padding(.horizontal, Fit.gutter)
-                .padding(.top, 12)
-                .padding(.bottom, 48)
-            }
+            HubTabPage(topBar: { topBar }, content: {
+                content
+            })
             // The search page's keyboard mustn't resize Home underneath it: that scrolled the page
             // when search closed.
             .ignoresSafeArea(.keyboard)
-            .background(BrickLook.page.ignoresSafeArea())
-            .foregroundStyle(BrickLook.ink)
-            .tint(BrickLook.ink)
-            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .toolbarBackground(HubDesign.page, for: .navigationBar)
+            .allowsHitTesting(!searching)
+            .accessibilityHidden(searching)
             .overlay {
-                if searching {
-                    MediaSearchView(onPick: open) {
-                        withAnimation(.smooth(duration: 0.45)) { searching = false }
+                ZStack {
+                    if searching {
+                        MediaSearchView(onPick: open) { searching = false }
+                            .transition(.opacity)
                     }
-                    .transition(.opacity)
                 }
+                .hubAnimation(value: searching)
             }
             // A title requested from search flies to the shelf, so the search page gets out of its way.
             .onAppear {
-                TitleCardPresenter.shared.revealShelf = { withAnimation(.smooth(duration: 0.45)) { searching = false } }
+                TitleCardPresenter.shared.revealShelf = { searching = false }
             }
             // An open title card follows its download from the same polls.
             .onChange(of: store.state?.requests ?? [], initial: true) { _, requests in
@@ -155,7 +149,6 @@ struct HomeView: View {
             if habits.loaded, !habits.habits.isEmpty { BrickPill(text: "\(habits.doneToday) of \(habits.habits.count) habits", icon: "checkmark.circle") }
             if store.isBusy { BrickPill(text: "Downloading", icon: "arrow.down.circle") }
         }
-        .animation(.smooth, value: status?.title)
     }
 
     @ViewBuilder
@@ -181,17 +174,18 @@ struct HomeView: View {
                 // Together, so no birthday today leaves no gap.
                 VStack(alignment: .leading, spacing: 0) {
                     BirthdayCards()
-                    DeviceGroups(store: store, large: false, onOpen: open, onToggle: toggle)
+                    VStack(alignment: .leading, spacing: HubLayout.sectionGap) {
+                        DeviceGroups(store: store, large: false, onOpen: open, onToggle: toggle)
+                    }
                 }
             }
 
             habitsSection
 
-            if !searching {
-                MediaSearchBar { withAnimation(.smooth(duration: 0.45)) { searching = true } }
-            } else {
-                Color.clear.frame(height: 50)
-            }
+            // Keep the actual control mounted: a fixed-height placeholder jumps at larger text sizes.
+            MediaSearchBar { searching = true }
+                .opacity(searching ? 0 : 1)
+                .accessibilityHidden(searching)
 
             if let problem = store.state?.errors.requests {
                 Text("Download status isn't updating: \(problem)")
@@ -216,7 +210,6 @@ struct HomeView: View {
                         .contextMenu { Button("Edit", systemImage: "pencil") { editingHabit = .habit(habit) } }
                     }
                 }
-                .animation(.spring(duration: 0.4, bounce: 0.2), value: habits.done)
                 .sensoryFeedback(.success, trigger: habits.doneToday) { old, new in new > old }
             }
         }
@@ -269,8 +262,8 @@ struct SectionHeader: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Text(title).font(.system(size: 26, weight: .regular))
-            if let meta { BrickCaps(text: meta).foregroundStyle(BrickLook.soft).monospacedDigit() }
+            Text(title).font(.title2)
+            if let meta { BrickCaps(text: meta).foregroundStyle(HubDesign.secondary).monospacedDigit() }
         }
         .frame(maxWidth: .infinity)
     }

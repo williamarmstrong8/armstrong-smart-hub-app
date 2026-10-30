@@ -55,6 +55,11 @@ hub library id to an entry in `Features/Workouts/ExerciseMedia.swift` and loads 
 the phone. Hevy's own illustrations are licensed to Hevy, so they aren't used. An exercise's page also needs the hub's
 `GET /api/mobile/workouts/exercises?id=` for its history, chart and records.
 
+## Design
+
+See [design.md](design.md) for shared UI tokens, layout and motion conventions, accessibility requirements,
+regression checks, and the on-device acceptance checklist.
+
 ## Build
 
 Open `Armstrong-Smart-Hub-App.xcodeproj` in Xcode and run. ONNX Runtime comes in through Swift Package Manager.

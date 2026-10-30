@@ -18,21 +18,15 @@ struct CalendarView: View {
         NavigationStack {
             // One scroll view for every state, so pulling down always reloads: also the
             // "Connect Google Calendar" message, once it's connected in the browser.
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    topBar.padding(.bottom, -14)
-                    if let data, hasAgenda(data) { CalendarHero(data: data) }
-                    TodoSection(items: $todos)
-                    if habits.loaded, !habits.habits.isEmpty {
-                        HabitMonth(store: habits) { pickedDay = PickedDay(day: $0) }
-                    }
-                    calendar
+            HubTabPage(topBar: { topBar }, content: {
+                if let data, hasAgenda(data) { CalendarHero(data: data) }
+                TodoSection(items: $todos)
+                if habits.loaded, !habits.habits.isEmpty {
+                    HabitMonth(store: habits) { pickedDay = PickedDay(day: $0) }
                 }
-                .padding(.horizontal, Fit.gutter).padding(.top, 12).padding(.bottom, 16)
-            }
-            .background(BrickLook.page.ignoresSafeArea())
-            .foregroundStyle(BrickLook.ink)
-            .tint(BrickLook.ink)
+                calendar
+            })
+            .toolbarBackground(HubDesign.page, for: .navigationBar)
             .toolbar(.hidden, for: .navigationBar)
             // On first show and every time the app comes back to the front.
             .task(id: scenePhase) {
@@ -96,10 +90,14 @@ struct CalendarView: View {
                         DateMarker(day: day.day, isToday: day.day == data.today)
                         VStack(spacing: 8) {
                             ForEach(day.events) { event in
-                                EventCard(event: event, zone: data.timeZone)
-                                    .onTapGesture {
-                                        if let s = event.url, let url = URL(string: s) { openURL(url) }
+                                if let s = event.url, let url = URL(string: s) {
+                                    Link(destination: url) {
+                                        EventCard(event: event, zone: data.timeZone)
                                     }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    EventCard(event: event, zone: data.timeZone)
+                                }
                             }
                         }
                     }
@@ -160,10 +158,10 @@ private struct DateMarker: View {
         VStack(spacing: 4) {
             Text(date.formatted(Date.FormatStyle(timeZone: .gmt).weekday(.abbreviated)).uppercased())
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(isToday ? Color.googleBlue : BrickLook.soft)
+                .foregroundStyle(isToday ? Color.googleBlue : HubDesign.secondary)
             Text(date.formatted(Date.FormatStyle(timeZone: .gmt).day()))
                 .font(.title3.weight(.medium)).monospacedDigit()
-                .foregroundStyle(isToday ? .white : .primary)
+                .foregroundStyle(isToday ? .white : HubDesign.ink)
                 .frame(width: 40, height: 40)
                 .background(isToday ? Color.googleBlue : .clear, in: .circle)
         }
@@ -182,11 +180,10 @@ private struct EventCard: View {
             Text(time).font(.subheadline.weight(.medium)).monospacedDigit().opacity(0.9)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
+        .padding(HubLayout.cardPadding)
         .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
-        .background(Color(hexForWhiteText: event.color), in: .rect(cornerRadius: 22))
-        .contentShape(.rect(cornerRadius: 22))
+        .background(Color(hexForWhiteText: event.color), in: .rect(cornerRadius: HubLayout.cardRadius))
+        .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
     }
 
     /// "6 PM" or "6:30 PM – 8 PM", like Google Calendar.

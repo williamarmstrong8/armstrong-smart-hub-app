@@ -10,22 +10,10 @@ struct FinanceView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    topBar.padding(.bottom, -20)
-                    content
-                }
-                .padding(.horizontal, Fit.gutter)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
-                // Pinned to the screen's width and the left edge, so a wide child can't push the page sideways.
-                .containerRelativeFrame(.horizontal, alignment: .leading)
-                .animation(.smooth(duration: 0.35), value: store.tagQueue.map(\.id))
-            }
-            .background(BrickLook.page.ignoresSafeArea())
-            .foregroundStyle(BrickLook.ink)
-            .tint(BrickLook.ink)
-            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            HubTabPage(topBar: { topBar }, content: {
+                content
+            })
+            .toolbarBackground(HubDesign.page, for: .navigationBar)
             .toolbar(.hidden, for: .navigationBar)
             .task { if !store.fetched { await store.load(api: session.api) } }
             .refreshable { await store.load(api: session.api) }
@@ -96,8 +84,6 @@ struct FinanceView: View {
             } onOther: {
                 retagging = next
             }
-            .id(next.id)
-            .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
         }
 
         MonthBars(items: d.monthSpending.byCategory, currency: d.currency)
@@ -121,8 +107,8 @@ struct FinanceView: View {
     }
 }
 
-/// One new transaction at a time with its three likeliest tags: tap one and
-/// the next slides in. "Other" opens the full list.
+/// One new transaction at a time with its three likeliest tags: tap one to
+/// replace the current card. "Other" opens the full list.
 private struct TagCard: View {
     let transaction: Transaction
     let remaining: Int
@@ -158,16 +144,22 @@ private struct TagCard: View {
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 14))
+                        .background(HubDesign.raised, in: .rect(cornerRadius: HubLayout.controlRadius))
                     }
                     .buttonStyle(CardPressStyle())
                 }
             }
-            Button("Something else", action: onOther).font(.footnote).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
+            Button(action: onOther) {
+                Text("Something else")
+                    .font(.footnote)
+                    .foregroundStyle(HubDesign.action)
+                    .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
         }
-        .padding(16)
-        .background(BrickLook.card, in: .rect(cornerRadius: BrickLook.cardRadius))
+        .padding(HubLayout.cardPadding)
+        .background(HubDesign.surface, in: .rect(cornerRadius: HubLayout.cardRadius))
         .sensoryFeedback(.selection, trigger: transaction.id)
     }
 
@@ -236,7 +228,7 @@ private struct MonthBars: View {
                             }
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
-                                    Capsule().fill(Color(.tertiarySystemFill))
+                                    Capsule().fill(HubDesign.track)
                                     Capsule().fill(color).frame(width: geo.size.width * min(max(fill, 0.02), 1))
                                 }
                             }

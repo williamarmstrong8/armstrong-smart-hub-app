@@ -1,43 +1,36 @@
 import Charts
 import SwiftUI
 
-/// The Fitness tab's look: the hub's palette (near-black or white, hairline
-/// dividers, muted labels, tabular numbers) laid out the way Oura's app is:
-/// no cards, content straight on the page, thin rings, light numbers and
-/// contributor rows. Every chart on the tab goes through the components here
-/// so axes, dates and readouts line up the same way everywhere.
+/// Fitness uses the shared hub surfaces and typography, adding semantic colors
+/// for health metrics. Charts use the components here so axes, dates and readouts
+/// line up the same way everywhere.
 
 // MARK: Tokens
 
 enum Fit {
-    /// A color with a light and a dark value (the hub's light and dark tokens).
     static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
-        Color(UIColor { traits in
-            let hex = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                           blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
-        })
+        HubDesign.adaptive(light, dark)
     }
 
-    /// Full-screen workout pages: white, or true black in dark mode (sheets are grey otherwise).
-    static let page = adaptive(0xFFFFFF, 0x000000)
-    static let hairline = adaptive(0xEBEBEB, 0x242424)
-    static let track = adaptive(0xEBEBEB, 0x262626)
-    static let muted = adaptive(0x666666, 0xA1A1A1)
-    static let faint = adaptive(0xA1A1A1, 0x5C5C5C)
+    static let page = HubDesign.page
+    static let hairline = HubDesign.separator
+    static let track = HubDesign.track
+    static let muted = HubDesign.secondary
+    /// Readable even when used for small chart labels rather than decoration.
+    static let faint = HubDesign.secondary
 
     // Accents, one per topic: the three scores are green, deep violet and yellow.
     static let readiness = adaptive(0x1E9E4A, 0x3DDC6E)
     static let sleep = adaptive(0x4B23C2, 0x8B6CFF)
     static let energy = adaptive(0xD9A300, 0xFFD60A)
     /// Buttons, the workout days and anything else to tap: the hub's blue.
-    static let action = adaptive(0x0068D6, 0x52A8FF)
+    static let action = HubDesign.action
     static let activity = adaptive(0xA35200, 0xFF990A)
     static let heart = adaptive(0xCB2A2F, 0xFF6166)
     static let health = adaptive(0x8E44AD, 0xC58AF9)
-    static let positive = adaptive(0x297A3A, 0x62C073)
-    static let fair = adaptive(0xA35200, 0xFF990A)
-    static let attention = adaptive(0xCB2A2F, 0xFF6166)
+    static let positive = HubDesign.positive
+    static let fair = HubDesign.warning
+    static let attention = HubDesign.danger
 
     /// Big headline numbers: light weight, tabular, like Oura's.
     static func number(_ size: CGFloat) -> Font { .system(size: size, weight: .light).monospacedDigit() }
@@ -46,7 +39,7 @@ enum Fit {
     static let label = Font.footnote
     static let axis = Font.caption2
 
-    static let gutter: CGFloat = 20
+    static let gutter = HubLayout.gutter
 }
 
 /// Oura's words for a 0-100 score.
@@ -73,7 +66,7 @@ struct FitPage<Content: View>: View {
     var body: some View {
         let stack = VStack(spacing: 0) { content }
             .padding(.horizontal, Fit.gutter)
-            .padding(.bottom, 40)
+            .padding(.bottom, HubLayout.bottomInset)
             .frame(maxWidth: .infinity)
         Group {
             if flat {
@@ -90,9 +83,7 @@ struct FitPage<Content: View>: View {
         // Fill the screen from the first frame: a page still loading would otherwise
         // shrink to its content, showing the background as a strip that then grows.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(BrickLook.page.ignoresSafeArea())
-        .foregroundStyle(BrickLook.ink)
-        .tint(BrickLook.ink)
+        .hubPageStyle()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BrickLook.page, for: .navigationBar)
@@ -118,7 +109,7 @@ struct FitSection<Content: View>: View {
         VStack(spacing: 18) {
             if title != nil || trailing != nil {
                 VStack(spacing: 6) {
-                    if let title { Text(title).font(.system(size: 26, weight: .regular)).foregroundStyle(BrickLook.ink) }
+                    if let title { Text(title).font(.title2.weight(.regular)).foregroundStyle(BrickLook.ink) }
                     if let trailing { BrickCaps(text: trailing).foregroundStyle(trailingTint ?? BrickLook.soft).monospacedDigit() }
                 }
             }
@@ -176,7 +167,7 @@ struct ScoreRing: View {
                     .stroke(tint, style: StrokeStyle(lineWidth: max(3, size * weight), lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .opacity(fraction > 0 ? 1 : 0)
-                    .animation(.smooth(duration: 0.8), value: fraction)
+                    .hubAnimation(value: fraction)
                 Text(value)
                     .font(Fit.number(size * 0.34))
                     .minimumScaleFactor(0.5)

@@ -68,8 +68,8 @@ extension Color {
         self.init(red: Double(c[0]) / 255, green: Double(c[1]) / 255, blue: Double(c[2]) / 255)
     }
 
-    static let positive = Color.green
-    static let negative = Color.red
+    static let positive = HubDesign.positive
+    static let negative = HubDesign.danger
 }
 
 /// A category's tint and symbol, used on transactions and spending bars.

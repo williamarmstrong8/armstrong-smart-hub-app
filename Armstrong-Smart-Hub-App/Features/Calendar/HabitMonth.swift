@@ -33,18 +33,26 @@ struct HabitMonth: View {
 
     private var header: some View {
         HStack {
-            Button("Previous month", systemImage: "chevron.left") { step(-1) }
-                .disabled(!canStep(-1))
-            Spacer()
+            Button { step(-1) } label: {
+                Image(systemName: "chevron.left")
+                    .frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
+            }
+            .accessibilityLabel("Previous month")
+            .disabled(!canStep(-1))
+            Spacer(minLength: 0)
             Text(monthDate.formatted(Date.FormatStyle(timeZone: .gmt).month(.wide).year()))
-                .font(.system(size: 28, weight: .semibold))
-                .contentTransition(.numericText())
-            Spacer()
-            Button("Next month", systemImage: "chevron.right") { step(1) }
-                .disabled(!canStep(1))
+                .font(.title2.weight(.semibold))
+                .multilineTextAlignment(.center)
+            Spacer(minLength: 0)
+            Button { step(1) } label: {
+                Image(systemName: "chevron.right")
+                    .frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
+            }
+            .accessibilityLabel("Next month")
+            .disabled(!canStep(1))
         }
-        .labelStyle(.iconOnly)
-        .font(.system(size: 22, weight: .medium))
+        .buttonStyle(.plain)
+        .font(.title3.weight(.medium))
     }
 
     private var weekdays: some View {
@@ -64,15 +72,17 @@ struct HabitMonth: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 6) {
             ForEach(Array(cells.enumerated()), id: \.offset) { _, day in
                 if let day {
-                    DayCell(day: day, isToday: day == store.today, isFuture: day > store.today,
-                            dots: store.habits.filter { store.isDone($0.id, day) }.map(\.color))
-                        .onTapGesture { if day <= store.today { onSelect(day) } }
+                    Button { onSelect(day) } label: {
+                        DayCell(day: day, isToday: day == store.today, isFuture: day > store.today,
+                                dots: store.habits.filter { store.isDone($0.id, day) }.map(\.color))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(day > store.today)
                 } else {
                     Color.clear.frame(height: 48)
                 }
             }
         }
-        .animation(.spring(duration: 0.35, bounce: 0.15), value: store.done)
     }
 
     // MARK: Month math
@@ -104,7 +114,7 @@ struct HabitMonth: View {
 
     private func step(_ delta: Int) {
         guard canStep(delta) else { return }
-        withAnimation(.snappy) { month = shifted(delta) }
+        month = shifted(delta)
     }
 }
 
@@ -119,7 +129,7 @@ private struct DayCell: View {
         VStack(spacing: 4) {
             Text(String(Int(day.suffix(2)) ?? 0))
                 .font(.subheadline.weight(isToday ? .bold : .regular)).monospacedDigit()
-                .foregroundStyle(isToday ? .white : isFuture ? BrickLook.soft : BrickLook.ink)
+                .foregroundStyle(isToday ? .white : isFuture ? HubDesign.secondary : HubDesign.ink)
                 .frame(width: 30, height: 30)
                 .background(isToday ? Color.googleBlue : .clear, in: .circle)
             // Up to six dots in two rows of three; past that the count says the rest.
@@ -153,7 +163,7 @@ struct HabitDaySheet: View {
         let done = store.habits.filter { store.isDone($0.id, day) }
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
+                LazyVStack(spacing: HubLayout.sectionGap) {
                     VStack(spacing: 6) {
                         Text(store.habits.isEmpty ? "No habits yet" : "\(done.count) of \(store.habits.count) done")
                             .font(.title2.weight(.semibold))
@@ -176,13 +186,17 @@ struct HabitDaySheet: View {
                             }
                         }
                     }
-                    .animation(.spring(duration: 0.4, bounce: 0.2), value: store.done)
                     .sensoryFeedback(.success, trigger: done.count) { old, new in new > old }
                 }
-                .padding(.horizontal, Fit.gutter).padding(.vertical, 20)
+                .padding(.horizontal, HubLayout.gutter)
+                .padding(.top, HubLayout.topInset)
+                .padding(.bottom, HubLayout.bottomInset)
+                .containerRelativeFrame(.horizontal, alignment: .leading)
             }
-            .background(BrickLook.page.ignoresSafeArea())
-            .foregroundStyle(BrickLook.ink)
+            .scrollBounceBehavior(.basedOnSize)
+            .background(HubDesign.page.ignoresSafeArea())
+            .foregroundStyle(HubDesign.ink)
+            .tint(HubDesign.action)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

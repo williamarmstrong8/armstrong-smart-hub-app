@@ -77,7 +77,7 @@ struct ExercisePicker: View {
             .background(BrickLook.page.ignoresSafeArea())
             .presentationBackground(BrickLook.page)
             .foregroundStyle(BrickLook.ink)
-            .tint(BrickLook.ink)
+            .tint(HubDesign.action)
             .navigationTitle(replacing ? "Replace Exercise" : "Add Exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(BrickLook.page, for: .navigationBar)

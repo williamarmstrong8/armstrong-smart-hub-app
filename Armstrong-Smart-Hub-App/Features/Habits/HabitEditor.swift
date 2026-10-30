@@ -38,6 +38,7 @@ struct HabitEditor: View {
                 } footer: {
                     Text("Shows as a circle you tap once it's done for the day.")
                 }
+                .listRowBackground(HubDesign.raised)
 
                 Section("Color") {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 8), spacing: 12) {
@@ -53,8 +54,12 @@ struct HabitEditor: View {
                     }
                     .padding(.vertical, 6)
                 }
+                .listRowBackground(HubDesign.raised)
 
-                if let error { Section { Text(error).foregroundStyle(.red) } }
+                if let error {
+                    Section { Text(error).foregroundStyle(HubDesign.danger) }
+                        .listRowBackground(HubDesign.raised)
+                }
 
                 if habit != nil {
                     Section {
@@ -62,8 +67,10 @@ struct HabitEditor: View {
                     } footer: {
                         Text("Its history is kept.")
                     }
+                    .listRowBackground(HubDesign.raised)
                 }
             }
+            .hubListStyle()
             .navigationTitle(habit == nil ? "New habit" : "Edit habit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

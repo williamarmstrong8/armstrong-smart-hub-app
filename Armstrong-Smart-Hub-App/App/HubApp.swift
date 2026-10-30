@@ -73,9 +73,9 @@ struct RootView: View {
                 LoginView()
             }
         }
-        .animation(.default, value: session.isSignedIn)
-        // No scroll bars on any page: this reaches every scroll view below it.
-        .scrollIndicators(.hidden)
+        .tint(HubDesign.action)
+        // Let scrollable content advertise its affordance, including at large text sizes.
+        .scrollIndicators(.automatic)
     }
 }
 
@@ -88,12 +88,7 @@ struct MainTabView: View {
     @Environment(WatchLink.self) private var watch
     @State private var workouts = WorkoutStore.shared
     @State private var titles = TitleCardPresenter.shared
-    /// A title card's height plus the gap under it (a poster at the screen's width, less the
-    /// insets), and enough more that its shadow is gone too.
-    private var titleCardTravel: CGFloat {
-        let width = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen.bounds.width }.first ?? 402
-        return (width - 16) * 1.5 + 8 + 32
-    }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tab: HubTab = {
         #if DEBUG
         if ProcessInfo.processInfo.environment["BRICK_PREVIEW"] != nil {
@@ -126,23 +121,42 @@ struct MainTabView: View {
         .tabViewBottomAccessory(isEnabled: workouts.active != nil) {
             MiniWorkoutBar(store: workouts)
         }
-        // A title's card (opened from Home) sits over everything, tab bar included, which blurs
-        // behind it in step with it.
-        .blur(radius: 14 * titles.reveal)
+        // Keep the tab layout stable without re-rendering it through a live blur.
+        // These modifiers apply only to the underlying tabs, not the modal overlay.
+        .allowsHitTesting(titles.pick == nil)
+        .accessibilityHidden(titles.pick != nil)
         .overlay {
-            if let p = titles.pick {
-                MediaDetailCard(pick: p, poster: titles.poster, toast: titles.toast, reveal: $titles.reveal,
-                                onChanged: titles.onChanged, onClose: titles.close, onSent: titles.sent)
-                    .id(p.id)
-                    // Slides by the card's own height (not the screen's), so it's moving into view
-                    // from the first frame, in step with the blur.
-                    .transition(.offset(y: titleCardTravel))
-            }
+            Color.black.opacity(0.4 * min(max(titles.reveal, 0), 1))
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
         .overlay {
-            if let sentAt = titles.sentAt { SendGlow(start: sentAt) }
+            GeometryReader { geometry in
+                if let p = titles.pick {
+                    let presentationID = titles.presentationID
+                    MediaDetailCard(pick: p, presentationID: presentationID,
+                                    poster: titles.poster, toast: titles.toast, reveal: $titles.reveal,
+                                    onChanged: titles.onChanged,
+                                    onClose: {
+                                        guard titles.presentationID == presentationID else { return }
+                                        titles.close()
+                                    }, onSent: {
+                                        guard titles.presentationID == presentationID else { return }
+                                        titles.sent()
+                                    })
+                        .id(presentationID)
+                        .transition(reduceMotion ? .identity : .offset(y: geometry.size.height + 32))
+                }
+            }
+            .allowsHitTesting(titles.pick != nil)
+        }
+        .overlay {
+            if !reduceMotion, let sentAt = titles.sentAt { SendGlow(start: sentAt) }
         }
         .sensoryFeedback(.impact(weight: .heavy), trigger: titles.sentAt) { _, now in now != nil }
+        .onChange(of: tab) { titles.close() }
+        .onDisappear { titles.close() }
         // Widgets and the TV's Live Activity open their tab: armstronghub://home, /fitness, /brick.
         .onOpenURL { url in
             guard url.scheme == "armstronghub" else { return }

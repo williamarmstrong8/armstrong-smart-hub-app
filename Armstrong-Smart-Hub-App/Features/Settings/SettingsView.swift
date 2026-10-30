@@ -38,6 +38,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            .hubListStyle()
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

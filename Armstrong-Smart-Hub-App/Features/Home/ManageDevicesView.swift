@@ -16,7 +16,11 @@ struct ManageDevicesView: View {
     var body: some View {
         NavigationStack {
             List {
-                if let error { Text(error).foregroundStyle(.red) }
+                if let error {
+                    Text(error)
+                        .foregroundStyle(HubDesign.danger)
+                        .listRowBackground(HubDesign.raised)
+                }
                 ForEach(filtered) { e in
                     Button {
                         if picked.contains(e.id) { picked.remove(e.id) } else { picked.insert(e.id) }
@@ -29,13 +33,13 @@ struct ManageDevicesView: View {
                             }
                             Spacer()
                             Image(systemName: picked.contains(e.id) ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(picked.contains(e.id) ? Color.accentColor : .secondary)
+                                .foregroundStyle(picked.contains(e.id) ? HubDesign.action : HubDesign.secondary)
                         }
                     }
-                    .listRowBackground(BrickLook.card)
+                    .listRowBackground(HubDesign.raised)
                 }
             }
-            .brickList()
+            .hubListStyle()
             .searchable(text: $search)
             .navigationTitle("\(picked.count) devices")
             .navigationBarTitleDisplayMode(.inline)

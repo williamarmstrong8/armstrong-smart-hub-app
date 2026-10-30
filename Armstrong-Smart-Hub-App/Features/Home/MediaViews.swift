@@ -1,4 +1,6 @@
 import SwiftUI
+import ImageIO
+import UIKit
 
 /// The closed search bar on Home: a Liquid Glass capsule that opens the search page.
 struct MediaSearchBar: View {
@@ -11,7 +13,7 @@ struct MediaSearchBar: View {
                 Text("Search movies and shows")
                 Spacer()
             }
-            .foregroundStyle(BrickLook.soft)
+            .foregroundStyle(HubDesign.secondary)
             .padding(.horizontal, 18).padding(.vertical, 16)
             .contentShape(.capsule)
         }
@@ -26,6 +28,8 @@ struct MediaSearchView: View {
     let onClose: () -> Void
 
     @Environment(AppSession.self) private var session
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var searchID = UUID()
     @Namespace private var glass
     @State private var query = ""
     @State private var results: [MediaResult]?
@@ -35,7 +39,7 @@ struct MediaSearchView: View {
     @State private var showClose = false
     @FocusState private var focused: Bool
 
-    private var typing: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var typing: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     /// Whatever was showing stays until the new results land, then they move into its slots.
     private var onShow: [MediaResult] { typing ? (results ?? recent) : recent }
 
@@ -44,21 +48,30 @@ struct MediaSearchView: View {
             GlassEffectContainer(spacing: 12) {
                 HStack(spacing: 12) {
                     HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass").foregroundStyle(BrickLook.soft)
+                        Image(systemName: "magnifyingglass").foregroundStyle(HubDesign.secondary)
                         TextField("Search movies and shows", text: $query)
                             .focused($focused)
                             .autocorrectionDisabled()
                             .submitLabel(.search)
                         if searching { ProgressView().controlSize(.small) }
-                        if typing {
-                            Button("Clear", systemImage: "xmark.circle.fill") {
-                                query = ""
-                                withAnimation(.smooth(duration: 0.4)) { results = nil }
-                            }
-                                .labelStyle(.iconOnly).foregroundStyle(BrickLook.soft).buttonStyle(.plain)
+                        Button {
+                            query = ""
+                            results = nil
+                            error = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                                .contentShape(.rect)
                         }
+                        .accessibilityLabel("Clear search")
+                        .foregroundStyle(HubDesign.secondary)
+                        .buttonStyle(.plain)
+                        // Reserve the target so typing does not resize the field or the grid.
+                        .opacity(typing ? 1 : 0)
+                        .disabled(!typing)
+                        .accessibilityHidden(!typing)
                     }
-                    .padding(.horizontal, 18).padding(.vertical, 16)
+                    .padding(.leading, 18).padding(.trailing, 4).padding(.vertical, 4)
                     .glassEffect(.regular.interactive(), in: .capsule)
                     .glassEffectID("field", in: glass)
 
@@ -77,9 +90,9 @@ struct MediaSearchView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                    if let error { Text(error).font(.footnote).foregroundStyle(HubDesign.danger) }
                     if typing, results?.isEmpty == true, !searching {
-                        Text("Nothing found.").font(.subheadline).foregroundStyle(BrickLook.soft)
+                        Text("Nothing found.").font(.subheadline).foregroundStyle(HubDesign.secondary)
                     } else {
                         grid(onShow)
                     }
@@ -87,15 +100,16 @@ struct MediaSearchView: View {
             }
             .scrollDismissesKeyboard(.interactively)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
+        .padding(.horizontal, HubLayout.gutter)
+        .padding(.top, HubLayout.topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(BrickLook.page.ignoresSafeArea())
-        .foregroundStyle(BrickLook.ink)
-        .tint(BrickLook.ink)
+        .background(HubDesign.page.ignoresSafeArea())
+        .foregroundStyle(HubDesign.ink)
+        .tint(HubDesign.action)
         .task {
-            withAnimation(.smooth(duration: 0.4)) { showClose = true }
-            try? await Task.sleep(for: .milliseconds(350))
+            withAnimation(HubMotion.animation(reduceMotion: reduceMotion)) { showClose = true }
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            guard !Task.isCancelled, !TitleCardPresenter.shared.isPresenting else { return }
             focused = true
         }
         .task { await loadRecent() }
@@ -107,19 +121,21 @@ struct MediaSearchView: View {
             await MediaDetailCache.prefetch(onShow.prefix(9).map(\.pick), api: session.api)
         }
         .task(id: query) {
-            let q = query.trimmingCharacters(in: .whitespaces)
-            guard !q.isEmpty else { return }
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            searching = true
-            defer { searching = false }
+            let id = UUID()
+            searchID = id
+            let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            searching = !q.isEmpty
+            error = nil
+            defer { if searchID == id { searching = false } }
+            guard !q.isEmpty else { results = nil; return }
             do {
+                try await Task.sleep(for: .milliseconds(300))
                 let found: [MediaResult] = try await session.api.run("searchMedia", [.string(q)]) ?? []
-                guard !Task.isCancelled else { return }
-                withAnimation(.smooth(duration: 0.4)) { results = found }
-                error = nil
-            } catch is CancellationError {
+                guard !Task.isCancelled, searchID == id else { return }
+                // Replacing a grid should not animate every poster and its scroll layout.
+                results = found
             } catch {
+                guard !Task.isCancelled, searchID == id else { return }
                 self.error = error.localizedDescription
             }
         }
@@ -136,7 +152,6 @@ struct MediaSearchView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel([r.title, r.year].compactMap { $0 }.joined(separator: ", "))
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
             }
         }
     }
@@ -144,7 +159,9 @@ struct MediaSearchView: View {
     /// Popular movies released two months to a year ago, picked by the companion.
     private func loadRecent() async {
         do {
-            recent = try await session.api.run("discoverMedia", []) ?? []
+            let found: [MediaResult] = try await session.api.run("discoverMedia", []) ?? []
+            guard !Task.isCancelled else { return }
+            recent = found
         } catch {
             // Search still works without the suggestions.
         }
@@ -154,6 +171,7 @@ struct MediaSearchView: View {
 /// Home's carousel: what's on its way, then what's ready. A title on its way is dimmed, and the
 /// dark lifts from the bottom as it downloads until the whole poster shows.
 struct MediaShelf: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let requests: [MediaRequest]
     /// A tile a request's poster is flying to, hidden until it lands.
     var hiding: Int? = nil
@@ -170,16 +188,17 @@ struct MediaShelf: View {
                     .buttonStyle(.plain)
                     .opacity(r.tmdbId != nil && r.tmdbId == hiding ? 0 : 1)
                     .disabled(r.tmdbId == nil)
+                    .accessibilityLabel("\(r.title), \(r.stage.label)")
+                    .accessibilityHidden(r.tmdbId != nil && r.tmdbId == hiding)
                 }
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                 TitleCardPresenter.shared.shelfSlot = CGRect(x: frame.minX, y: frame.minY, width: 150, height: 225)
             }
             .onDisappear { TitleCardPresenter.shared.shelfSlot = nil }
-            .padding(.horizontal, 16)
-            .animation(.smooth(duration: 0.45), value: requests.map(\.id))
+            .padding(.horizontal, HubLayout.gutter)
         }
-        .padding(.horizontal, -16)
+        .padding(.horizontal, -HubLayout.gutter)
         .scrollClipDisabled()
     }
 
@@ -193,7 +212,7 @@ struct MediaShelf: View {
                     GeometryReader { geo in
                         Rectangle().fill(.black.opacity(0.72))
                             .frame(height: geo.size.height * (1 - fill))
-                            .animation(.smooth(duration: 0.8), value: fill)
+                            .animation(HubMotion.animation(reduceMotion: reduceMotion), value: fill)
                     }
                 }
             }
@@ -295,6 +314,7 @@ struct SendGlow: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -307,8 +327,18 @@ enum PosterLoader {
             group.addTask {
                 var req = URLRequest(url: url)
                 req.cachePolicy = .returnCacheDataElseLoad
-                guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
-                return UIImage(data: data)
+                guard let (data, response) = try? await URLSession.shared.data(for: req),
+                      !Task.isCancelled,
+                      (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+                      let source = CGImageSourceCreateWithData(data as CFData, nil),
+                      let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 1600,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceShouldCacheImmediately: true
+                      ] as CFDictionary) else { return nil }
+                // Decode and bound large artwork off the main actor, before the opening animation.
+                return UIImage(cgImage: thumbnail)
             }
             group.addTask { try? await Task.sleep(for: limit); return nil }
             let first = await group.next() ?? nil
@@ -317,16 +347,15 @@ enum PosterLoader {
         }
     }
 
-    /// The same TMDB poster at full resolution; lists get small ones, too soft for a card the
-    /// screen's width.
+    /// A card-sized TMDB image, rather than an unbounded original download.
     static func fullSize(_ url: String?) -> String? {
-        guard let url, let range = url.range(of: #"/t/p/w\d+/"#, options: .regularExpression) else { return nil }
-        return url.replacingCharacters(in: range, with: "/t/p/original/")
+        guard let url else { return nil }
+        guard let range = url.range(of: #"/t/p/(w\d+|original)/"#, options: .regularExpression) else { return url }
+        return url.replacingCharacters(in: range, with: "/t/p/w780/")
     }
 }
 
-/// Shows a title's card above the whole tab view, so the tab bar blurs with the page rather than
-/// hiding (hiding it changed Home's insets and nudged its scroll), and runs the send to the TV.
+/// Presents above the tabs without changing Home's insets, and runs the send to the TV.
 @MainActor
 @Observable
 final class TitleCardPresenter {
@@ -334,7 +363,10 @@ final class TitleCardPresenter {
 
     private(set) var pick: MediaPick?
     private(set) var poster: UIImage?
-    /// How far the card is up (0–1); the screen behind blurs by it.
+    private(set) var presentationID = UUID()
+    @ObservationIgnored private var opening: Task<Void, Never>?
+    var isPresenting: Bool { pick != nil || opening != nil }
+    /// How far the card is up (0–1); controls the dim scrim only.
     var reveal: CGFloat = 0
     /// When the last title went to the TV, for the send burst; nil once it's over.
     private(set) var sentAt: Date?
@@ -351,23 +383,35 @@ final class TitleCardPresenter {
     /// Home's hook to get its shelf in view for a request's flight (it closes the search page).
     @ObservationIgnored var revealShelf: () -> Void = {}
 
-    /// Opens once the poster is in hand (normally cached, so at once), so it slides in with the
-    /// card; details not stored yet are fetched in the same short wait, so the card opens complete.
+    /// A short cache warm-up only: details refresh inside the card, never blocking its opening.
     func open(_ p: MediaPick, api: APIClient, onChanged: @escaping () -> Void) {
+        guard pick == nil else { return }
+        opening?.cancel()
+        let id = UUID()
+        presentationID = id
+        landingID = nil
         self.onChanged = onChanged
-        Task {
-            async let image = PosterLoader.image(p.posterURL)
-            if MediaDetailCache.get(p) == nil {
-                await MediaDetailCache.fetch(p, api: api, waitingAtMost: .milliseconds(600))
+        opening = Task {
+            let image = await PosterLoader.image(p.posterURL, waitingAtMost: .milliseconds(120))
+            guard !Task.isCancelled, presentationID == id else { return }
+            poster = image
+            withAnimation(HubMotion.animation(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
+                pick = p
+                reveal = 1
             }
-            poster = await image
-            withAnimation(.smooth(duration: 0.4)) { pick = p; reveal = 1 }
+            opening = nil
         }
     }
 
-    /// A plain ease-in, so the card drops straight out rather than lingering along the bottom edge.
     func close() {
-        withAnimation(.easeIn(duration: 0.3)) { pick = nil; reveal = 0 }
+        opening?.cancel()
+        opening = nil
+        presentationID = UUID()
+        landingID = nil
+        withAnimation(HubMotion.animation(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
+            pick = nil
+            reveal = 0
+        }
     }
 
     /// A request is about to fly to the shelf: close search so the shelf shows, and open an empty
@@ -376,10 +420,13 @@ final class TitleCardPresenter {
         let queued = MediaRequest(id: -p.id, tmdbId: p.id, title: p.title, mediaType: p.mediaType,
                                   posterURL: p.posterURL, stage: .approved, progress: nil, etaSeconds: nil,
                                   updatedAt: nil, statusMessage: nil)
-        revealShelf()
-        landingID = p.id
-        withAnimation(.smooth(duration: 0.55)) {
-            justRequested.removeAll { $0.tmdbId == p.id }
+        // The shelf is scroll content: insert without animating its entire layout.
+        var transaction = SwiftUI.Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            revealShelf()
+            landingID = p.id
+            justRequested.removeAll { $0.tmdbId == p.id && $0.mediaType == p.mediaType }
             justRequested.insert(queued, at: 0)
         }
     }
@@ -390,18 +437,17 @@ final class TitleCardPresenter {
     /// The poster has landed in its slot: swap the card for the queued tile beneath it, unseen.
     func landed() {
         var t = SwiftUI.Transaction(); t.disablesAnimations = true
-        withTransaction(t) { pick = nil; landingID = nil }
+        withTransaction(t) { pick = nil; landingID = nil; reveal = 0; presentationID = UUID() }
         onChanged()
     }
 
-    /// The poster has gone into the island: drop the card where it is (it's already invisible) and
-    /// play the burst while the screen unblurs.
+    /// The poster has gone into the island: remove it and release the scrim.
     func sent() {
         var t = SwiftUI.Transaction(); t.disablesAnimations = true
-        withTransaction(t) { pick = nil }
+        withTransaction(t) { pick = nil; landingID = nil; presentationID = UUID() }
         let now = Date.now
         sentAt = now
-        withAnimation(.smooth(duration: 0.7)) { reveal = 0 }
+        withAnimation(HubMotion.animation(reduceMotion: UIAccessibility.isReduceMotionEnabled)) { reveal = 0 }
         Task {
             try? await Task.sleep(for: .seconds(SendGlow.duration + 0.1))
             if sentAt == now { sentAt = nil }
@@ -409,60 +455,93 @@ final class TitleCardPresenter {
     }
 }
 
-/// Title details kept between opens and launches, so a card shows them at once and only refreshes
-/// them quietly behind.
+/// All cache file access and JSON work stays on this actor, never on the UI executor.
+private actor MediaDetailCacheFile {
+    private let file = URL.cachesDirectory.appending(path: "media-details.json")
+    private var latestRevision: UInt64 = 0
+
+    func read() -> [String: MediaDetail] {
+        (try? JSONDecoder().decode([String: MediaDetail].self, from: Data(contentsOf: file))) ?? [:]
+    }
+
+    func write(_ snapshot: [String: MediaDetail], revision: UInt64) {
+        // Actor jobs need not arrive FIFO. A delayed older snapshot must never win.
+        guard revision > latestRevision else { return }
+        latestRevision = revision
+        if let data = try? JSONEncoder().encode(snapshot) {
+            try? data.write(to: file, options: .atomic)
+        }
+    }
+}
+
+/// Immediate in-memory lookups; disk restoration and persistence do not block scrolling.
 @MainActor
 enum MediaDetailCache {
-    private static let file = URL.cachesDirectory.appending(path: "media-details.json")
-    private static var details: [String: MediaDetail] =
-        (try? JSONDecoder().decode([String: MediaDetail].self, from: Data(contentsOf: file))) ?? [:]
+    private static let storage = MediaDetailCacheFile()
+    private static var details: [String: MediaDetail] = [:]
+    private static var revisions: [String: UInt64] = [:]
+    private static var nextRevision: UInt64 = 0
+    private static var restored = false
+    private static var restoration: Task<Void, Never>?
 
     private static func key(_ p: MediaPick) -> String { "\(p.mediaType.rawValue)-\(p.id)" }
 
     static func get(_ p: MediaPick) -> MediaDetail? { details[key(p)] }
+    static func revision(for p: MediaPick) -> UInt64 { revisions[key(p)] ?? 0 }
+
+    static func restore() async {
+        guard !restored else { return }
+        if let restoration { await restoration.value; return }
+        let task = Task {
+            let saved = await storage.read()
+            // Include tombstones: an invalidation during the read must not be resurrected.
+            for (key, value) in saved where revisions[key] == nil { details[key] = value }
+            restored = true
+        }
+        restoration = task
+        await task.value
+        restoration = nil
+    }
 
     static func set(_ d: MediaDetail?, for p: MediaPick) {
         details[key(p)] = d
-        if let data = try? JSONEncoder().encode(details) { try? data.write(to: file, options: .atomic) }
-    }
-
-    /// Fetches and stores one title's details, giving up on the wait (not the fetch) after `limit`.
-    static func fetch(_ p: MediaPick, api: APIClient, waitingAtMost limit: Duration) async {
-        let fetch = Task {
-            if let d: MediaDetail = try? await api.run("mediaDetail", [.string(p.mediaType.rawValue), .int(p.id)]) {
-                set(d, for: p)
-            }
-        }
-        let timeout = Task { try? await Task.sleep(for: limit) }
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await fetch.value }
-            group.addTask { await timeout.value }
-            _ = await group.next()
-            timeout.cancel()
+        nextRevision += 1
+        revisions[key(p)] = nextRevision
+        Task {
+            // Merge untouched saved entries before taking a complete snapshot.
+            await restore()
+            let snapshot = details
+            let revision = nextRevision
+            await storage.write(snapshot, revision: revision)
         }
     }
 
     /// Fetches what isn't stored yet, so even the first open of a shelf title is instant.
     static func prefetch(_ picks: [MediaPick], api: APIClient) async {
+        await restore()
         for p in picks where get(p) == nil {
             guard !Task.isCancelled else { return }
+            let version = revision(for: p)
             if let d: MediaDetail = try? await api.run("mediaDetail", [.string(p.mediaType.rawValue), .int(p.id)]) {
+                guard !Task.isCancelled else { return }
+                guard revision(for: p) == version else { continue }
                 set(d, for: p)
             }
         }
     }
 }
 
-/// A title's card, drawn over the tab view rather than as a sheet so the page behind can blur in step with
-/// it: as tall as the poster, which fills it from the top and fades into black under the words.
+/// A cinematic title card above a dim scrim, without changing the tab view's layout.
+/// The poster fills it from the top and fades into black under the words.
 /// Drag it down or tap above it to close. On a title that can play, swiping up shrinks the card to
 /// its poster as it rises, stopping just under the Dynamic Island; let go and it goes in and plays.
 struct MediaDetailCard: View {
     let pick: MediaPick
+    let presentationID: UUID
     /// The poster, already loaded, so it arrives with the card; nil falls back to loading it here.
     let poster: UIImage?
     let toast: Toast
-    /// 1 while the card is fully up, falling toward 0 as it's dragged down; Home blurs by it.
+    /// 1 while fully up, falling toward 0 as it's dragged down; dims the backdrop.
     @Binding var reveal: CGFloat
     let onChanged: () -> Void
     let onClose: () -> Void
@@ -470,9 +549,10 @@ struct MediaDetailCard: View {
     /// and play the send burst.
     let onSent: () -> Void
 
-    init(pick: MediaPick, poster: UIImage?, toast: Toast, reveal: Binding<CGFloat>,
+    init(pick: MediaPick, presentationID: UUID, poster: UIImage?, toast: Toast, reveal: Binding<CGFloat>,
          onChanged: @escaping () -> Void, onClose: @escaping () -> Void, onSent: @escaping () -> Void) {
         self.pick = pick
+        self.presentationID = presentationID
         self.poster = poster
         self.toast = toast
         _reveal = reveal
@@ -482,18 +562,16 @@ struct MediaDetailCard: View {
         _detail = State(initialValue: MediaDetailCache.get(pick))
     }
 
-    /// The screen's own corner radius, so the card's corners run parallel to the display's.
-    private static let screenRadius: CGFloat = {
-        let screen = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
-        return (screen?.value(forKey: "_displayCornerRadius") as? CGFloat).flatMap { $0 > 0 ? $0 : nil } ?? 55
-    }()
     /// How far the card floats in from the screen's edges.
     private static let inset: CGFloat = 8
     /// How small a play swipe shrinks the card before it goes into the island.
     private static let smallest: CGFloat = 0.3
 
     @Environment(AppSession.self) private var session
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AccessibilityFocusState private var closeFocused: Bool
     @State private var detail: MediaDetail?
+    @State private var detailLoadID = UUID()
     @State private var sharp: UIImage?
     @State private var error: String?
     @State private var working = false
@@ -504,10 +582,12 @@ struct MediaDetailCard: View {
     @State private var armed = false
     /// Set once let go on a play swipe: the poster's flight into the island, taking over from the drag.
     @State private var sending = false
+    @State private var sendPending = false
     @State private var sendX: CGFloat = 0
     @State private var sendY: CGFloat = 0
     /// This view's origin on screen, to place a request's flight to the shelf.
     @State private var origin: CGPoint = .zero
+    @State private var viewport: CGRect = .zero
     /// The card's size and resting centre, as laid out.
     @State private var cardSize: CGSize = .zero
     @State private var restY: CGFloat = 0
@@ -517,7 +597,10 @@ struct MediaDetailCard: View {
     @State private var sendOpacity: Double = 1
 
     /// This title's request as Home last polled it, for a live download bar.
-    private var live: MediaRequest? { TitleCardPresenter.shared.requests.first { $0.tmdbId == pick.id } }
+    private var isCurrent: Bool { TitleCardPresenter.shared.presentationID == presentationID }
+    private var live: MediaRequest? {
+        TitleCardPresenter.shared.requests.first { $0.tmdbId == pick.id && $0.mediaType == pick.mediaType }
+    }
     private var available: Bool { live?.stage == .available || (detail?.available ?? (pick.known == .available)) }
     private var canPlay: Bool { available && (detail?.canPlay ?? true) }
     private var isRequested: Bool {
@@ -527,8 +610,8 @@ struct MediaDetailCard: View {
     var body: some View {
         GeometryReader { geo in
             // Floats a little in from the screen's edges so its corners can be round all the way.
-            let width = geo.size.width - 2 * Self.inset
-            let height = min(width * 1.5, geo.size.height - 60)
+            let width = max(1, geo.size.width - 2 * Self.inset)
+            let height = max(1, min(width * 1.5, geo.size.height - 16))
             // Where the card's centre sits at rest and the island's centre, in this view's space
             // (it starts below the status bar).
             let rest = geo.size.height - Self.inset - height / 2
@@ -542,52 +625,77 @@ struct MediaDetailCard: View {
             let shown = lift <= maxLift ? lift : maxLift + (lift - maxLift) / 10
             let y = drag > 0 ? drag : canPlay ? -shown : drag / 6
             ZStack(alignment: .bottom) {
-                Color.clear.contentShape(.rect).onTapGesture(perform: onClose)
-                card(shrink: sending ? 1 : shrink)
+                Color.clear.contentShape(.rect)
+                    .onTapGesture { if !sending { onClose() } }
+                    .accessibilityHidden(true)
+                card(shrink: reduceMotion ? 0 : sending ? 1 : shrink)
                     .frame(width: width, height: height)
+                    .overlay(alignment: .topLeading) {
+                        // A dedicated artwork drag region cannot steal scrolling or button taps.
+                        // Leave the top-right close button uncovered.
+                        Color.clear
+                            .frame(width: max(1, width - 80), height: min(60, height * 0.3))
+                            .contentShape(.rect)
+                            .accessibilityHidden(true)
+                            .gesture(
+                                DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                                    .onChanged { v in
+                                        guard !working, !sending, isCurrent,
+                                              abs(v.translation.height) > abs(v.translation.width) else { return }
+                                        let dy = v.translation.height
+                                        drag = dy
+                                        if !reduceMotion { reveal = 1 - min(max(dy / height, 0), 1) }
+                                        armed = canPlay && dy < -100
+                                    }
+                                    .onEnded { v in
+                                        guard isCurrent else { return }
+                                        let dy = v.translation.height
+                                        let vertical = abs(dy) > abs(v.translation.width)
+                                        if !working, !sending, vertical, canPlay,
+                                           dy < -100 || v.predictedEndTranslation.height < -240 {
+                                            send(toward: island - rest, posterHeight: height)
+                                        } else if !working, !sending, vertical,
+                                                  dy > 120 || v.predictedEndTranslation.height > 320 {
+                                            onClose()
+                                        } else {
+                                            armed = false
+                                            withAnimation(HubMotion.animation(reduceMotion: reduceMotion)) { drag = 0; reveal = 1 }
+                                        }
+                                    }
+                            )
+                    }
                     .padding(.bottom, Self.inset)
-                    .scaleEffect(sending ? sendScale : 1 - (1 - Self.smallest) * shrink)
-                    .offset(x: sending ? sendX : 0, y: sending ? sendY : y)
+                    .scaleEffect(reduceMotion ? 1 : sending ? sendScale : 1 - (1 - Self.smallest) * shrink)
+                    .offset(x: reduceMotion ? 0 : sending ? sendX : 0,
+                            y: reduceMotion ? 0 : sending ? sendY : y)
                     .opacity(sendOpacity)
-                    .allowsHitTesting(!sending)
-                    .gesture(
-                        DragGesture(minimumDistance: 8)
-                            .onChanged { v in
-                                let dy = v.translation.height
-                                drag = dy
-                                reveal = 1 - min(max(dy / height, 0), 1)
-                                armed = canPlay && dy < -100
-                            }
-                            .onEnded { v in
-                                let dy = v.translation.height
-                                if canPlay && (dy < -100 || v.predictedEndTranslation.height < -240) {
-                                    send(toward: island - rest, posterHeight: height)
-                                } else if dy > 120 || v.predictedEndTranslation.height > 320 {
-                                    onClose()
-                                } else {
-                                    armed = false
-                                    withAnimation(.smooth(duration: 0.3)) { drag = 0; reveal = 1 }
-                                }
-                            }
-                    )
+                    .allowsHitTesting(!sending && !sendPending)
                     .sensoryFeedback(.impact(weight: .medium), trigger: armed) { _, now in now }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .onAppear { cardSize = CGSize(width: width, height: height); restY = rest }
-            .onChange(of: rest) { _, r in cardSize = CGSize(width: width, height: height); restY = r }
-            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { origin = $0 }
+            .onChange(of: CGSize(width: width, height: height), initial: true) { _, size in
+                cardSize = size
+                restY = rest
+            }
+            .onChange(of: rest) { _, value in restY = value }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                origin = $0.origin
+                viewport = $0
+            }
         }
         .ignoresSafeArea(edges: .bottom)
-        .preferredColorScheme(.dark)
-        .task { await load() }
-        .task {
+        .environment(\.colorScheme, .dark)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityAction(.escape) { if !sending { onClose() } }
+        .onAppear { closeFocused = true }
+        // SwiftUI cancels obsolete refreshes when the live state changes or the card closes.
+        .task(id: live?.stage) { await load() }
+        .task(id: pick.posterURL ?? detail?.posterURL) {
             let image = await PosterLoader.image(PosterLoader.fullSize(pick.posterURL ?? detail?.posterURL),
                                                  waitingAtMost: .seconds(20))
-            withAnimation(.easeOut(duration: 0.3)) { sharp = image }
-        }
-        // Finished downloading while open: fetch the details again for Play.
-        .onChange(of: live?.stage) { _, stage in
-            if stage == .available { Task { await load() } }
+            guard !Task.isCancelled, isCurrent else { return }
+            // Avoid a transaction that also animates text, controls and layout.
+            sharp = image
         }
         .confirmationDialog(available ? "Delete \(pick.title)?" : "Cancel the request for \(pick.title)?",
                             isPresented: $confirmRemove, titleVisibility: .visible) {
@@ -598,50 +706,55 @@ struct MediaDetailCard: View {
     }
 
     private func card(shrink: CGFloat) -> some View {
-        // Every row keeps its place while the details load, so nothing moves when they arrive.
+        // Keep controls reachable in short windows and with larger text.
         // On a play swipe the words, fade and close button dissolve, leaving just the poster.
-        VStack(alignment: .leading, spacing: 12) {
-            Text(pick.title).font(.system(size: 28, weight: .semibold)).lineLimit(2)
-            Text(detail.map(meta) ?? "2026 · Movie · 120 min")
-                .font(.system(size: 15)).foregroundStyle(.white.opacity(0.65))
-                .redacted(reason: detail == nil ? .placeholder : [])
-            if let error, detail == nil {
-                ErrorBanner(message: error) { Task { await load() } }
-            } else {
-                primary.padding(.top, 8)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(pick.title).font(.title2.weight(.semibold)).lineLimit(3)
+                Text(detail.map(meta) ?? "2026 · Movie · 120 min")
+                    .font(.subheadline).foregroundStyle(.white.opacity(0.65))
+                    .redacted(reason: detail == nil ? .placeholder : [])
+                if let error, detail == nil {
+                    ErrorBanner(message: error) { Task { await load() } }
+                } else {
+                    primary.padding(.top, 8)
+                }
+                // Only titles in the library or on their way have this row.
+                if available || isRequested {
+                    Button(available ? "Delete from library" : "Cancel request") { confirmRemove = true }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                        .disabled(working)
+                }
             }
-            // Only titles in the library or on their way have this row; without it, Request sits
-            // lower, by the bottom of the card.
-            if available || isRequested {
-                Button(available ? "Delete from library" : "Cancel request") { confirmRemove = true }
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .frame(maxWidth: .infinity)
-                    .disabled(working)
-            }
+            .foregroundStyle(.white)
+            .opacity(1 - min(shrink * 2.2, 1))
+            .padding(.horizontal, HubLayout.cardPadding)
+            .padding(.top, 60)
+            .padding(.bottom, HubLayout.bottomInset)
         }
-        .foregroundStyle(.white)
-        .opacity(1 - min(shrink * 2.2, 1))
-        .padding(.horizontal, 24)
-        .padding(.bottom, 44)
+        .defaultScrollAnchor(.bottom)
+        .defaultScrollAnchor(.bottom, for: .alignment)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .background {
-            // The small poster stays underneath for the card's whole life: swapping its URL reloaded
-            // it, which is what flashed. The full-size one fades in over it once downloaded.
-            ZStack {
-                if let poster {
-                    Image(uiImage: poster).resizable().scaledToFill()
-                } else {
-                    AsyncImage(url: (pick.posterURL ?? detail?.posterURL).flatMap(URL.init(string:))) { phase in
-                        if let image = phase.image { image.resizable().scaledToFill() } else { Color.white.opacity(0.06) }
+            // Keep the small poster underneath; bound artwork to the card's actual geometry.
+            GeometryReader { geometry in
+                ZStack {
+                    if let poster {
+                        Image(uiImage: poster).resizable().scaledToFill()
+                    } else {
+                        AsyncImage(url: (pick.posterURL ?? detail?.posterURL).flatMap(URL.init(string:))) { phase in
+                            if let image = phase.image { image.resizable().scaledToFill() } else { Color.white.opacity(0.06) }
+                        }
+                    }
+                    if let sharp {
+                        Image(uiImage: sharp).resizable().scaledToFill()
                     }
                 }
-                if let sharp {
-                    Image(uiImage: sharp).resizable().scaledToFill().transition(.opacity)
-                }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                .clipped()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .clipped()
             .overlay {
                 LinearGradient(stops: [
                     .init(color: .clear, location: 0.3),
@@ -669,16 +782,17 @@ struct MediaDetailCard: View {
         // Flattened first so the corners are cut once: clipping the poster and the gradient as
         // separate layers left a faint sliver of poster along the curve.
         .compositingGroup()
-        .clipShape(.rect(cornerRadius: Self.screenRadius - Self.inset, style: .continuous))
+        .clipShape(.rect(cornerRadius: HubLayout.cardRadius, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
+                    .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
                     .background(.black.opacity(0.4), in: .circle)
             }
-            .padding(16)
-            .accessibilityLabel("Close")
+            .padding(12)
+            .accessibilityLabel("Close \(pick.title)")
+            .accessibilityFocused($closeFocused)
             .opacity(1 - shrink)
         }
         .shadow(color: .black.opacity(0.3), radius: 24, y: -4)
@@ -734,7 +848,7 @@ struct MediaDetailCard: View {
             }
         }
         .clipShape(.capsule)
-        .animation(.smooth(duration: 0.8), value: fill)
+        .animation(HubMotion.animation(reduceMotion: reduceMotion), value: fill)
         .accessibilityElement(children: .combine)
     }
 
@@ -754,12 +868,17 @@ struct MediaDetailCard: View {
     /// shelf isn't on screen to land in.
     private func flyToShelf() async -> Bool {
         let presenter = TitleCardPresenter.shared
+        guard isCurrent else { return false }
         presenter.requesting(pick)
+        if reduceMotion {
+            presenter.landed()
+            return true
+        }
         // A beat for the shelf to lay out (it may have only just appeared) and report its slot.
         try? await Task.sleep(for: .milliseconds(60))
-        guard let slot = presenter.shelfSlot, cardSize.width > 0,
-              let screen = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.screen }).first,
-              slot.maxY > 0, slot.minY < screen.bounds.height else {
+        guard isCurrent else { return false }
+        guard !Task.isCancelled, let slot = presenter.shelfSlot, cardSize.width > 0, slot.width > 0,
+              viewport.contains(slot) else {
             presenter.cancelLanding()
             return false
         }
@@ -771,6 +890,7 @@ struct MediaDetailCard: View {
             sendScale = slot.width / cardSize.width
             reveal = 0
         } completion: {
+            guard isCurrent else { return }
             presenter.landed()
         }
         return true
@@ -780,15 +900,33 @@ struct MediaDetailCard: View {
     /// island's size as it travels up into it, fading only at the very end. The burst says it went,
     /// so there's no toast unless it fails.
     private func send(toward island: CGFloat, posterHeight: CGFloat) {
-        Task { await play(announce: false) }
-        withAnimation(.easeIn(duration: 0.34)) {
-            sending = true
-            sendY = island
-            sendScale = 37 / posterHeight
-        } completion: {
-            onSent()
+        guard !working, !sending, !sendPending, isCurrent else { return }
+        sendPending = true
+        Task {
+            defer { sendPending = false }
+            let succeeded = await play(announce: false)
+            guard isCurrent else { return }
+            guard succeeded else {
+                armed = false
+                withAnimation(HubMotion.animation(reduceMotion: reduceMotion)) { drag = 0; reveal = 1 }
+                return
+            }
+            guard !reduceMotion else {
+                toast.show("Playing on the TV")
+                onSent()
+                return
+            }
+            // Only celebrate once the server has accepted playback.
+            withAnimation(.easeIn(duration: 0.34)) {
+                sending = true
+                sendY = island
+                sendScale = 37 / max(posterHeight, 1)
+            } completion: {
+                guard isCurrent else { return }
+                onSent()
+            }
+            withAnimation(.easeIn(duration: 0.1).delay(0.26)) { sendOpacity = 0 }
         }
-        withAnimation(.easeIn(duration: 0.1).delay(0.26)) { sendOpacity = 0 }
     }
 
     private func meta(_ d: MediaDetail) -> String {
@@ -801,54 +939,89 @@ struct MediaDetailCard: View {
     }
 
     private func load() async {
+        guard !Task.isCancelled, isCurrent else { return }
+        let id = UUID()
+        detailLoadID = id
+        await MediaDetailCache.restore()
+        guard !Task.isCancelled, isCurrent, detailLoadID == id else { return }
+        if detail == nil { detail = MediaDetailCache.get(pick) }
+        let version = MediaDetailCache.revision(for: pick)
         do {
             let fresh: MediaDetail? = try await session.api.run("mediaDetail", [.string(pick.mediaType.rawValue), .int(pick.id)])
+            guard !Task.isCancelled, isCurrent, detailLoadID == id else { return }
+            guard MediaDetailCache.revision(for: pick) == version else {
+                adoptCachedDetail()
+                return
+            }
             detail = fresh
             MediaDetailCache.set(fresh, for: pick)
             error = nil
         } catch {
+            guard !Task.isCancelled, isCurrent, detailLoadID == id else { return }
+            guard MediaDetailCache.revision(for: pick) == version else {
+                adoptCachedDetail()
+                return
+            }
             self.error = error.localizedDescription
         }
     }
 
+    private func adoptCachedDetail() {
+        // A concurrent prefetch may have won. Use its value instead of leaving a placeholder;
+        // nil means invalidated, so never restore the older network response in that case.
+        if let cached = MediaDetailCache.get(pick) {
+            detail = cached
+            error = nil
+        }
+    }
+
     private func request() async {
+        guard !working, isCurrent else { return }
         working = true
         defer { working = false }
         do {
             let _: Empty? = try await session.api.run("requestMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
-            requested = true
             MediaDetailCache.set(nil, for: pick)
+            // The server mutation still needs a refresh after dismissal, but must not
+            // animate or replace feedback belonging to a subsequently opened card.
+            guard isCurrent else { onChanged(); return }
+            requested = true
             if !(await flyToShelf()) {
-                toast.show("Requested \(pick.title)")
+                if isCurrent { toast.show("Requested \(pick.title)") }
                 onChanged()
             }
         } catch {
-            toast.error(error)
+            if isCurrent { toast.error(error) }
         }
     }
 
     private func remove() async {
+        guard !working, isCurrent else { return }
         working = true
         defer { working = false }
         do {
             let _: Empty? = try await session.api.run("removeMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
             MediaDetailCache.set(nil, for: pick)
             onChanged()
-            onClose()
+            if isCurrent { onClose() }
         } catch {
-            toast.error(error)
+            if isCurrent { toast.error(error) }
         }
     }
 
-    private func play(announce: Bool = true) async {
+    @discardableResult
+    private func play(announce: Bool = true) async -> Bool {
+        guard !working, isCurrent else { return false }
         working = true
         defer { working = false }
         do {
             let _: Empty? = try await session.api.run("playMedia", [.string(pick.mediaType.rawValue), .int(pick.id)])
-            if announce { toast.show("Playing on the TV") }
+            if announce, isCurrent { toast.show("Playing on the TV") }
             TVActivityController.shared.played()
+            return true
         } catch {
-            toast.error(error)
+            if isCurrent { toast.error(error) }
+            return false
         }
     }
 }

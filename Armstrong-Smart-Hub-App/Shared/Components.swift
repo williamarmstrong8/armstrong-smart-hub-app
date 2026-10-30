@@ -28,14 +28,16 @@ struct ErrorBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(HubDesign.warning)
             Text(message).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
             if let retry {
-                Button("Retry", action: retry).font(.callout.weight(.medium))
+                Button("Retry", action: retry)
+                    .font(.callout.weight(.medium))
+                    .frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
             }
         }
         .padding(12)
-        .background(.orange.opacity(0.12), in: .rect(cornerRadius: 12))
+        .background(HubDesign.warning.opacity(0.10), in: .rect(cornerRadius: HubLayout.controlRadius))
     }
 }
 
@@ -56,9 +58,9 @@ struct Card<Content: View>: View {
             }
             content
         }
-        .padding(16)
+        .padding(HubLayout.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+        .background(HubDesign.raised, in: .rect(cornerRadius: HubLayout.cardRadius))
     }
 }
 
@@ -91,21 +93,34 @@ struct ToastOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .bottom) {
-            if let message = toast.message {
-                HStack(spacing: 8) {
-                    Image(systemName: toast.isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                        .foregroundStyle(toast.isError ? .red : .green)
-                    Text(message).font(.callout)
+            // Animate only the overlay, not the page or its scroll position.
+            VStack {
+                if let message = toast.message {
+                    Button { toast.message = nil } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: toast.isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                                .foregroundStyle(toast.isError ? HubDesign.danger : HubDesign.positive)
+                            Text(message).font(.callout).multilineTextAlignment(.leading)
+                        }
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .frame(minHeight: HubLayout.minHitTarget)
+                        .background(HubDesign.raised, in: .rect(cornerRadius: HubLayout.controlRadius))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: HubLayout.controlRadius)
+                                .strokeBorder(HubDesign.separator, lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Dismiss message")
+                    .transition(.opacity)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .glassEffect()
-                .padding(.bottom, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .onTapGesture { toast.message = nil }
             }
+            .padding(.horizontal, HubLayout.gutter)
+            .padding(.bottom, 12)
+            .hubAnimation(value: toast.message)
         }
-        .animation(.spring(duration: 0.3), value: toast.message)
     }
 }
 

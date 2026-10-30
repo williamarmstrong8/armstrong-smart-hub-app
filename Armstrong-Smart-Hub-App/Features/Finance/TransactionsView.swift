@@ -55,9 +55,9 @@ struct TransactionsView: View {
             .padding(.bottom, 48)
         }
         .scrollDismissesKeyboard(.interactively)
-        .brickList()
+        .hubPageStyle()
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BrickLook.page, for: .navigationBar)
+        .toolbarBackground(HubDesign.page, for: .navigationBar)
         .sheet(item: $retagging) { t in
             CategoryPicker(transaction: t, options: store.categoryOptions) { c in
                 Task { await store.retag(t, to: c, api: session.api, toast: toast) }
@@ -88,7 +88,7 @@ struct TransactionsView: View {
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 11)
-            .background(BrickLook.pill, in: .capsule)
+            .background(HubDesign.track, in: .capsule)
         }
     }
 }

@@ -21,12 +21,11 @@ struct TodoSection: View {
                     ProgressView().frame(maxWidth: .infinity)
                 }
                 if let error {
-                    Text(error).font(.footnote).foregroundStyle(.red)
+                    Text(error).font(.footnote).foregroundStyle(HubDesign.danger)
                 }
                 addField
             }
         }
-        .animation(.spring(duration: 0.4, bounce: 0.15), value: items)
     }
 
     private func row(_ item: TodoItem) -> some View {
@@ -35,16 +34,17 @@ struct TodoSection: View {
         } label: {
             HStack(spacing: 16) {
                 Image(systemName: item.done ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 30, weight: .light))
-                    .foregroundStyle(item.done ? Color.green : BrickLook.soft)
-                    .contentTransition(.symbolEffect(.replace))
+                    .font(.title2.weight(.light))
+                    .foregroundStyle(item.done ? HubDesign.positive : HubDesign.secondary)
+                    .hubAnimation(value: item.done)
                 Text(item.text)
-                    .font(.system(size: 24))
-                    .strikethrough(item.done, color: BrickLook.soft)
-                    .foregroundStyle(item.done ? BrickLook.soft : BrickLook.ink)
+                    .font(.body)
+                    .strikethrough(item.done, color: HubDesign.secondary)
+                    .foregroundStyle(item.done ? HubDesign.secondary : HubDesign.ink)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
             }
+            .frame(minHeight: HubLayout.minHitTarget)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -59,15 +59,16 @@ struct TodoSection: View {
     private var addField: some View {
         HStack(spacing: 14) {
             Image(systemName: "plus")
-                .font(.system(size: 24, weight: .light))
-                .foregroundStyle(BrickLook.soft)
+                .font(.title2.weight(.light))
+                .foregroundStyle(HubDesign.secondary)
                 .frame(width: 30)
             TextField("Add a to-do", text: $draft)
-                .font(.system(size: 24))
+                .font(.body)
                 .focused($adding)
                 .submitLabel(.done)
                 .onSubmit(add)
         }
+        .frame(minHeight: HubLayout.minHitTarget)
     }
 
     private func add() {

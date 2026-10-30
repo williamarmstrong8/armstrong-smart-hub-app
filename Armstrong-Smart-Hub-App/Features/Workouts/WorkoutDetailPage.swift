@@ -31,9 +31,7 @@ struct WorkoutDetailPage: View {
         // Fill the screen from the first frame: a page still loading would otherwise
         // shrink to its content, showing the background as a strip that then grows.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(BrickLook.page.ignoresSafeArea())
-        .foregroundStyle(BrickLook.ink)
-        .tint(BrickLook.ink)
+        .hubPageStyle()
         .navigationTitle(detail?.name ?? "Workout")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(BrickLook.page, for: .navigationBar)

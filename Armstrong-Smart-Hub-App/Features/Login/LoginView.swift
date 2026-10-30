@@ -81,6 +81,7 @@ struct LoginView: View {
                     .disabled(busy || server.isEmpty || email.isEmpty || password.isEmpty)
                 }
             }
+            .hubListStyle()
             .onAppear {
                 if server.isEmpty { server = savedServer }
                 if let user = session.user, email.isEmpty { email = user.email }

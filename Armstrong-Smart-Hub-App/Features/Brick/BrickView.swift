@@ -16,19 +16,22 @@ struct BrickView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(spacing: 0) {
+            ScrollView(.vertical) {
+                VStack(spacing: HubLayout.sectionGap) {
                     BrickSheet(store: store, path: $path)
-                    BrickScreenTimeSection(store: store, path: $path).padding(.top, 56)
-                    BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()))
-                        .padding(.horizontal, Fit.gutter).padding(.top, 26)
-                    settings.padding(.top, 56)
+                    // Keep the hosted report mounted instead of recreating it on scroll.
+                    BrickScreenTimeSection(store: store, path: $path)
+                    LazyVStack(spacing: HubLayout.sectionGap) {
+                        BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()))
+                        settings
+                    }
+                    .padding(.horizontal, HubLayout.gutter)
                 }
-                .padding(.bottom, 40)
+                .padding(.bottom, HubLayout.bottomInset)
+                .containerRelativeFrame(.horizontal)
             }
-            .background(BrickLook.page.ignoresSafeArea())
-            .foregroundStyle(BrickLook.ink)
-            .tint(BrickLook.ink)
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .hubPageStyle()
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { store.check() }
             .navigationDestination(for: BrickRoute.self) { route in
@@ -55,7 +58,7 @@ struct BrickView: View {
     // MARK: Settings
 
     private var settings: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: HubLayout.sectionGap) {
             BrickCard(padding: 0) {
                 VStack(spacing: 0) {
                     NavigationLink(value: BrickRoute.tag) {
@@ -81,7 +84,6 @@ struct BrickView: View {
             }
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, Fit.gutter)
     }
 }
 
@@ -99,7 +101,7 @@ struct BrickSchedulesPage: View {
             }
             Button { path.append(.schedule(store.addSchedule())) } label: {
                 VStack(spacing: 16) {
-                    Text("Create schedule").font(.system(size: 18)).foregroundStyle(BrickLook.soft)
+                    Text("Create schedule").font(.body).foregroundStyle(BrickLook.soft)
                     BrickPlus()
                 }
                 .contentShape(Rectangle())
@@ -121,18 +123,31 @@ private struct BrickSheet: View {
     var body: some View {
         let p = store.blockingProfile
         VStack(spacing: 0) {
-            HStack {
-                Button { path.append(.schedules) } label: { Image(systemName: "calendar.badge.clock") }
+            BrickTopBar {
+                HStack(spacing: 8) {
+                    Button { path.append(.schedules) } label: {
+                        Image(systemName: "calendar.badge.clock")
+                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                            .contentShape(.rect)
+                    }
                     .accessibilityLabel("Schedules")
-                Spacer()
-                Button { path.append(.modes) } label: { Image(systemName: "square.on.square") }
+                    Button { path.append(.modes) } label: {
+                        Image(systemName: "square.on.square")
+                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                            .contentShape(.rect)
+                    }
                     .accessibilityLabel("Modes")
+                }
+                .font(.title2.weight(.light))
             }
-            .font(.system(size: 22, weight: .light))
-            .foregroundStyle(BrickLook.ink)
-            .padding(.top, 12).padding(.horizontal, -20)
-            device.padding(.top, 20)
-            Text(p?.name ?? "Unbricked").font(.system(size: 34, weight: .light)).padding(.top, 24)
+            .buttonStyle(.plain)
+            .frame(minHeight: HubLayout.minHitTarget)
+            .padding(.top, HubLayout.topInset)
+            device.padding(.top, HubLayout.sectionGap)
+            Text(p?.name ?? "Unbricked")
+                .font(.largeTitle.weight(.light))
+                .multilineTextAlignment(.center)
+                .padding(.top, HubLayout.sectionGap)
             Group {
                 if store.isBlocking, let s = store.current {
                     if let end = store.endsAt {
@@ -144,19 +159,18 @@ private struct BrickSheet: View {
                     Text(store.hasTag ? "Tap a tag to start its mode" : "Register a tag to start")
                 }
             }
-            .font(.system(size: 18)).monospacedDigit().foregroundStyle(BrickLook.soft).padding(.top, 14)
-            if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, 18) }
-            stats.padding(.top, 30)
-            brickButton.padding(.top, 30).padding(.bottom, Fit.gutter)
+            .font(.body).monospacedDigit().foregroundStyle(BrickLook.soft)
+            .multilineTextAlignment(.center).padding(.top, HubLayout.topInset)
+            if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.sectionGap) }
+            stats.padding(.top, HubLayout.sectionGap)
+            brickButton.padding(.top, HubLayout.sectionGap)
         }
-        .padding(.horizontal, Fit.gutter + 20)
+        .padding(.horizontal, HubLayout.gutter)
+        .padding(.bottom, HubLayout.sectionGap)
         .frame(maxWidth: .infinity)
         .background {
-            // Reaches up under the status bar and past the top when pulled down.
             UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
                 .fill(BrickLook.sheet)
-                .padding(.top, -600)
-                .shadow(color: .black.opacity(0.10), radius: 18, y: 10)
         }
     }
 
@@ -173,22 +187,24 @@ private struct BrickSheet: View {
 
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(spacing: 6) {
-            Text(value).font(.system(size: 26, weight: .light).monospacedDigit())
-            Text(label).font(.system(size: 14)).foregroundStyle(BrickLook.soft)
+            Text(value).font(.title2.weight(.light).monospacedDigit())
+            Text(label).font(.subheadline).foregroundStyle(BrickLook.soft)
         }
         .frame(maxWidth: .infinity)
     }
 
     private var device: some View {
-        Image("BrickDevice")
-            .resizable().scaledToFit()
-            .frame(width: 168, height: 168)
-            .shadow(color: .black.opacity(0.16), radius: 20, y: 14)
-            .saturation(store.isBlocking ? 0 : 1)
-            .opacity(store.isBlocking ? 0.7 : 1)
-            .onTapGesture { store.tapTag() }
-            .accessibilityLabel(store.isBlocking ? "Unbrick with tag" : "Brick with tag")
-            .accessibilityAddTraits(.isButton)
+        Button { store.tapTag() } label: {
+            Image("BrickDevice")
+                .resizable().scaledToFit()
+                .frame(width: 168, height: 168)
+                .shadow(color: .black.opacity(0.16), radius: 20, y: 14)
+                .saturation(store.isBlocking ? 0 : 1)
+                .opacity(store.isBlocking ? 0.7 : 1)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(store.isBlocking ? "Unbrick with tag" : "Brick with tag")
     }
 
     /// Lockdowns on now. They don't count as Brick time, so they get a line here rather than the timer.
@@ -199,14 +215,21 @@ private struct BrickSheet: View {
                     // Tapping the chip scans, so its tag ends it right here.
                     Button { store.tapTag() } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "lock.fill").font(.system(size: 13))
-                            Text("\(l.name) lockdown").font(.system(size: 15, weight: .medium))
+                            Image(systemName: "lock.fill").font(.caption)
+                            Text("\(l.name) lockdown").font(.subheadline.weight(.medium))
                         }
+                        .frame(minHeight: HubLayout.minHitTarget)
+                        .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     if !l.strict {
-                        Button("End") { store.unlockWithoutTag(l.id) }
-                            .font(.system(size: 15, weight: .medium)).foregroundStyle(BrickLook.soft)
+                        Button { store.unlockWithoutTag(l.id) } label: {
+                            Text("End")
+                                .font(.subheadline.weight(.medium)).foregroundStyle(BrickLook.soft)
+                                .frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 8)
@@ -219,21 +242,34 @@ private struct BrickSheet: View {
         VStack(spacing: 14) {
             Button { store.tapTag() } label: {
                 Text(store.isBlocking ? "Tap to Unbrick" : "Tap to Brick")
-                    .font(.system(size: 18, weight: .medium))
-                    .frame(maxWidth: .infinity).frame(height: Self.buttonHeight)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, HubLayout.cardPadding)
+                    .padding(.vertical, HubLayout.topInset)
+                    .frame(maxWidth: .infinity, minHeight: Self.buttonHeight)
                     .background(BrickLook.pill, in: Capsule())
+                    .contentShape(.capsule)
                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
             }
             .buttonStyle(.plain)
             if !store.authorized {
-                Button("Allow Screen Time access") { Task { await store.authorize() } }
-                    .font(.system(size: 15, weight: .medium)).foregroundStyle(BrickLook.soft)
+                Button { Task { await store.authorize() } } label: {
+                    Text("Allow Screen Time access")
+                        .font(.subheadline.weight(.medium)).foregroundStyle(BrickLook.soft)
+                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
             } else if store.isBlocking, store.blockingProfile?.strict == false {
-                Button("Unbrick without tag") { if let id = store.blockingProfileID { store.unlockWithoutTag(id) } }
-                    .font(.system(size: 15, weight: .medium)).foregroundStyle(BrickLook.soft)
+                Button { if let id = store.blockingProfileID { store.unlockWithoutTag(id) } } label: {
+                    Text("Unbrick without tag")
+                        .font(.subheadline.weight(.medium)).foregroundStyle(BrickLook.soft)
+                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, -20)
     }
 }
 
@@ -242,13 +278,13 @@ struct BrickAverage: View {
     var value: TimeInterval?
     var body: some View {
         VStack(spacing: 6) {
-            Text("Avg Brick Time").font(.system(size: 16)).foregroundStyle(BrickLook.soft)
+            Text("Avg Brick Time").font(.subheadline).foregroundStyle(BrickLook.soft)
             if let value {
-                Text(brickDuration(value)).font(.system(size: 40, weight: .regular).monospacedDigit())
+                Text(brickDuration(value)).font(.largeTitle.monospacedDigit())
             } else {
-                Text("--").font(.system(size: 40, weight: .regular))
+                Text("--").font(.largeTitle)
                 Text("Check back after your first full day")
-                    .font(.system(size: 14)).foregroundStyle(BrickLook.soft)
+                    .font(.footnote).foregroundStyle(BrickLook.soft)
             }
         }
         .frame(maxWidth: .infinity)
@@ -266,12 +302,12 @@ struct BrickScheduleCard: View {
         BrickCard {
             HStack {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(schedule.name).font(.system(size: 18, weight: .medium))
+                    Text(schedule.name).font(.headline)
                     Group {
                         Text(schedule.summary)
                         Text("Mode: \(mode)")
                     }
-                    .font(.system(size: 16)).foregroundStyle(BrickLook.soft)
+                    .font(.subheadline).foregroundStyle(BrickLook.soft)
                 }
                 Spacer(minLength: 12)
                 Toggle("", isOn: Binding(get: { schedule.enabled },

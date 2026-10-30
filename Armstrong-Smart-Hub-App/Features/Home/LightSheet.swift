@@ -110,12 +110,12 @@ struct LightSheet: View {
                     .padding(.top, 16)
                     .padding(.bottom, 28)
                 }
-                .background(BrickLook.page)
+                .hubPageStyle()
                 .navigationTitle(entity.name)
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(BrickLook.page, for: .navigationBar)
+                .toolbarBackground(HubDesign.page, for: .navigationBar)
             }
-            .presentationBackground(BrickLook.page)
+            .presentationBackground(HubDesign.page)
             .onAppear {
                 brightness = Double(max(entity.brightnessPct, 1))
                 if entity.brightnessPct == 0 { brightness = 100 }

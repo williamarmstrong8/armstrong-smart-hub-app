@@ -77,7 +77,7 @@ struct RoutineEditor: View {
         }
         .presentationBackground(BrickLook.page)
         .foregroundStyle(BrickLook.ink)
-        .tint(BrickLook.ink)
+        .tint(HubDesign.action)
     }
 
     private func startReordering() {

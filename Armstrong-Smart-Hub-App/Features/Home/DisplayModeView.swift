@@ -47,7 +47,7 @@ struct DisplayModeView: View {
             }
             .padding(24)
         }
-        .background(Color(.systemGroupedBackground))
+        .hubPageStyle()
         .task { await store.poll(api: session.api) }
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }

@@ -48,9 +48,10 @@ struct ActiveWorkoutView: View {
         // Over every page of the stack, and pinned to the bottom of the screen
         // so the keyboard covers it instead of pushing it up.
         .overlay(alignment: .bottom) {
-            RestPanel(store: store).ignoresSafeArea(.keyboard)
+            RestPanel(store: store)
+                .ignoresSafeArea(.keyboard)
+                .hubAnimation(value: store.restEndsAt != nil)
         }
-        .animation(.snappy, value: store.restEndsAt != nil)
         // While the workout is open, keep the heart rate coming: reconnect, or reopen a stream that went quiet.
         .task {
             while !Task.isCancelled {
@@ -68,7 +69,7 @@ struct ActiveWorkoutView: View {
         }
         .presentationBackground(BrickLook.page)
         .foregroundStyle(BrickLook.ink)
-        .tint(BrickLook.ink)
+        .tint(HubDesign.action)
         .sheet(isPresented: $showingSettings) {
             WorkoutSettingsSheet(store: store, defaultUnit: $defaultUnit)
         }

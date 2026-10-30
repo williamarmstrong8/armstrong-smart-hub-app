@@ -44,13 +44,13 @@ struct WatchHero: View {
                     .stroke(Color.green, style: StrokeStyle(lineWidth: ring, lineCap: .round))
                     .frame(width: screenHeight - 2 * inset, height: screenWidth - 2 * inset)
                     .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 1.4), value: progress)
+                    .hubAnimation(value: progress)
             }
             .frame(width: screenWidth, height: screenHeight)
             .rotationEffect(.degrees(-14.43))
             .position(x: 0.640 * geo.size.width, y: 0.4175 * geo.size.height)
             .opacity(progress == nil ? 0 : 1)
-            .animation(.smooth, value: progress == nil)
+            .hubAnimation(value: progress == nil)
         }
         .allowsHitTesting(false)
     }
