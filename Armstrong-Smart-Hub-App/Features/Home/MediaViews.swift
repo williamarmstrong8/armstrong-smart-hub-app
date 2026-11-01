@@ -273,51 +273,6 @@ struct RequestList: View {
     }
 }
 
-/// The burst when a title goes to the TV: light pours out of the Dynamic Island and ripples down
-/// the screen, like two phones meeting for AirDrop.
-struct SendGlow: View {
-    let start: Date
-    static let duration: Double = 1.4
-
-    private let blue = Color(red: 0.36, green: 0.64, blue: 1)
-    private let violet = Color(red: 0.62, green: 0.48, blue: 1)
-
-    var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = min(timeline.date.timeIntervalSince(start) / Self.duration, 1)
-            Canvas { ctx, size in
-                let origin = CGPoint(x: size.width / 2, y: 29.5)
-                let reach = hypot(size.width, size.height)
-                func circle(_ r: CGFloat) -> Path {
-                    Path(ellipseIn: CGRect(x: origin.x - r, y: origin.y - r, width: r * 2, height: r * 2))
-                }
-
-                // A glow that swells out of the island and fades as it spreads.
-                let spread = 1 - pow(1 - t, 3)
-                let glowR = 40 + spread * reach * 0.85
-                let glow = sin(.pi * min(t * 1.3, 1)) * 0.5
-                ctx.fill(circle(glowR), with: .radialGradient(
-                    Gradient(colors: [.white.opacity(glow), blue.opacity(glow * 0.8), violet.opacity(glow * 0.35), .clear]),
-                    center: origin, startRadius: 0, endRadius: glowR))
-
-                // Three soft rings rippling down behind it.
-                for i in 0..<3 {
-                    let ti = (t - Double(i) * 0.14) / 0.75
-                    guard ti > 0, ti < 1 else { continue }
-                    let r = 16 + (1 - pow(1 - ti, 2.2)) * reach
-                    var ring = ctx
-                    ring.addFilter(.blur(radius: 4 + 10 * ti))
-                    ring.stroke(circle(r), with: .color((i == 1 ? violet : blue).opacity((1 - ti) * 0.85)),
-                                lineWidth: 2 + 12 * (1 - ti))
-                }
-            }
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
 /// Fetches a poster through the shared URL cache, where the shelf's and search's posters already
 /// sit, so a title's card can open with its image in place rather than loading it mid-slide.
 enum PosterLoader {
@@ -368,7 +323,7 @@ final class TitleCardPresenter {
     var isPresenting: Bool { pick != nil || opening != nil }
     /// How far the card is up (0–1); controls the dim scrim only.
     var reveal: CGFloat = 0
-    /// When the last title went to the TV, for the send burst; nil once it's over.
+    /// When the last title went to the TV, for the send haptic; nil shortly after.
     private(set) var sentAt: Date?
     let toast = Toast()
     @ObservationIgnored private(set) var onChanged: () -> Void = {}
@@ -449,7 +404,7 @@ final class TitleCardPresenter {
         sentAt = now
         withAnimation(HubMotion.animation(reduceMotion: UIAccessibility.isReduceMotionEnabled)) { reveal = 0 }
         Task {
-            try? await Task.sleep(for: .seconds(SendGlow.duration + 0.1))
+            try? await Task.sleep(for: .milliseconds(500))
             if sentAt == now { sentAt = nil }
         }
     }
@@ -635,40 +590,32 @@ struct MediaDetailCard: View {
                     .accessibilityHidden(true)
                 card(shrink: reduceMotion ? 0 : sending ? 1 : shrink)
                     .frame(width: width, height: height)
-                    .overlay(alignment: .topLeading) {
-                        // A dedicated artwork drag region cannot steal scrolling or button taps.
-                        // Leave the top-right close button uncovered.
-                        Color.clear
-                            .frame(width: max(1, width - 80), height: min(60, height * 0.3))
-                            .contentShape(.rect)
-                            .accessibilityHidden(true)
-                            .gesture(
-                                DragGesture(minimumDistance: 12, coordinateSpace: .global)
-                                    .onChanged { v in
-                                        guard !working, !sending, isCurrent,
-                                              abs(v.translation.height) > abs(v.translation.width) else { return }
-                                        let dy = v.translation.height
-                                        drag = dy
-                                        if !reduceMotion { reveal = 1 - min(max(dy / height, 0), 1) }
-                                        armed = canPlay && dy < -100
-                                    }
-                                    .onEnded { v in
-                                        guard isCurrent else { return }
-                                        let dy = v.translation.height
-                                        let vertical = abs(dy) > abs(v.translation.width)
-                                        if !working, !sending, vertical, canPlay,
-                                           dy < -100 || v.predictedEndTranslation.height < -240 {
-                                            send(toward: island - rest, posterHeight: height)
-                                        } else if !working, !sending, vertical,
-                                                  dy > 120 || v.predictedEndTranslation.height > 320 {
-                                            onClose()
-                                        } else {
-                                            armed = false
-                                            withAnimation(HubMotion.animation(reduceMotion: reduceMotion)) { drag = 0; reveal = 1 }
-                                        }
-                                    }
-                            )
-                    }
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                            .onChanged { v in
+                                guard !working, !sending, isCurrent,
+                                      abs(v.translation.height) > abs(v.translation.width) else { return }
+                                let dy = v.translation.height
+                                drag = dy
+                                if !reduceMotion { reveal = 1 - min(max(dy / height, 0), 1) }
+                                armed = canPlay && dy < -100
+                            }
+                            .onEnded { v in
+                                guard isCurrent else { return }
+                                let dy = v.translation.height
+                                let vertical = abs(dy) > abs(v.translation.width)
+                                if !working, !sending, vertical, canPlay,
+                                   dy < -100 || v.predictedEndTranslation.height < -240 {
+                                    send(toward: island - rest, posterHeight: height)
+                                } else if !working, !sending, vertical,
+                                          dy > 120 || v.predictedEndTranslation.height > 320 {
+                                    onClose()
+                                } else {
+                                    armed = false
+                                    withAnimation(HubMotion.animation(reduceMotion: reduceMotion)) { drag = 0; reveal = 1 }
+                                }
+                            }
+                    )
                     .padding(.bottom, Self.inset)
                     .scaleEffect(reduceMotion ? 1 : sending ? sendScale : 1 - (1 - Self.smallest) * shrink)
                     .offset(x: reduceMotion ? 0 : sending ? sendX : 0,
@@ -902,8 +849,8 @@ struct MediaDetailCard: View {
     }
 
     /// Plays the title and carries on from the swipe in one motion: the poster shrinks to the
-    /// island's size as it travels up into it, fading only at the very end. The burst says it went,
-    /// so there's no toast unless it fails.
+    /// island's size as it travels up into it, fading only at the very end. There's no toast
+    /// unless it fails.
     private func send(toward island: CGFloat, posterHeight: CGFloat) {
         guard !working, !sending, !sendPending, isCurrent else { return }
         sendPending = true

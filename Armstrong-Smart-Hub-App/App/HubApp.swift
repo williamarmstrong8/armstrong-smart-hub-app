@@ -151,9 +151,6 @@ struct MainTabView: View {
             }
             .allowsHitTesting(titles.pick != nil)
         }
-        .overlay {
-            if !reduceMotion, let sentAt = titles.sentAt { SendGlow(start: sentAt) }
-        }
         .sensoryFeedback(.impact(weight: .heavy), trigger: titles.sentAt) { _, now in now != nil }
         .onChange(of: tab) { titles.close() }
         .onDisappear { titles.close() }
