@@ -55,16 +55,17 @@ enum BrickEngine {
     // MARK: Starting and ending
 
     /// Starts a mode: a lockdown in its own store, or the Brick (which counts as a session).
-    /// `until` overrides the mode's own timer, for a schedule's end. False when there's nothing to block.
+    /// `until` overrides the mode's own timer, for a schedule's end. `tagID` is the tag that started it, which alone
+    /// ends a lockdown. False when there's nothing to block.
     @discardableResult
-    static func start(_ p: BrickProfile, until: Date? = nil) -> Bool {
+    static func start(_ p: BrickProfile, until: Date? = nil, tagID: String? = nil) -> Bool {
         guard !p.isEmpty else { return false }
         let ends = until ?? p.timerMinutes.map { Date().addingTimeInterval(Double($0) * 60) }
         if p.lockdown {
             apply(p, to: lockdownStore(p.id))
             var l = lockdowns
             l.removeAll { $0.profileID == p.id }
-            l.append(BrickLockdown(profileID: p.id, endsAt: ends))
+            l.append(BrickLockdown(profileID: p.id, endsAt: ends, tagID: tagID))
             save(l, "brick.lockdowns")
         } else {
             apply(p, to: ManagedSettingsStore())
