@@ -123,25 +123,24 @@ private struct BrickSheet: View {
     var body: some View {
         let p = store.blockingProfile
         VStack(spacing: 0) {
-            BrickTopBar {
-                HStack(spacing: 8) {
-                    Button { path.append(.schedules) } label: {
-                        Image(systemName: "calendar.badge.clock")
-                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
-                            .contentShape(.rect)
-                    }
-                    .accessibilityLabel("Schedules")
-                    Button { path.append(.modes) } label: {
-                        Image(systemName: "square.on.square")
-                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
-                            .contentShape(.rect)
-                    }
-                    .accessibilityLabel("Modes")
+            HStack {
+                Button { path.append(.schedules) } label: {
+                    Image(systemName: "calendar.badge.clock")
+                        .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                        .contentShape(.rect)
                 }
-                .font(.title2.weight(.light))
+                .accessibilityLabel("Schedules")
+                Spacer()
+                Button { path.append(.modes) } label: {
+                    Image(systemName: "square.on.square")
+                        .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                        .contentShape(.rect)
+                }
+                .accessibilityLabel("Modes")
             }
+            .font(.title2.weight(.light))
+            .foregroundStyle(BrickLook.ink)
             .buttonStyle(.plain)
-            .frame(minHeight: HubLayout.minHitTarget)
             .padding(.top, HubLayout.topInset)
             device.padding(.top, HubLayout.sectionGap)
             Text(p?.name ?? "Unbricked")
@@ -171,6 +170,8 @@ private struct BrickSheet: View {
         .background {
             UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
                 .fill(BrickLook.sheet)
+                // Reaches up under the status bar and past the top when pulled down.
+                .padding(.top, -600)
         }
     }
 

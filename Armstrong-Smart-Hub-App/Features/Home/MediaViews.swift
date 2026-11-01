@@ -562,6 +562,11 @@ struct MediaDetailCard: View {
         _detail = State(initialValue: MediaDetailCache.get(pick))
     }
 
+    /// The screen's own corner radius, so the card's corners run parallel to the display's.
+    private static let screenRadius: CGFloat = {
+        let screen = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
+        return (screen?.value(forKey: "_displayCornerRadius") as? CGFloat).flatMap { $0 > 0 ? $0 : nil } ?? 55
+    }()
     /// How far the card floats in from the screen's edges.
     private static let inset: CGFloat = 8
     /// How small a play swipe shrinks the card before it goes into the island.
@@ -782,7 +787,7 @@ struct MediaDetailCard: View {
         // Flattened first so the corners are cut once: clipping the poster and the gradient as
         // separate layers left a faint sliver of poster along the curve.
         .compositingGroup()
-        .clipShape(.rect(cornerRadius: HubLayout.cardRadius, style: .continuous))
+        .clipShape(.rect(cornerRadius: Self.screenRadius - Self.inset, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 14, weight: .bold))
