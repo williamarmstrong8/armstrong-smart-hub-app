@@ -35,7 +35,8 @@ final class BrickStore: NSObject {
 
     @ObservationIgnored private let defaults = BrickEngine.defaults
     @ObservationIgnored private var session: NFCTagReaderSession?
-    @ObservationIgnored private var onTag: ((String) -> Void)?
+    /// Handles a scanned tag; returns what to show in the NFC sheet when it didn't work.
+    @ObservationIgnored private var onTag: ((String) -> String?)?
     @ObservationIgnored private var ticker: Timer?
 
     override private init() {
@@ -207,15 +208,15 @@ final class BrickStore: NSObject {
     /// paired with their own tag; `added` gets its ID so its page can open.
     func registerTag(added: @escaping (String) -> Void = { _ in }) {
         scan("Hold your phone to the new tag.") { [weak self] id in
-            guard let self else { return }
+            guard let self else { return nil }
             if let known = self.tags.first(where: { $0.id == id }) {
-                self.message = "That tag is already registered as \(known.name)."
-                return
+                return "That tag is already registered as \(known.name)."
             }
             self.tags.append(BrickTag(id: id, name: self.tags.isEmpty ? "My Brick" : "Tag \(self.tags.count + 1)",
                                       profileID: self.profiles.first { !$0.lockdown }?.id))
             self.save(self.tags, "brick.tags")
             added(id)
+            return nil
         }
     }
 
@@ -254,7 +255,8 @@ final class BrickStore: NSObject {
 
     /// The tags that end a mode, by name.
     func keys(for id: UUID) -> String {
-        tags.filter { canEnd(id, with: $0) }.map(\.name).joined(separator: " or ")
+        let names = tags.filter { canEnd(id, with: $0) }.map(\.name)
+        return names.isEmpty ? "its tag" : names.joined(separator: " or ")
     }
 
     /// A tag that would end something on now can't be changed or removed, so nothing gets stuck on.
@@ -262,19 +264,54 @@ final class BrickStore: NSObject {
         (blockingProfileID.map { canEnd($0, with: tag) } ?? false) || lockdowns.contains { canEnd($0.profileID, with: tag) }
     }
 
-    /// The main gesture: tap a tag to start its mode, or to end it.
-    func tapTag() {
+    /// What an in-app scan is for, so a tag only does what was tapped. `.main` is the Brick button: it unbricks
+    /// with the Brick's own tag, or starts a tag's mode that's off. `.ending` is a lockdown's chip: only its tag works.
+    enum TagScan { case main, ending(UUID) }
+
+    /// The main gesture: tap a tag to start its mode, or to end what was tapped. A wrong tag says so in the
+    /// NFC sheet and changes nothing.
+    func tapTag(_ purpose: TagScan = .main) {
         guard authorized else { message = "Allow Screen Time access first."; return }
         guard hasTag else { message = "Register your Brick first."; return }
-        let prompt = anyOn ? "Tap a Brick to start or end a mode." : "Tap a Brick to start blocking."
+        let prompt: String
+        switch purpose {
+        case .main: prompt = isBlocking ? "Tap \(keys(for: blockingProfileID!)) to unbrick." : "Tap a Brick to start blocking."
+        case .ending(let target): prompt = "Tap \(keys(for: target)) to end \(profiles.first { $0.id == target }?.name ?? "it")."
+        }
         scan(prompt) { [weak self] id in
-            guard let self else { return }
-            let (ok, text) = self.handleTag(id)
-            if !ok { self.message = text }
+            guard let self else { return nil }
+            let (ok, text) = self.handleTag(id, purpose)
+            return ok ? nil : text
         }
     }
 
-    /// What a tag does, from the in-app scan or a Shortcuts automation: end its mode if it's on, or start it.
+    /// An in-app scan: ends only what was tapped, and never a mode that's on with a different tag.
+    private func handleTag(_ id: String, _ purpose: TagScan) -> (ok: Bool, text: String) {
+        check()
+        guard authorized else { return (false, "Allow Screen Time access first.") }
+        guard let tag = tags.first(where: { $0.id == id }) else { return (false, "Wrong tag. That one isn't registered.") }
+        let target: UUID?
+        switch purpose {
+        case .ending(let l): target = l
+        case .main: target = blockingProfileID
+        }
+        if let target, canEnd(target, with: tag) {
+            let name = profiles.first { $0.id == target }?.name ?? "it"
+            end(target)
+            return (true, "Ended \(name).")
+        }
+        let wrong = target.map { t in "Wrong tag. Only \(keys(for: t)) ends \(profiles.first { $0.id == t }?.name ?? "it")." }
+        if case .ending = purpose { return (false, wrong ?? "Wrong tag.") }
+        // The Brick button with another tag: it can start that tag's mode if it's off, but never end anything.
+        guard let p = profile(for: tag) else { return (false, wrong ?? "Pick a mode for \(tag.name) first.") }
+        if isOn(p.id) { return (false, wrong ?? "\(p.name) is on. Tap its lockdown to end it.") }
+        if !p.lockdown, isBlocking { return (false, wrong ?? "Wrong tag.") }
+        guard !p.isEmpty else { return (false, "Pick apps or restrictions for \(p.name) first.") }
+        start(p, tagID: tag.id)
+        return (true, p.lockdown ? "\(p.name) lockdown on." : "Bricked \(p.name).")
+    }
+
+    /// What a tag does from a Shortcuts automation, tapped outside the app: end its mode if it's on, or start it.
     /// Returns whether it did something, and a line saying what.
     @discardableResult
     func handleTag(_ id: String) -> (ok: Bool, text: String) {
@@ -379,7 +416,7 @@ final class BrickStore: NSObject {
 
     // MARK: NFC
 
-    private func scan(_ prompt: String, _ done: @escaping (String) -> Void) {
+    private func scan(_ prompt: String, _ done: @escaping (String) -> String?) {
         guard NFCTagReaderSession.readingAvailable else {
             message = "This device cannot read NFC tags."
             return
@@ -392,12 +429,13 @@ final class BrickStore: NSObject {
     }
 
     /// Hands the tag to whoever asked, once. Runs before the session is invalidated, so cleanup can't drop it.
-    private func deliver(_ id: String) {
+    /// Returns what went wrong, for the sheet.
+    private func deliver(_ id: String) -> String? {
         let cb = onTag
         onTag = nil
         // Done with this scan: its closing invalidation shouldn't show an error.
         session = nil
-        cb?(id)
+        return cb?(id)
     }
 }
 
@@ -440,9 +478,13 @@ extension BrickStore: NFCTagReaderSessionDelegate {
                 return
             }
             Task { @MainActor in
-                self.deliver(id)
-                session.alertMessage = "Done."
-                session.invalidate()
+                // A wrong tag shows in the sheet itself, so it's clear nothing changed.
+                if let problem = self.deliver(id) {
+                    session.invalidate(errorMessage: problem)
+                } else {
+                    session.alertMessage = "Done."
+                    session.invalidate()
+                }
             }
         }
     }
