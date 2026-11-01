@@ -59,6 +59,8 @@ final class BrickStore: NSObject {
             emergencyLeft = defaults.integer(forKey: "brick.emergencyLeft")
         }
         reload()
+        // After reload, so a lockdown that's on keeps the tag that started it.
+        pairLockdowns()
         authorized = AuthorizationCenter.shared.authorizationStatus == .approved
         if authorized { BrickEngine.syncSchedules() }
         startTicker()
@@ -102,6 +104,28 @@ final class BrickStore: NSObject {
         guard let i = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         profiles[i] = profile
         save(profiles, "brick.profiles")
+        if profile.lockdown { pairLockdowns() }
+    }
+
+    /// A lockdown belongs to one tag. If several point at one (from before pairing, or a mode just made a
+    /// lockdown), the one that started it keeps it, else the first; the rest lose their mode.
+    private func pairLockdowns() {
+        var changed = false
+        for p in profiles where p.lockdown {
+            let paired = tags.indices.filter { tags[$0].profileID == p.id }
+            guard paired.count > 1 else { continue }
+            let starter = lockdowns.first { $0.profileID == p.id }?.tagID
+            let keep = paired.first { tags[$0].id == starter } ?? paired[0]
+            for i in paired where i != keep { tags[i].profileID = nil }
+            changed = true
+        }
+        if changed { save(tags, "brick.tags") }
+    }
+
+    /// The tag a lockdown is paired with, if any.
+    func pairedTag(_ id: UUID) -> BrickTag? {
+        guard profiles.first(where: { $0.id == id })?.lockdown == true else { return nil }
+        return tags.first { $0.profileID == id }
     }
 
     @discardableResult
@@ -179,7 +203,8 @@ final class BrickStore: NSObject {
 
     // MARK: Tag
 
-    /// Tap a new tag to add it as another key. It starts on the first mode; `added` gets its ID so its page can open.
+    /// Tap a new tag to add it as another key. It starts on the first Brick mode, never a lockdown, since those are
+    /// paired with their own tag; `added` gets its ID so its page can open.
     func registerTag(added: @escaping (String) -> Void = { _ in }) {
         scan("Hold your phone to the new tag.") { [weak self] id in
             guard let self else { return }
@@ -188,7 +213,7 @@ final class BrickStore: NSObject {
                 return
             }
             self.tags.append(BrickTag(id: id, name: self.tags.isEmpty ? "My Brick" : "Tag \(self.tags.count + 1)",
-                                      profileID: self.profiles.first?.id))
+                                      profileID: self.profiles.first { !$0.lockdown }?.id))
             self.save(self.tags, "brick.tags")
             added(id)
         }
@@ -197,6 +222,14 @@ final class BrickStore: NSObject {
     func update(_ tag: BrickTag) {
         guard let i = tags.firstIndex(where: { $0.id == tag.id }) else { return }
         guard !isKey(tags[i]) else { message = "\(tags[i].name) is ending something that's on. Turn it off first."; return }
+        if let new = tag.profileID, new != tags[i].profileID {
+            // Pointing a tag at a mode that's on would make it a key mid-session.
+            guard !isOn(new) else { message = "That mode is on. Pick it once it's off."; return }
+            if let other = pairedTag(new), other.id != tag.id {
+                message = "That lockdown is paired with \(other.name). Only one tag can end it."
+                return
+            }
+        }
         tags[i] = tag
         save(tags, "brick.tags")
     }
@@ -212,9 +245,11 @@ final class BrickStore: NSObject {
         profiles.first { $0.id == tag.profileID }
     }
 
-    /// Only a mode's own tags end it.
+    /// Only a mode's own tags end it. A lockdown only ends with the tag that started it, so a tag pointed at it
+    /// afterwards can't; one a schedule started ends with its paired tag.
     func canEnd(_ id: UUID, with tag: BrickTag) -> Bool {
-        tag.profileID == id
+        if let l = lockdowns.first(where: { $0.profileID == id }), let starter = l.tagID { return tag.id == starter }
+        return tag.profileID == id
     }
 
     /// The tags that end a mode, by name.
@@ -250,6 +285,7 @@ final class BrickStore: NSObject {
         }
         guard let p = profile(for: tag) else { return (false, "Pick a mode for \(tag.name) first.") }
         if isOn(p.id) {
+            guard canEnd(p.id, with: tag) else { return (false, "Only \(keys(for: p.id)) ends \(p.name).") }
             end(p.id)
             return (true, "Ended \(p.name).")
         }
@@ -257,7 +293,7 @@ final class BrickStore: NSObject {
         if !p.lockdown, isBlocking {
             return (false, "\(blockingProfile?.name ?? "A Brick") is on. End it with \(keys(for: blockingProfileID!)) first.")
         }
-        start(p)
+        start(p, tagID: tag.id)
         return (true, p.lockdown ? "\(p.name) lockdown on." : "Bricked \(p.name).")
     }
 
@@ -279,8 +315,8 @@ final class BrickStore: NSObject {
     // MARK: Blocking
 
     /// Starts a mode: a lockdown in its own store, or the Brick. `until` overrides the mode's timer (a schedule's end).
-    private func start(_ p: BrickProfile, until: Date? = nil) {
-        guard BrickEngine.start(p, until: until) else {
+    private func start(_ p: BrickProfile, until: Date? = nil, tagID: String? = nil) {
+        guard BrickEngine.start(p, until: until, tagID: tagID) else {
             message = "Pick apps or restrictions for \(p.name) first."
             return
         }

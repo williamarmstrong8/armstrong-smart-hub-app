@@ -121,5 +121,7 @@ struct BrickSchedule: Codable, Identifiable, Hashable {
 struct BrickLockdown: Codable, Hashable {
     var profileID: UUID
     var endsAt: Date?
+    /// The tag that started it, and the only one that ends it. nil when a schedule started it: then its paired tag does.
+    var tagID: String?
 }
 #endif

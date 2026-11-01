@@ -391,7 +391,7 @@ struct BrickTagPage: View {
                 }
                 .padding(.horizontal, 24)
             }
-            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Each tag runs one mode: tap it to start that mode, tap it again to end it. Only that mode's tag can end it.")
+            Takeaway(text: "Any NFC sticker works (NTAG213 and up). Each tag runs one mode: tap it to start that mode, tap it again to end it. A lockdown is paired with one tag, and no other tag can end it.")
                 .padding(.horizontal, 4)
             Takeaway(text: "To use a tag without opening the app: in Shortcuts, add an Automation \u{2192} NFC, scan the tag, set it to Run Immediately, and add Tap Brick tag with this tag.")
                 .padding(.horizontal, 4)
@@ -422,7 +422,14 @@ struct BrickTagDetailPage: View {
                 }
                 BrickCaps(text: "Mode").foregroundStyle(BrickLook.soft).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12).padding(.leading, 4)
                 ForEach(store.profiles) { p in
-                    choice(tag, p.id, p.name, p.lockdown ? "Lockdown · doesn't count as Brick time" : "Brick · counts as Brick time")
+                    // A lockdown paired with another tag, or a mode that's on, can't be picked here.
+                    let other = store.pairedTag(p.id).flatMap { $0.id == tag.id ? nil : $0 }
+                    let taken = tag.profileID != p.id && (other != nil || store.isOn(p.id))
+                    choice(tag, p.id, p.name,
+                           other.map { "Lockdown · paired with \($0.name)" }
+                           ?? (p.lockdown ? "Lockdown · only its paired tag ends it" : "Brick · counts as Brick time"))
+                        .disabled(taken)
+                        .opacity(taken ? 0.5 : 1)
                 }
                 NavigationLink(value: BrickRoute.modes) {
                     Text("Edit modes").font(.system(size: 16)).foregroundStyle(BrickLook.soft)
