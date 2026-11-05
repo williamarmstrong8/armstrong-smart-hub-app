@@ -434,8 +434,32 @@ final class BrickStore: NSObject {
         endsAt = nil
     }
 
-    /// A tap in the film: starts Deep Work, or ends what's on. In memory only.
+    /// The film's scan sheet: what it asks, and the line once the tag has read.
+    struct DemoScan: Equatable {
+        var prompt: String
+        var doneText: String
+        var done = false
+    }
+    private(set) var demoScan: DemoScan?
+
+    /// A tap in the film: the scan sheet comes up, the tag "reads", then the mode starts or ends.
     private func demoTap() {
+        guard demoScan == nil else { return }
+        let ending = isBlocking
+        let mode = blockingProfile?.name ?? profiles.first?.name ?? "Focus"
+        demoScan = DemoScan(prompt: ending ? "Hold your iPhone near Desk to end \(mode)." : "Hold your iPhone near your Desk tag.",
+                            doneText: ending ? "Ended \(mode)." : "\(mode) is on.")
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            demoScan?.done = true
+            demoToggle()
+            try? await Task.sleep(for: .seconds(1.0))
+            demoScan = nil
+        }
+    }
+
+    /// Starts Deep Work, or ends what's on. In memory only.
+    private func demoToggle() {
         now = Date()
         if let id = blockingProfileID, let i = sessions.lastIndex(where: { $0.end == nil }) {
             sessions[i].end = now

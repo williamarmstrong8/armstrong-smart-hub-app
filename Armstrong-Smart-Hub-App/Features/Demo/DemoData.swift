@@ -60,10 +60,19 @@ enum DemoHub {
         case "/api/mobile/fitness/activity": body = activityDetail(id: param("id") ?? "run-today")
         case "/api/mobile/fitness/checkin": body = isPost ? ok : checkinPage(day: param("day") ?? day(now))
         case "/api/mobile/workouts": body = isPost ? ok : workoutsHome()
+        case "/api/mobile/workouts/detail": body = workoutDetail()
+        case "/api/mobile/finance": body = isPost ? ["ok": true, "message": "Synced 5 accounts"] : finance()
+        case "/api/mobile/calendar": body = calendar()
+        case "/api/mobile/todos": body = ["items": todos]
         case "/api/mobile/habits": body = habitsResponse()
         case "/api/home": body = homeState()
         case "/api/mobile/me": body = ["id": "demo", "email": "alex@riverahome.net", "name": "Alex Rivera"]
         case "/api/mobile/action": body = action(req.httpBody)
+        case "/api/mobile/fitness/feedback" where !isPost:
+            // How a session felt: already answered, with the hub's guess beside it.
+            body = ["guess": ["feel": 4, "effort": 7, "reasons": ["Heart rate came down fast between sets", "Slept 7h 48m"]],
+                    "feedback": ["kind": param("kind") ?? "workout", "refId": param("id") ?? "w-1", "feel": 4, "effort": 7,
+                                 "vsExpected": 1, "tags": [String](), "note": NSNull()]]
         case "/api/mobile/fitness/live", "/api/mobile/fitness/feedback": body = ok
         default:
             status = 404
@@ -120,7 +129,7 @@ enum DemoHub {
 
     private static func action(_ raw: Data?) -> [String: Any] {
         guard let raw, let json = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
-              let name = json["name"] as? String else { return ["ok": true] }
+              let name = json["name"] as? String else { return ["ok": true, "status": "ok"] }
         let args = json["args"] as? [Any] ?? []
         let id = args.first as? String
         switch name {
@@ -154,7 +163,8 @@ enum DemoHub {
             }
         default: break
         }
-        return ["ok": true, "data": NSNull()]
+        // Server Actions answer `{ ok, data }`; the finance ones `{ status, message }`.
+        return ["ok": true, "data": NSNull(), "status": "ok"]
     }
 
     // MARK: Habits
@@ -198,11 +208,14 @@ enum DemoHub {
         }
         let routines: [[String: Any]] = [
             ["id": "r-push", "name": "Push", "position": 0, "exercises": [
-                item("bench", "Bench Press", 80, 6), item("ohp", "Overhead Press", 45, 8), item("dips", "Dips", 0, 12)]],
+                item("bench-press-barbell", "Bench Press", 80, 6), item("overhead-press-barbell", "Overhead Press", 45, 8),
+                item("chest-dip", "Dips", 0, 12)]],
             ["id": "r-pull", "name": "Pull", "position": 1, "exercises": [
-                item("deadlift", "Deadlift", 140, 5), item("row", "Barbell Row", 70, 8), item("pullup", "Pull-up", 0, 10)]],
+                item("deadlift-barbell", "Deadlift", 140, 5), item("bent-over-row-barbell", "Barbell Row", 70, 8),
+                item("pull-up", "Pull-up", 0, 10)]],
             ["id": "r-legs", "name": "Legs", "position": 2, "exercises": [
-                item("squat", "Back Squat", 110, 5), item("rdl", "Romanian Deadlift", 90, 8), item("lunge", "Walking Lunge", 24, 12)]],
+                item("squat-barbell", "Back Squat", 110, 5), item("romanian-deadlift-barbell", "Romanian Deadlift", 90, 8),
+                item("lunge-dumbbell", "Walking Lunge", 24, 12)]],
         ]
         let yesterday = daysAgo(1)
         let workouts: [[String: Any]] = [
@@ -212,8 +225,166 @@ enum DemoHub {
             ["id": "w-2", "name": "Push", "startedAt": iso(daysAgo(4)), "endedAt": iso(daysAgo(4).addingTimeInterval(48 * 60)),
              "exercises": ["Bench Press", "Overhead Press", "Dips"], "sets": 11, "volumeKg": 4180.0, "avgHr": 112, "maxHr": 155],
         ]
+        func prev(_ kg: Double, _ reps: Int) -> [[String: Any]] { Array(repeating: ["kind": "normal", "weightKg": kg, "reps": reps], count: 3) }
         return ["exercises": [Any](), "routines": routines, "workouts": workouts,
-                "previous": [String: Any](), "bests": [String: Any]()]
+                "previous": ["bench-press-barbell": prev(77.5, 6), "overhead-press-barbell": prev(42.5, 8), "chest-dip": prev(0, 11)],
+                "bests": ["bench-press-barbell": ["e1rmKg": 93.0, "weightKg": 80.0, "reps": 5]]]
+    }
+
+    /// Yesterday's Pull session, with heart rate on every set.
+    private static func workoutDetail() -> [String: Any] {
+        let start = daysAgo(1).addingTimeInterval(-3 * 3600)
+        var t = 300.0
+        func sets(_ kg: Double, _ reps: [Int], peak: Int) -> [[String: Any]] {
+            reps.enumerated().map { i, r in
+                t += 150
+                return ["kind": "normal", "weightKg": kg, "reps": r, "completedAt": iso(start.addingTimeInterval(t)),
+                        "startedAt": iso(start.addingTimeInterval(t - 40)), "avgHr": peak - 18, "peakHr": peak + i * 3,
+                        "endHr": peak - 6, "recoveryBpm": 28 - i * 2, "restSeconds": 150, "pr": i == 0 && kg == 145,
+                        "e1rmKg": kg * (1 + Double(r) / 30)] as [String: Any]
+            }
+        }
+        let groups: [[String: Any]] = [
+            ["exerciseId": "deadlift-barbell", "name": "Deadlift", "sets": sets(145, [5, 5, 4], peak: 158)],
+            ["exerciseId": "bent-over-row-barbell", "name": "Barbell Row", "sets": sets(70, [8, 8, 8], peak: 142)],
+            ["exerciseId": "pull-up", "name": "Pull-up", "sets": sets(0, [11, 10, 9], peak: 146)],
+        ]
+        let hr: [[Double]] = stride(from: 0.0, through: 52 * 60, by: 15).map { s in
+            let cycle = (s.truncatingRemainder(dividingBy: 150)) / 150
+            return [s, 96 + 50 * exp(-pow((cycle - 0.25) * 4, 2)) + 4 * wave(s / 60)]
+        }
+        return ["id": "w-1", "name": "Pull", "routineId": "r-pull", "startedAt": iso(start), "endedAt": iso(start.addingTimeInterval(52 * 60)),
+                "volumeKg": 6240.0, "avgHr": 118, "maxHr": 162, "hrSource": "live", "heartRate": hr, "exercises": groups]
+    }
+
+    // MARK: Finance
+
+    private static func finance() -> [String: Any] {
+        let nowS = now.timeIntervalSince1970
+        func acct(_ id: String, _ name: String, _ inst: String, _ kind: String, _ bal: Double) -> [String: Any] {
+            let liability = kind == "credit"
+            return ["id": id, "name": name, "institution": inst, "currency": "USD", "kind": kind, "isLiability": liability,
+                    "rawBalance": liability ? -bal : bal, "magnitude": bal, "contribution": liability ? -bal : bal,
+                    "availableBalance": liability ? NSNull() : bal, "balanceDate": nowS - 1200]
+        }
+        let accounts: [[String: Any]] = [
+            acct("a-check", "Everyday Checking", "Harbor Credit Union", "cash", 6420.18),
+            acct("a-save", "High-Yield Savings", "Northline Bank", "cash", 18250.00),
+            acct("a-card", "Rewards Card", "Northline Bank", "credit", 912.44),
+            acct("a-brok", "Brokerage", "Summit Investing", "investment", 42180.55),
+            acct("a-ira", "Roth IRA", "Summit Investing", "investment", 28904.12),
+        ]
+        var n = 0
+        func tx(_ daysBack: Double, _ payee: String, _ amount: Double, _ category: String, _ account: String = "Rewards Card",
+                source: String = "auto") -> [String: Any] {
+            n += 1
+            return ["id": "t-\(n)", "accountId": account == "Everyday Checking" ? "a-check" : "a-card", "accountName": account,
+                    "institution": account == "Everyday Checking" ? "Harbor Credit Union" : "Northline Bank", "currency": "USD",
+                    "posted": nowS - daysBack * 86400, "amount": amount, "netEffect": amount, "description": payee.uppercased(),
+                    "payee": payee, "memo": NSNull(), "pending": daysBack < 1, "hold": false, "category": category, "categorySource": source]
+        }
+        let review: [[String: Any]] = [
+            tx(0.2, "Blue Door Coffee", -6.50, "Food & Drinks"),
+            tx(0.6, "Hillside Market", -64.12, "Groceries"),
+            tx(1.1, "Metro Transit", -18.40, "Transport"),
+            tx(1.4, "Riverside Climbing", -22.00, "Lifestyle"),
+        ]
+        let rest: [[String: Any]] = [
+            tx(1.8, "Luca's Trattoria", -58.30, "Food & Drinks", source: "manual"),
+            tx(2.3, "Paycheck · Brightline Studio", 3925.00, "Income", "Everyday Checking", source: "manual"),
+            tx(3.0, "Green Valley Grocer", -41.87, "Groceries", source: "manual"),
+            tx(3.4, "City Power & Light", -88.20, "Bills & Utilities", "Everyday Checking", source: "manual"),
+            tx(4.2, "Cinema Paloma", -24.00, "Lifestyle", source: "manual"),
+            tx(5.0, "Music streaming", -10.99, "Subscriptions & Fees", source: "manual"),
+            tx(5.6, "Ferry Building Bakery", -12.75, "Food & Drinks", source: "manual"),
+            tx(6.1, "Rideshare", -21.60, "Transport", source: "manual"),
+            tx(7.3, "Hillside Market", -72.48, "Groceries", source: "manual"),
+            tx(8.0, "Fiber internet", -60.00, "Bills & Utilities", "Everyday Checking", source: "manual"),
+            tx(9.2, "Trailhead Outfitters", -86.00, "Lifestyle", source: "manual"),
+            tx(10.5, "Sunday brunch", -46.20, "Food & Drinks", source: "manual"),
+            tx(12.0, "Rent · Elm Street", -1450.00, "Rent", "Everyday Checking", source: "manual"),
+            tx(12.1, "Weekend train", -76.00, "Travel", source: "manual"),
+            tx(14.0, "Cloud storage", -2.99, "Subscriptions & Fees", source: "manual"),
+            tx(16.3, "Paycheck · Brightline Studio", 3925.00, "Income", "Everyday Checking", source: "manual"),
+        ]
+        func cat(_ c: String, _ a: Double, _ total: Double) -> [String: Any] { ["category": c, "amount": a, "share": a / total] }
+        let total = 2486.0
+        let byCategory: [[String: Any]] = [
+            cat("Rent", 1450, total), cat("Food & Drinks", 242, total), cat("Lifestyle", 214, total), cat("Groceries", 186, total),
+            cat("Bills & Utilities", 168, total), cat("Transport", 96, total), cat("Travel", 76, total), cat("Subscriptions & Fees", 54, total),
+        ]
+        let worth: [[String: Any]] = (0..<90).reversed().map { b in
+            ["date": day(daysAgo(b)), "value": 88_400 + Double(89 - b) * 72 + 900 * wave(Double(b) / 6)]
+        }
+        let months: [[String: Any]] = (0..<6).reversed().map { b in
+            let d = Calendar.current.date(byAdding: .month, value: -b, to: now)!
+            let c = Calendar.current.dateComponents([.year, .month], from: d)
+            let income = 7850.0, spend = 2480 + 260 * wave(Double(b) * 1.7)
+            return ["month": String(format: "%04d-%02d", c.year!, c.month!), "income": income, "spending": spend, "net": income - spend]
+        }
+        let dashboard: [String: Any] = [
+            "accounts": accounts, "transactions": review + rest, "currency": "USD",
+            "netWorth": 94_842.41, "totalAssets": 95_754.85, "totalLiabilities": 912.44, "errors": [String](),
+            "netWorthSeries": worth, "cashFlow": months,
+            "spending": ["windowDays": 30, "total": total, "byCategory": byCategory],
+            "monthSpending": ["total": total, "lastMonthToDate": 2712.0, "byCategory": byCategory],
+            "cash": 24_670.18, "toReview": review, "income30d": 7850.0, "spending30d": total, "netFlow30d": 7850 - total,
+            "netWorthChange": 1_964.20,
+        ]
+        func sub(_ id: String, _ name: String, _ c: String, _ amt: Double, _ next: Double) -> [String: Any] {
+            ["id": id, "name": name, "category": c, "accountName": "Rewards Card", "cadence": "monthly", "amount": amt,
+             "previousAmount": NSNull(), "lastCharged": nowS - (30 - next) * 86400, "nextExpected": nowS + next * 86400,
+             "monthlyCost": amt, "chargeCount": 14]
+        }
+        return [
+            "configured": true, "hasData": true,
+            "sync": ["lastSuccessAt": (nowS - 1200) * 1000, "failureReason": NSNull(), "notices": [String]()],
+            "historyDays": 412, "dashboard": dashboard,
+            "recurring": [sub("r1", "Music streaming", "Subscriptions & Fees", 10.99, 25), sub("r2", "Fiber internet", "Bills & Utilities", 60, 22),
+                          sub("r3", "Cloud storage", "Subscriptions & Fees", 2.99, 16), sub("r4", "Climbing membership", "Lifestyle", 89, 9)],
+            "history": ["series": worth, "source": "snapshots"],
+            "goal": ["target": 1_000_000.0, "monthlyContribution": 2500.0, "annualReturnPct": 7.0],
+            "customCategories": ["Climbing"],
+            "quickCategories": ["out": ["Food & Drinks", "Groceries", "Transport"], "in": ["Income", "Transfers"]],
+        ]
+    }
+
+    // MARK: Calendar
+
+    private static let todos: [[String: Any]] = [
+        ["id": "td1", "text": "Book flights for Denver", "done": false],
+        ["id": "td2", "text": "Renew car registration", "done": false],
+        ["id": "td3", "text": "Call Mom back", "done": false],
+        ["id": "td4", "text": "Pick up dry cleaning", "done": true],
+    ]
+
+    private static func calendar() -> [String: Any] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
+        func at(_ d: Int, _ h: Double) -> Date { cal.date(byAdding: .day, value: d, to: today)!.addingTimeInterval(h * 3600) }
+        var n = 0
+        func ev(_ d: Int, _ h: Double, _ len: Double, _ title: String, _ calName: String, _ color: String, _ place: String? = nil) -> [String: Any] {
+            n += 1
+            return ["id": "e\(n)", "title": title, "start": iso(at(d, h)), "end": iso(at(d, h + len)), "allDay": false,
+                    "location": place ?? NSNull(), "calendar": calName, "color": color, "url": NSNull(), "birthday": false]
+        }
+        let work = "#4285F4", personal = "#33B679", fitness = "#F6BF26", family = "#E67C73"
+        let days: [[Any]] = [
+            [ev(0, 7.5, 0.8, "Morning run", "Fitness", fitness), ev(0, 10.5, 0.75, "Design review", "Work", work, "Studio 3"),
+             ev(0, 12.5, 1, "Lunch with Maya", "Personal", personal, "Luca's Trattoria"), ev(0, 15, 0.5, "1:1 with Jordan", "Work", work),
+             ev(0, 18.5, 1.5, "Climbing with Sam", "Fitness", fitness, "Riverside Climbing")],
+            [ev(1, 9, 0.5, "Team standup", "Work", work), ev(1, 11, 1, "Dentist", "Personal", personal, "Elm Street Dental"),
+             ev(1, 17.5, 1, "Push day", "Fitness", fitness)],
+            [ev(2, 9, 0.5, "Team standup", "Work", work), ev(2, 13, 2, "Product planning", "Work", work, "Studio 1"),
+             ev(2, 19, 2, "Dinner at Mom & Dad's", "Family", family)],
+            [ev(3, 8, 1.5, "Long run · 16 km", "Fitness", fitness), ev(3, 14, 3, "Farmers market", "Personal", personal)],
+            [ev(4, 10, 2, "Sunday reset", "Personal", personal)],
+            [ev(5, 9, 0.5, "Team standup", "Work", work), ev(5, 16, 1, "Haircut", "Personal", personal)],
+            [ev(6, 9, 0.5, "Team standup", "Work", work), ev(6, 18, 1, "Pull day", "Fitness", fitness)],
+        ]
+        return ["status": "connected", "timeZone": TimeZone.current.identifier, "upcomingDays": 7, "today": day(now),
+                "days": days.enumerated().map { i, events in ["day": day(cal.date(byAdding: .day, value: i, to: today)!), "events": events] as [String: Any] },
+                "error": NSNull()]
     }
 
     // MARK: Check-in

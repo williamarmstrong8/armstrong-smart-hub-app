@@ -32,11 +32,21 @@ struct BrickView: View {
                 .containerRelativeFrame(.horizontal)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .demoScroll()
             .hubPageStyle()
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { store.check() }
             #if DEBUG
-            .onAppear { DemoCue.on("focus") { store.tapTag() } }
+            .onAppear {
+                DemoCue.on("focus") { store.tapTag() }
+                // `nav modes|schedules|activity|tag|emergency`, then `back`.
+                DemoCue.on("nav", arg: { name in
+                    let routes: [String: BrickRoute] = ["modes": .modes, "schedules": .schedules, "activity": .activity,
+                                                        "tag": .tag, "emergency": .emergency]
+                    if let r = routes[name] { path.append(r) }
+                })
+                DemoCue.on("back") { if !path.isEmpty { path.removeLast() } }
+            }
             #endif
             .navigationDestination(for: BrickRoute.self) { route in
                 switch route {
@@ -53,6 +63,10 @@ struct BrickView: View {
                 }
             }
         }
+        #if DEBUG
+        .overlay { if let scan = store.demoScan { DemoScanSheet(scan: scan).transition(.move(edge: .bottom).combined(with: .opacity)) } }
+        .animation(.spring(duration: 0.45, bounce: 0.12), value: store.demoScan)
+        #endif
         .alert(Demo.copy("Brick", "Focus"), isPresented: Binding(get: { store.message != nil },
                                              set: { if !$0 { store.message = nil } })) {
             Button("OK", role: .cancel) {}
@@ -335,8 +349,64 @@ struct BrickScheduleCard: View {
         }
     }
 }
+#if DEBUG
+/// The film's stand-in for iOS's NFC scan sheet (CoreNFC has no Simulator support): the same
+/// bottom card, "Ready to Scan" with the phone-and-waves glyph, then a check when the tag reads.
+struct DemoScanSheet: View {
+    let scan: BrickStore.DemoScan
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(0.35).ignoresSafeArea()
+            VStack(spacing: 18) {
+                Text("Ready to Scan")
+                    .font(.system(size: 28, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 34)
+                ZStack {
+                    if scan.done {
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 86, weight: .light))
+                            .foregroundStyle(Color(red: 0.0, green: 0.48, blue: 1.0))
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    } else {
+                        Image(systemName: "iphone.radiowaves.left.and.right")
+                            .font(.system(size: 80, weight: .light))
+                            .foregroundStyle(Color(red: 0.0, green: 0.48, blue: 1.0))
+                            .symbolEffect(.pulse, options: .repeating)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(height: 110)
+                .animation(.spring(duration: 0.35), value: scan.done)
+                Text(scan.done ? scan.doneText : scan.prompt)
+                    .font(.system(size: 17))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 30)
+                    .contentTransition(.opacity)
+                Text("Cancel")
+                    .font(.system(size: 17, weight: .medium))
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(Color(.tertiarySystemFill), in: Capsule())
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+                    .padding(.bottom, 30)
+                    .opacity(scan.done ? 0 : 1)
+            }
+            .frame(maxWidth: .infinity)
+            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 44, style: .continuous))
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+#endif
+
 #else
 struct BrickView: View {
     var body: some View { Text("Brick needs an iPhone.").foregroundStyle(.secondary) }
 }
+
 #endif

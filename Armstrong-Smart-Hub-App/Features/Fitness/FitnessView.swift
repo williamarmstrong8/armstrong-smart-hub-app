@@ -15,10 +15,12 @@ struct FitnessView: View {
     @State private var showingWatch = false
     @State private var pairing = false
     @State private var workouts = WorkoutStore.shared
+    /// The pages open on top of the overview.
+    @State private var path = NavigationPath()
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView(.vertical) {
                 VStack(spacing: HubLayout.sectionGap) {
                     // Keep the hero and its account/watch presentation eagerly mounted.
@@ -51,6 +53,7 @@ struct FitnessView: View {
                 .containerRelativeFrame(.horizontal)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .demoScroll()
             .hubPageStyle()
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
@@ -104,7 +107,31 @@ struct FitnessView: View {
                 Task { await checkins.load(api: session.api) }
             }
             #if DEBUG
-            .onAppear { DemoCue.on("sync") { Task { await watch.files.sync(api: session.api) } } }
+            .onAppear {
+                DemoCue.on("sync") { Task { await watch.files.sync(api: session.api) } }
+                // `nav readiness|recovery|strain|sleep|heart|energy|training|health|workout|activity`, then `back`.
+                DemoCue.on("nav", arg: { name in
+                    let pages: [String: FitnessPage] = ["readiness": .readiness, "recovery": .recovery, "strain": .strain,
+                                                        "sleep": .sleep, "heart": .heart, "energy": .energy,
+                                                        "training": .training, "health": .health]
+                    if let page = pages[name] { path.append(page) }
+                    else if name == "workout", let w = workouts.home?.workouts.first { path.append(WorkoutRoute(id: w.id)) }
+                    else if name == "activity", let a = store.activities.first { path.append(a) }
+                })
+                DemoCue.on("back") { if !path.isEmpty { path.removeLast() } }
+                DemoCue.on("workout.start") { startWorkout(workouts.home?.routines.first) }
+                DemoCue.on("workout.set") {
+                    guard let w = workouts.active else { return }
+                    for e in w.exercises {
+                        if let s = e.sets.first(where: { $0.completedAt == nil }) {
+                            workouts.toggle(e.id, s.id, liveHr: watch.heartRate?.bpm)
+                            return
+                        }
+                    }
+                }
+                DemoCue.on("workout.close") { workouts.isPresented = false }
+                DemoCue.on("workout.end") { workouts.isPresented = false; workouts.discard() }
+            }
             #endif
             .sheet(isPresented: $showingWatch) { WatchSheet() }
             .sheet(isPresented: $pairing) { PairWatchSheet() }

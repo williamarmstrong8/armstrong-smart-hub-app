@@ -55,6 +55,7 @@ struct TransactionsView: View {
             .padding(.bottom, 48)
         }
         .scrollDismissesKeyboard(.interactively)
+        .demoScroll()
         .hubPageStyle()
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(HubDesign.page, for: .navigationBar)
