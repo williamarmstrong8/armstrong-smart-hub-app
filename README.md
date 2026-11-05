@@ -60,6 +60,13 @@ the phone. Hevy's own illustrations are licensed to Hevy, so they aren't used. A
 See [design.md](design.md) for shared UI tokens, layout and motion conventions, accessibility requirements,
 regression checks, and the on-device acceptance checklist.
 
+## Mac app
+
+`desktop/` is a small native Mac app (AppKit + WKWebView) that opens the hub's web app, which follows this app's
+design system and tabs. It keeps the hub's session cookie between launches, opens outside links in the default
+browser, and maps the tabs to ⌘1–⌘7. `./desktop/build.sh` compiles it with `swiftc` (no Xcode project) and installs
+`Armstrong Hub.app` in `~/Applications`.
+
 ## Build
 
 Open `Armstrong-Smart-Hub-App.xcodeproj` in Xcode and run. ONNX Runtime comes in through Swift Package Manager.
