@@ -1,10 +1,9 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
-import { BAR, BEAT, COPY, END_LENGTH, END_START, MONTAGE_LENGTH, MONTAGE_START, PHONE_END, SECTION_STARTS, SECTIONS, sectionLength } from './timeline';
+import { BAR, BEAT, COPY, CROSSFADE, END_LENGTH, END_START, PHONE_END, SECTION_STARTS, SECTIONS } from './timeline';
 import { C, SPRING } from './theme';
 import { CapsLabel, HeadlineType } from './components/HeadlineType';
 import { PhoneStage } from './components/PhoneStage';
-import { Montage } from './components/Montage';
 import { EndCard } from './components/EndCard';
 import { Finish } from './components/Backdrop';
 
@@ -14,12 +13,12 @@ const layout = (vertical: boolean) =>
     ? {
         phone: { phoneWidth: 520, cx: 540, cy: 1255, tiltScale: 0.45 },
         column: { left: 90, top: 150, width: 900, height: 470, align: 'center' as const },
-        cold: 92, headline: 92, name: 112, icon: 170, caption: 24, montagePhone: 600, endIcon: 190, endName: 110, tagline: 46, capsBottom: 160,
+        cold: 92, headline: 92, name: 112, icon: 170, caption: 24, endIcon: 190, endName: 110, tagline: 46, capsBottom: 160,
       }
     : {
         phone: { phoneWidth: 410, cx: 1320, cy: 540, tiltScale: 1 },
         column: { left: 170, top: 0, width: 760, height: 1080, align: 'left' as const },
-        cold: 100, headline: 100, name: 128, icon: 150, caption: 22, montagePhone: 390, endIcon: 160, endName: 138, tagline: 56, capsBottom: 90,
+        cold: 100, headline: 100, name: 128, icon: 150, caption: 22, endIcon: 160, endName: 138, tagline: 56, capsBottom: 90,
       };
 
 type Layout = ReturnType<typeof layout>;
@@ -28,22 +27,20 @@ type Layout = ReturnType<typeof layout>;
 const SectionWords: React.FC<{ index: number; size: number; caption: number; align: 'left' | 'center' }> = ({ index, size, caption, align }) => {
   const frame = useCurrentFrame();
   const s = SECTIONS[index];
-  const len = sectionLength(s);
-  let at = 0;
+  const len = s.duration;
+  const caps = s.captions ?? [];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: align === 'left' ? 'flex-start' : 'center', gap: 30, width: '100%' }}>
-      <HeadlineType text={s.headline ?? ''} size={size} align={align} start={4} accent={s.accent} accentColor={s.color} exitAt={len - 9} maxWidth={760} />
+      <HeadlineType text={s.headline ?? ''} size={size} align={align} start={CROSSFADE + 2} accent={s.accent} accentColor={s.color} exitAt={len - CROSSFADE - 8} maxWidth={760} />
       <div style={{ position: 'relative', height: caption * 1.4, width: '100%' }}>
-        {s.shots.map((shot, i) => {
-          const from = at;
-          at += shot.duration;
-          if (!shot.caption) return null;
-          const inU = interpolate(frame, [from + 6, from + 16], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
-          const outU = interpolate(frame, [from + shot.duration - 8, from + shot.duration], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+        {caps.map(([from, text], i) => {
+          const to = i + 1 < caps.length ? caps[i + 1][0] : len - CROSSFADE;
+          const inU = interpolate(frame, [Math.max(from, CROSSFADE) + 6, Math.max(from, CROSSFADE) + 16], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+          const outU = interpolate(frame, [to - 8, to], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
           const u = Math.min(inU, outU);
           return (
             <div key={i} style={{ position: 'absolute', inset: 0, opacity: u, filter: u < 1 ? `blur(${(1 - u) * 6}px)` : undefined }}>
-              <CapsLabel text={shot.caption} size={caption} align={align} color={s.color === C.focus ? C.soft : s.color} />
+              <CapsLabel text={text} size={caption} align={align} color={s.color === C.focus ? C.soft : s.color} />
             </div>
           );
         })}
@@ -115,17 +112,13 @@ export const LaunchFilm: React.FC = () => {
         </Sequence>
         {SECTIONS.map((s, i) =>
           s.headline ? (
-            <Sequence key={s.id} name={`${s.id} words`} from={SECTION_STARTS[s.id]} durationInFrames={sectionLength(s)}>
+            <Sequence key={s.id} name={`${s.id} words`} from={SECTION_STARTS[s.id]} durationInFrames={s.duration}>
               <div style={columnStyle}>
                 <SectionWords index={i} size={L.headline} caption={L.caption} align={col.align} />
               </div>
             </Sequence>
           ) : null,
         )}
-      </Sequence>
-
-      <Sequence name="Montage" from={MONTAGE_START} durationInFrames={MONTAGE_LENGTH}>
-        <Montage phoneWidth={L.montagePhone} />
       </Sequence>
 
       <Sequence name="End card" from={END_START} durationInFrames={END_LENGTH}>

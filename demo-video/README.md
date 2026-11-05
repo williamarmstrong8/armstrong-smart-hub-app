@@ -1,6 +1,6 @@
 # Armstrong Hub — launch film
 
-An 80 s keynote-style film of the app, built in [Remotion](https://remotion.dev) from real Simulator footage of the app in demo mode.
+A 57 s keynote-style film of the app, built in [Remotion](https://remotion.dev) from real Simulator footage of the app in demo mode.
 
 | File | What |
 |---|---|
@@ -22,26 +22,23 @@ npm run render          # both MP4s into out/
 
 Almost everything is in `src/timeline.ts`.
 
-- **What the phone plays:** `SECTIONS`, one entry per part of the film (open, reveal, fitness, home, finance, calendar, focus). Each section has:
-  - `headline`, the words beside the phone (6 words at most), and `accent`, the part tinted in the section's `color`
-  - `color`, which also tints the glow behind the phone
+- **Sections:** `SECTIONS`, one entry per part of the film (open, reveal, fitness, home, finance, calendar, focus). Each is one continuous take of one tab. Each section has:
+  - `headline`, the words beside the phone (6 words at most), and `accent`, the part tinted in `color`
+  - `color`, which also tints the glow and the captions
   - `tilt`, the phone's angle in degrees
-  - `shots`, played in order. Each shot has:
-    - `src`, the clip in `public/clips/`
-    - `trim`, the second of the clip to start at
-    - `duration`, in frames; `beats(n)` and `bars(n)` help (one beat is 0.6 s)
-    - `caption`, the small line under the headline
-- **Making a part longer or shorter:** change its shots' `duration`. Every later section, and the film's length, follows automatically.
-- **Cold open, name, end card:** `COPY`.
-- **Montage:** `MONTAGE`. There's one cut per beat: a still from `public/stills/`, or a clip and the second to show from it.
+  - `src`, `trim` and `duration`: the clip, the second to start at, and how many frames to play
+  - `rate`, the playback speed (`SLOW` = 0.8 for the short takes, `FIT` = 0.9 for Fitness)
+  - `captions`, the small lines under the headline: `[frame within the section, text]`
+- **Pacing:** a section's `duration` sets its length. Later sections and the film's length follow automatically. Sections crossfade over `CROSSFADE` frames.
+- **Cold open, name, end card:** `COPY`. The end card's length is `END_LENGTH`.
 - **Music:**
   1. Put a licensed track at `public/music.mp3`.
-  2. Set `BPM`, and `FIRST_BEAT_FRAME` if the song has a pickup.
-  3. Add `<Audio src={staticFile('music.mp3')} />` (from `@remotion/media`) inside `LaunchFilm` in `src/LaunchFilm.tsx`.
+  2. Set `BPM`.
+  3. Add `<Audio src={staticFile('music.mp3')} />` (from `@remotion/media`) in `src/LaunchFilm.tsx`.
 - **Look:**
-  - `src/theme.ts`: colors, easing curves, springs.
-  - `src/LaunchFilm.tsx` → `layout()`: where the phone and the words sit, and type sizes, separately for 16:9 and 9:16.
-  - `src/components/`: `PhoneStage` (the one phone and its glow), `IPhoneFrame`, `HeadlineType`, `Montage`, `EndCard`, `Backdrop`.
+  - `src/theme.ts`: colors, curves, springs.
+  - `layout()` in `src/LaunchFilm.tsx`: phone and type placement for 16:9 and 9:16.
+  - `src/components/`: `PhoneStage`, `IPhoneFrame`, `HeadlineType`, `EndCard`, `Backdrop`.
 
 ## Re-recording the footage
 
@@ -49,7 +46,7 @@ Almost everything is in `src/timeline.ts`.
 2. Record the flows with `scripts/record_flows.sh <flow> <take> [dark|light]`. `raw/CLIPS.md` lists them.
    - Each flow drives the app with cues (`scripts/cue.sh`): `tab`, `nav`, `back`, `scroll <y> <seconds>`, `sync`, `focus`, `tag`, `workout.start`, …
    - The Focus tag's NFC sheet is a stand-in drawn by the app in demo mode, because the Simulator has no NFC.
-3. Convert the chosen takes to 30 fps into `public/clips/`:
+3. Convert the chosen takes to 30 fps into `public/clips/`, then shorten their pauses with `scripts/tighten.py <clip> <clip>-tight.mp4 0.9 0.6`. That keeps every moving frame and shortens each still stretch to 0.9 s. The flows used now are `*-one`: `record_flows.sh fitness-one|home-one|finance-one|calendar-one|focus-one 1`.
 
 ```bash
 ffmpeg -i raw/<take>.mp4 -vf "fps=30,scale=660:-2" -c:v libx264 -crf 16 -pix_fmt yuv420p -an public/clips/<name>.mp4
