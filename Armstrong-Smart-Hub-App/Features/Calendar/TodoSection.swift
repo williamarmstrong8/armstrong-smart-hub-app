@@ -89,6 +89,7 @@ struct TodoSection: View {
             let reply: TodoList = try await api.send(api.request("/api/mobile/todos", method: method, body: body))
             items = reply.items
             error = nil
+            DiskCache.write(reply, todoCacheName)
         } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription
@@ -96,6 +97,6 @@ struct TodoSection: View {
     }
 }
 
-struct TodoList: Decodable {
+struct TodoList: Codable {
     let items: [TodoItem]
 }

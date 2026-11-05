@@ -8,7 +8,8 @@ struct CalendarView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// The last agenda on the phone shows until the hub answers.
     @State private var data: CalendarResponse? = DiskCache.read(calendarCacheName)
-    @State private var todos: [TodoItem]?
+    /// The last to-do list, same idea: paint it immediately, then replace it when the hub answers.
+    @State private var todos: [TodoItem]? = DiskCache.read(todoCacheName, as: TodoList.self)?.items
     @State private var habits = HabitsStore()
     @State private var pickedDay: PickedDay?
     @State private var toast = Toast()
@@ -122,13 +123,19 @@ struct CalendarView: View {
         } catch {
             self.error = error.localizedDescription
         }
-        // A list that won't load still shows (empty), so adding says what went wrong.
-        if let items = await list?.items { todos = items } else if todos == nil { todos = [] }
+        // A failed fetch keeps the saved list. With nothing saved, show an empty list so adding can say what went wrong.
+        if let list = await list {
+            todos = list.items
+            DiskCache.write(list, todoCacheName)
+        } else if todos == nil {
+            todos = []
+        }
         await board
     }
 }
 
 let calendarCacheName = "calendar"
+let todoCacheName = "todos"
 
 /// The event coming up next, big.
 private struct CalendarHero: View {
