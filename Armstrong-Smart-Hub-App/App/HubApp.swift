@@ -165,6 +165,20 @@ struct MainTabView: View {
         .onChange(of: tab) { titles.close() }
         .onDisappear { titles.close() }
         // Widgets and the TV's Live Activity open their tab: armstronghub://home, /fitness, /brick.
+        #if DEBUG
+        .onAppear {
+            DemoCue.on("tab", arg: { name in
+                switch name {
+                case "home": tab = .home
+                case "finance": tab = .finance
+                case "calendar": tab = .calendar
+                case "fitness": tab = .fitness
+                case "focus", "brick": tab = .brick
+                default: break
+                }
+            })
+        }
+        #endif
         .onOpenURL { url in
             guard url.scheme == "armstronghub" else { return }
             switch url.host() {

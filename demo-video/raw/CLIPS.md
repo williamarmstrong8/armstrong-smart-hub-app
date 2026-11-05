@@ -23,6 +23,20 @@ Other takes stay in the folder: hero t1, sync t2, lights t1–t3, lock t1–t6, 
 - **Don't use:** lock t1–t6. The door locks after the clip ends, or the takes come from before the layout change.
 - **Old layout:** lights t1–t3 and the light-mode t1/t2 takes still show the TV and thermostat cards that demo mode now hides.
 
+## Tour clips (second cut)
+All dark mode, take 1, converted to 30 fps in `public/clips/<name>.mp4`. Times are in the converted clip.
+
+| Clip | Length | What happens |
+|---|---|---|
+| `tab-tour` | 7.5 | Home, then one tab a second: Finance (3), Calendar (4), Fitness (5), Focus (6), Home (7) |
+| `fitness-scroll2` | 11 | The watch hero, then a 6 s scroll (3–9) through the week, every metric and the workouts |
+| `fitness-pages` | 21.7 | Sleep (5–7, scrolls to stages), Heart (9–12, scrolls to HRV), VO2 max / race times (15–18) |
+| `fitness-workout` | 19.9 | Pull workout detail (5–8, scrolls through sets with heart rate), then a live Push workout: sets checked off, rest timer (11–18) |
+| `home-scroll` | 5.4 | Devices, scrolling down to today's habits (2–4) |
+| `finance-tour` | 21 | Three tags in one tap (3–8), the tag picker (9–10), budgets and accounts (12–14), All transactions with the cash-flow chart (15–19) |
+| `calendar-tour` | 9.9 | "Next up", to-dos, the habit month (0–4), then the agenda for the week (5–9) |
+| `focus-tour` | 19.8 | NFC "Ready to Scan" (3–4), Deep Work (5–7), today's card (8–10), Weekly Activity (11–12), back, NFC again to end (16–17), "Ready to focus" |
+
 ## Stills (`stills/`, 1206×2622 PNG)
 `fitness-dark`, `fitness-light`, `fitness-overview-dark` (metrics list), `fitness-metrics-dark` (week strip + metrics),
 `fitness-sleep-dark`, `fitness-workouts-dark`, `home-dark`, `home-light`, `home-light-sheet-dark`, `home-devices-dark`,

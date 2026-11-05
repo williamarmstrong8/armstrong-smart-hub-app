@@ -57,7 +57,8 @@ final class WorkoutStore {
     private(set) var setTimer: SetTimer?
 
     private init() {
-        active = Self.read(ActiveWorkout.self, from: Self.activeURL)
+        // Demo mode starts with no workout in progress, so every take matches.
+        active = Demo.isOn ? nil : Self.read(ActiveWorkout.self, from: Self.activeURL)
         pending = Self.read([ActiveWorkout].self, from: Self.pendingURL) ?? []
     }
 
@@ -386,6 +387,8 @@ final class WorkoutStore {
     private static let restNotification = "workout.rest"
 
     private func requestNotifications() {
+        // The film never asks for notifications.
+        guard !Demo.isOn else { return }
         Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) }
     }
 

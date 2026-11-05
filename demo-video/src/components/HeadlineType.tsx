@@ -24,6 +24,7 @@ export const HeadlineType: React.FC<{
   exitAt?: number;
   maxWidth?: number;
   tracking?: string;
+  align?: 'left' | 'center';
 }> = ({
   text,
   size,
@@ -36,6 +37,7 @@ export const HeadlineType: React.FC<{
   exitAt,
   maxWidth = 1600,
   tracking,
+  align = 'center',
 }) => {
   const frame = useCurrentFrame();
   const words = text.split(' ');
@@ -58,7 +60,7 @@ export const HeadlineType: React.FC<{
         lineHeight: 1.04,
         letterSpacing: tracking ?? (size >= 140 ? '-0.035em' : '-0.02em'),
         color,
-        textAlign: 'center',
+        textAlign: align,
         maxWidth,
         opacity: 1 - leave,
         filter: leave > 0 ? `blur(${leave * 12}px)` : undefined,
@@ -96,11 +98,12 @@ export const HeadlineType: React.FC<{
 };
 
 /** Small caps label: restrained, wide tracking, secondary ink. */
-export const CapsLabel: React.FC<{ text: string; size?: number; opacity?: number; color?: string }> = ({
+export const CapsLabel: React.FC<{ text: string; size?: number; opacity?: number; color?: string; align?: 'left' | 'center' }> = ({
   text,
   size = 24,
   opacity = 1,
   color = C.soft,
+  align = 'center',
 }) => (
   <div
     style={{
@@ -110,7 +113,7 @@ export const CapsLabel: React.FC<{ text: string; size?: number; opacity?: number
       letterSpacing: '0.16em',
       color,
       opacity,
-      textAlign: 'center',
+      textAlign: align,
     }}
   >
     {text}

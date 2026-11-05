@@ -106,6 +106,7 @@ struct BrickPage<Content: View>: View {
                 .containerRelativeFrame(.horizontal)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .demoScroll()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .hubPageStyle()
         .navigationTitle(title)

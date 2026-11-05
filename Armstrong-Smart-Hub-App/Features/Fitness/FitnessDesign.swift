@@ -78,6 +78,7 @@ struct FitPage<Content: View>: View {
                 // it already fits.
                 ScrollView(.vertical) { stack.containerRelativeFrame(.horizontal) }
                     .scrollBounceBehavior(.basedOnSize)
+                    .demoScroll()
             }
         }
         // Fill the screen from the first frame: a page still loading would otherwise

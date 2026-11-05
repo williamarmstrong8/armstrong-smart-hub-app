@@ -7,6 +7,8 @@ struct FinanceView: View {
     @State private var store = FinanceStore()
     @State private var toast = Toast()
     @State private var retagging: Transaction?
+    /// All transactions, opened on top.
+    @State private var showingAll = false
 
     var body: some View {
         NavigationStack {
@@ -22,6 +24,25 @@ struct FinanceView: View {
                     Task { await store.retag(t, to: category, api: session.api, toast: toast) }
                 }
             }
+            .navigationDestination(isPresented: $showingAll) { TransactionsView(store: store, toast: toast) }
+            #if DEBUG
+            .onAppear {
+                DemoCue.on("nav", arg: { name in if name == "transactions" { showingAll = true } })
+                DemoCue.on("back") { showingAll = false }
+                // `tag`: the next card takes its first suggestion. `tag.other` opens the picker; `tag.pick <Tag>` chooses.
+                DemoCue.on("tag") {
+                    guard let next = store.tagQueue.first else { return }
+                    let pick = next.category == "Uncategorized" ? (store.response?.quickCategories?.out.first ?? "Food & Drinks") : next.category
+                    Task { await store.retag(next, to: pick, api: session.api, toast: toast) }
+                }
+                DemoCue.on("tag.other") { retagging = store.tagQueue.first }
+                DemoCue.on("tag.pick", arg: { category in
+                    guard let t = retagging else { return }
+                    retagging = nil
+                    Task { await store.retag(t, to: category, api: session.api, toast: toast) }
+                })
+            }
+            #endif
             .toast(toast)
         }
     }
@@ -90,9 +111,7 @@ struct FinanceView: View {
 
         AccountsCard(accounts: d.accounts)
 
-        NavigationLink {
-            TransactionsView(store: store, toast: toast)
-        } label: {
+        Button { showingAll = true } label: {
             VStack(spacing: 16) {
                 Divider()
                 HStack {
