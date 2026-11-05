@@ -8,12 +8,15 @@ enum DiskCache {
     private static func url(_ name: String) -> URL { folder.appending(path: "\(name).json") }
 
     static func read<T: Decodable>(_ name: String, as: T.Type = T.self) -> T? {
+        // Demo mode never shows or keeps a saved page: each take starts from the same data.
+        if Demo.isOn { return nil }
         guard let data = try? Data(contentsOf: url(name)) else { return nil }
         return try? APIClient.decoder.decode(T.self, from: data)
     }
 
     /// Saves a response body as the hub sent it.
     static func write(_ data: Data, _ name: String) {
+        if Demo.isOn { return }
         let target = url(name)
         Task.detached(priority: .utility) {
             try? FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)

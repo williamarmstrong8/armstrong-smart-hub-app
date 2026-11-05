@@ -36,11 +36,19 @@ enum DemoHub {
 
     // MARK: Fake transport
 
+    private static var fitnessDelayed = false
+
     /// Answers a request the way the hub would, with a JSON 200.
     static func respond(_ req: URLRequest) async -> (Data, URLResponse) {
         try? await Task.sleep(for: .milliseconds(60))
         let url = req.url ?? URL(string: "https://demo.local/")!
         let path = url.path
+        // `-DemoFitnessDelay 2.5`: the first Fitness load waits, so the rings fill on camera.
+        if path == "/api/mobile/fitness", !fitnessDelayed {
+            fitnessDelayed = true
+            let delay = UserDefaults.standard.double(forKey: "DemoFitnessDelay")
+            if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
+        }
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func param(_ name: String) -> String? { query.first(where: { $0.name == name })?.value }
         let isPost = req.httpMethod == "POST"
@@ -97,6 +105,9 @@ enum DemoHub {
         "configured": true,
         "entities": entities,
         "requests": [Any](),
+        // The film's Home: lights, locks and switches on one screen (no TV remote or thermostat).
+        "visible": ["light.living_room", "light.kitchen", "light.bedroom", "light.office",
+                    "lock.front_door", "lock.garage", "switch.espresso", "switch.office_fan"],
         "automations": [
             "automations": automations,
             "scenes": [["id": "scene.movie_night", "name": "Movie Night", "state": "scening", "lastTriggered": iso(daysAgo(3))],
