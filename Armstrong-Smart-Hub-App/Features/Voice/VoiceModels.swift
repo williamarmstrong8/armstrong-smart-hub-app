@@ -224,7 +224,7 @@ struct PiStatus: Decodable, Equatable, Sendable {
 }
 
 /// One to-do item (lib/todos.ts).
-struct TodoItem: Decodable, Identifiable, Equatable, Sendable {
+struct TodoItem: Codable, Identifiable, Equatable, Sendable {
     let id: String
     let text: String
     let done: Bool
