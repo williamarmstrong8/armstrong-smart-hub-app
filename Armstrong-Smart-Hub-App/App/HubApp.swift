@@ -85,6 +85,7 @@ enum HubTab: Hashable {
 
 /// The iPhone's tabs.
 struct MainTabView: View {
+    @State private var launcherError: String?
     @Environment(WatchLink.self) private var watch
     @State private var workouts = WorkoutStore.shared
     @State private var titles = TitleCardPresenter.shared
@@ -162,10 +163,29 @@ struct MainTabView: View {
             case "finance": tab = .finance
             case "calendar": tab = .calendar
             case "fitness": tab = .fitness
-            case "brick": tab = .brick
+            case "brick":
+                tab = .brick
+                if url.path == "/launcher" { MinimalLauncherNavigation.shared.requested = true }
+            case "launch":
+                guard let item = MinimalLauncherSettings.read().item(for: url), let target = item.url else {
+                    tab = .brick
+                    MinimalLauncherNavigation.shared.requested = true
+                    launcherError = "This launcher entry no longer exists. Add it again in Minimal Launcher."
+                    return
+                }
+                UIApplication.shared.open(target, options: [:]) { success in
+                    if !success {
+                        Task { @MainActor in
+                            launcherError = "Couldn't open \(item.name). Check its app link or exact shortcut name in Brick → Minimal Launcher."
+                        }
+                    }
+                }
             default: break
             }
         }
+        .alert("Minimal Launcher", isPresented: Binding(get: { launcherError != nil }, set: { if !$0 { launcherError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(launcherError ?? "") }
         .toast(titles.toast)
         .fullScreenCover(isPresented: $workouts.isPresented) {
             ActiveWorkoutView(store: workouts, maxHr: workouts.maxHr)

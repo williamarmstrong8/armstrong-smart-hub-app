@@ -14,7 +14,7 @@ struct WorkoutWidgetsBundle: WidgetBundle {
         FitnessWidget()
         BodyBatteryWidget()
         StepsWidget()
-        BrickWidget()
+        BrickWidgetsBundle().body
     }
 }
 
@@ -135,5 +135,13 @@ struct RestCountdown: View {
             }
             .tint(WidgetColor.blue)
         }
+    }
+}
+
+/// Keep the top-level builder within its ten-widget limit.
+struct BrickWidgetsBundle: WidgetBundle {
+    var body: some Widget {
+        BrickWidget()
+        MinimalLauncherWidget()
     }
 }

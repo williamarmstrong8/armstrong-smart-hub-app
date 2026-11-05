@@ -70,3 +70,10 @@ browser, and maps the tabs to ⌘1–⌘7. `./desktop/build.sh` compiles it with
 ## Build
 
 Open `Armstrong-Smart-Hub-App.xcodeproj` in Xcode and run. ONNX Runtime comes in through Swift Package Manager.
+
+## Brick Minimal Launcher
+
+Brick → Minimal Launcher configures a text-only Home Screen widget for up to six essentials. Add app links or named
+Apple Shortcuts, test them in the preview, then manually add the **Minimal Launcher** large widget from Armstrong Hub.
+It uses the existing app group and widget extension. No new blocking rules are added. See
+[setup, limits and the real-iPhone test checklist](docs/minimal-launcher-testing.md).

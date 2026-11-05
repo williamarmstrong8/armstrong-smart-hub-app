@@ -5,7 +5,7 @@ import FamilyControls
 
 /// Where the Brick page can go. Everything lives under the one page; these open on top of it.
 enum BrickRoute: Hashable {
-    case modes, mode(UUID), restrictions(UUID), schedules, schedule(UUID), activity, screenTime, tag, tagDetail(String), emergency
+    case launcher, modes, mode(UUID), restrictions(UUID), schedules, schedule(UUID), activity, screenTime, tag, tagDetail(String), emergency
 }
 
 /// Brick's app on one page: the device sheet on top, then screen time, today, and settings.
@@ -34,8 +34,14 @@ struct BrickView: View {
             .hubPageStyle()
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { store.check() }
+            .onChange(of: MinimalLauncherNavigation.shared.requested, initial: true) { _, requested in
+                guard requested else { return }
+                path = [.launcher]
+                MinimalLauncherNavigation.shared.requested = false
+            }
             .navigationDestination(for: BrickRoute.self) { route in
                 switch route {
+                case .launcher: MinimalLauncherPage()
                 case .modes: BrickModesPage(store: store, path: $path)
                 case .mode(let id): BrickModePage(store: store, id: id)
                 case .restrictions(let id): BrickRestrictionsPage(store: store, id: id)
@@ -61,6 +67,10 @@ struct BrickView: View {
         VStack(spacing: HubLayout.sectionGap) {
             BrickCard(padding: 0) {
                 VStack(spacing: 0) {
+                    NavigationLink(value: BrickRoute.launcher) {
+                        BrickRow(icon: "text.alignleft", title: "Minimal Launcher", value: nil)
+                    }
+                    BrickDivider()
                     NavigationLink(value: BrickRoute.tag) {
                         BrickRow(icon: "wave.3.right", title: "My Bricks",
                                  value: store.tags.isEmpty ? "Set up" : store.tags.count == 1 ? "1 tag" : "\(store.tags.count) tags",
