@@ -116,6 +116,22 @@ struct LightSheet: View {
                 .toolbarBackground(HubDesign.page, for: .navigationBar)
             }
             .presentationBackground(HubDesign.page)
+            #if DEBUG
+            // Film cue: glide the brightness up like a slow drag, then send it once, as a release would.
+            .onAppear {
+                DemoCue.on("light.bright") {
+                    Task { @MainActor in
+                        let from = brightness, to = 85.0, steps = 36
+                        for i in 1...steps {
+                            let p = Double(i) / Double(steps)
+                            brightness = from + (to - from) * (1 - pow(1 - p, 3))
+                            try? await Task.sleep(for: .milliseconds(28))
+                        }
+                        send(entity, .init(on: true, brightnessPct: Int(to)))
+                    }
+                }
+            }
+            #endif
             .onAppear {
                 brightness = Double(max(entity.brightnessPct, 1))
                 if entity.brightnessPct == 0 { brightness = 100 }

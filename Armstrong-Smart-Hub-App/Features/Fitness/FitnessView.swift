@@ -103,6 +103,9 @@ struct FitnessView: View {
                 // Last night's sleep only reaches the hub on a sync, and the guess needs it.
                 Task { await checkins.load(api: session.api) }
             }
+            #if DEBUG
+            .onAppear { DemoCue.on("sync") { Task { await watch.files.sync(api: session.api) } } }
+            #endif
             .sheet(isPresented: $showingWatch) { WatchSheet() }
             .sheet(isPresented: $pairing) { PairWatchSheet() }
         }

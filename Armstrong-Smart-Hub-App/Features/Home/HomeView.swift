@@ -100,6 +100,14 @@ struct HomeView: View {
                 DisplayModeView(store: store)
             }
             .habitEditor($editingHabit, store: habits)
+            #if DEBUG
+            .onAppear {
+                DemoCue.on("light.toggle") { if let e = store.entity("light.living_room") { toggle(e) } }
+                DemoCue.on("light.sheet") { light = store.entity("light.living_room") }
+                DemoCue.on("light.close") { light = nil }
+                DemoCue.on("lock") { if let e = store.entity("lock.front_door") { toggle(e) } }
+            }
+            #endif
             .toast(toast)
         }
     }

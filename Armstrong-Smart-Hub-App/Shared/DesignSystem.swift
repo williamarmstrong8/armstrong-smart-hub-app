@@ -88,6 +88,10 @@ struct HubToolbarButtonStyle: ButtonStyle {
 struct HubTabPage<TopBar: View, Content: View>: View {
     @ViewBuilder var topBar: TopBar
     @ViewBuilder var content: Content
+    #if DEBUG
+    /// Film cues `scroll.down` / `scroll.top` move the page, so takes don't rely on injected drags.
+    @State private var demoScroll = ScrollPosition(edge: .top)
+    #endif
 
     var body: some View {
         ScrollView(.vertical) {
@@ -103,6 +107,13 @@ struct HubTabPage<TopBar: View, Content: View>: View {
             .containerRelativeFrame(.horizontal, alignment: .leading)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        #if DEBUG
+        .scrollPosition($demoScroll)
+        .onAppear {
+            DemoCue.on("scroll.down") { withAnimation(.smooth(duration: 1.2)) { demoScroll.scrollTo(y: 360) } }
+            DemoCue.on("scroll.top") { withAnimation(.smooth(duration: 1.0)) { demoScroll.scrollTo(edge: .top) } }
+        }
+        #endif
         .hubPageStyle()
     }
 }

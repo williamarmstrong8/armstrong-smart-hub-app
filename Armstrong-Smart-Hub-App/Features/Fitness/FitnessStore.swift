@@ -24,7 +24,8 @@ final class FitnessStore {
     private static let cacheURL = URL.applicationSupportDirectory.appending(path: "Fitness/snapshot.json")
 
     init() {
-        if let data = try? Data(contentsOf: Self.cacheURL), let cached = try? APIClient.decoder.decode(FitnessSnapshot.self, from: data) {
+        // Demo mode starts empty and never touches the phone's saved copy.
+        if !Demo.isOn, let data = try? Data(contentsOf: Self.cacheURL), let cached = try? APIClient.decoder.decode(FitnessSnapshot.self, from: data) {
             snapshot = cached
             updatedAt = (try? Self.cacheURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         }
@@ -37,6 +38,7 @@ final class FitnessStore {
             updatedAt = .now
             error = nil
             WidgetSync.fitness(self)
+            if Demo.isOn { return }
             try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: Self.cacheURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch is CancellationError {

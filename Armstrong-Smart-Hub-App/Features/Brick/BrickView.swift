@@ -35,6 +35,9 @@ struct BrickView: View {
             .hubPageStyle()
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { store.check() }
+            #if DEBUG
+            .onAppear { DemoCue.on("focus") { store.tapTag() } }
+            #endif
             .navigationDestination(for: BrickRoute.self) { route in
                 switch route {
                 case .modes: BrickModesPage(store: store, path: $path)
