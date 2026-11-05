@@ -1,6 +1,16 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
 
+/** `color` (hex or rgb/rgba, as interpolateColors returns) at alpha `a`. */
+const withAlpha = (color: string, a: number) => {
+  if (color.startsWith('#')) {
+    const n = parseInt(color.slice(1, 7), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+  const [r, g, bl] = color.replace(/[^\d.,]/g, '').split(',').map(Number);
+  return `rgba(${r}, ${g}, ${bl}, ${a})`;
+};
+
 /** A soft radial glow in a data color, behind the subject. Alpha 0–1 scales the color's 18 % peak. */
 export const Glow: React.FC<{ color: string; alpha?: number; x?: string; y?: string; size?: number }> = ({
   color,
@@ -9,13 +19,11 @@ export const Glow: React.FC<{ color: string; alpha?: number; x?: string; y?: str
   y = '52%',
   size = 1100,
 }) => {
-  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 0.18 * 255)
-    .toString(16)
-    .padStart(2, '0');
+  const a = Math.max(0, Math.min(1, alpha)) * 0.18;
   return (
     <AbsoluteFill
       style={{
-        background: `radial-gradient(${size}px ${size * 0.8}px at ${x} ${y}, ${color}${a} 0%, ${color}00 60%)`,
+        background: `radial-gradient(${size}px ${size * 0.8}px at ${x} ${y}, ${withAlpha(color, a)} 0%, ${withAlpha(color, 0)} 60%)`,
       }}
     />
   );
