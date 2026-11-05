@@ -179,7 +179,7 @@ final class BrickStore: NSObject {
     /// Backup for the extension: starts a schedule's mode once a day, within an hour of its start time or any
     /// time before its end time. Checked while the app runs or when it opens.
     private func checkSchedules() {
-        guard authorized else { return }
+        guard authorized, !Demo.isOn else { return }
         let cal = Calendar.current
         let now = Date()
         for s in schedules where s.enabled {
@@ -271,6 +271,9 @@ final class BrickStore: NSObject {
     /// The main gesture: tap a tag to start its mode, or to end what was tapped. A wrong tag says so in the
     /// NFC sheet and changes nothing.
     func tapTag(_ purpose: TagScan = .main) {
+        #if DEBUG
+        if Demo.isOn { demoTap(); return }
+        #endif
         guard authorized else { message = "Allow Screen Time access first."; return }
         guard hasTag else { message = "Register your Brick first."; return }
         let prompt: String
@@ -336,6 +339,9 @@ final class BrickStore: NSObject {
 
     /// Non-strict modes can be ended without the tag.
     func unlockWithoutTag(_ id: UUID) {
+        #if DEBUG
+        if Demo.isOn { demoTap(); return }
+        #endif
         guard let p = profiles.first(where: { $0.id == id }), !p.strict else { return }
         end(id)
     }
@@ -373,7 +379,7 @@ final class BrickStore: NSObject {
     /// Timers and schedules are checked while the app runs and each time it opens.
     func check() {
         // The system's answer can arrive after launch, or change in Settings; never trust a single read.
-        let approved = AuthorizationCenter.shared.authorizationStatus == .approved
+        let approved = Demo.isOn || AuthorizationCenter.shared.authorizationStatus == .approved
         if approved != authorized { authorized = approved }
         reload()
         if isBlocking { now = Date() }
@@ -391,6 +397,55 @@ final class BrickStore: NSObject {
 
     #if DEBUG
     @ObservationIgnored private var seeded = false
+
+    /// The film's Focus page: a week of sessions in memory, nothing saved, no Screen Time or NFC.
+    func demoSeed() {
+        seeded = true
+        authorized = true
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        func at(_ day: Int, _ h: Double) -> Date { cal.date(byAdding: .day, value: day, to: today)!.addingTimeInterval(h * 3600) }
+        profiles = [BrickProfile(name: "Deep Work", strict: false, timerMinutes: nil),
+                    BrickProfile(name: "Evenings", strict: false),
+                    BrickProfile(name: "Sunday Reset", strict: false)]
+        // Ends before launch time whenever the film is shot, so today always reads 2h 30m over 3 sessions.
+        let now = Date().timeIntervalSince(today) / 3600
+        let todayEnd = max(2.6, now - 0.2)
+        sessions = [
+            BrickSession(profileName: "Deep Work", start: at(-6, 9), end: at(-6, 11.2)),
+            BrickSession(profileName: "Evenings", start: at(-6, 20), end: at(-6, 21.5)),
+            BrickSession(profileName: "Deep Work", start: at(-5, 8.5), end: at(-5, 10.4)),
+            BrickSession(profileName: "Deep Work", start: at(-4, 13), end: at(-4, 15.1)),
+            BrickSession(profileName: "Evenings", start: at(-4, 21), end: at(-4, 22.2)),
+            BrickSession(profileName: "Sunday Reset", start: at(-3, 10), end: at(-3, 13.4)),
+            BrickSession(profileName: "Deep Work", start: at(-2, 9), end: at(-2, 10.7)),
+            BrickSession(profileName: "Evenings", start: at(-2, 20.5), end: at(-2, 21.8)),
+            BrickSession(profileName: "Deep Work", start: at(-1, 8), end: at(-1, 10.1)),
+            BrickSession(profileName: "Evenings", start: at(-1, 21), end: at(-1, 22)),
+            BrickSession(profileName: "Deep Work", start: at(0, todayEnd - 2.6), end: at(0, todayEnd - 1.35)),
+            BrickSession(profileName: "Deep Work", start: at(0, todayEnd - 1.25), end: at(0, todayEnd - 0.55)),
+            BrickSession(profileName: "Evenings", start: at(0, todayEnd - 0.55), end: at(0, todayEnd)),
+        ]
+        schedules = [BrickSchedule(name: "Weekday mornings", hour: 8, minute: 30, profileID: profiles.first?.id, enabled: true)]
+        tags = [BrickTag(id: "04a3b2c1d4e580", name: "Desk", profileID: profiles.first?.id),
+                BrickTag(id: "04f1e2d3c4b5a6", name: "Nightstand", profileID: profiles[1].id)]
+        emergencyLeft = 4
+        blockingProfileID = nil
+        endsAt = nil
+    }
+
+    /// A tap in the film: starts Deep Work, or ends what's on. In memory only.
+    private func demoTap() {
+        now = Date()
+        if let id = blockingProfileID, let i = sessions.lastIndex(where: { $0.end == nil }) {
+            sessions[i].end = now
+            _ = id
+            blockingProfileID = nil
+        } else if let p = profiles.first {
+            sessions.append(BrickSession(profileName: p.name, start: now, end: nil))
+            blockingProfileID = p.id
+        }
+    }
 
     /// Sample sessions for screenshots, in memory only; the saved state isn't read back while they show.
     func debugSeed() {

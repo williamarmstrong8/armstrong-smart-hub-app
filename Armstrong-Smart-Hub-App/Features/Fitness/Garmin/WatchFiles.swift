@@ -69,6 +69,9 @@ final class WatchFiles {
 
     /// Copies new files off the watch, then sends everything the hub doesn't have yet.
     func sync(api: APIClient) async {
+        #if DEBUG
+        if Demo.isOn { await demoSync(); return }
+        #endif
         guard !isSyncing, let link else { return }
         isSyncing = true
         fraction = 0.02
@@ -962,3 +965,31 @@ final class FitStore {
         try? data.write(to: root.appending(path: name), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 }
+
+#if DEBUG
+extension WatchFiles {
+    /// The film's last sync: 12 minutes ago, so opening the page doesn't start one by itself.
+    func demoLastSync() {
+        lastSync = Summary(listed: 6, byKind: ["activity": 1, "sleep": 1, "monitor": 4], downloaded: 6, uploaded: 6,
+                           failed: nil, finishedAt: .now.addingTimeInterval(-12 * 60))
+    }
+
+    /// A scripted 2.6 s sync: the ring sweeps the watch face, then "Synced just now".
+    fileprivate func demoSync() async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        let steps = 52
+        for i in 0...steps {
+            let p = Double(i) / Double(steps)
+            // Ease out: quick at first, settling into the end.
+            fraction = max(0.02, 1 - pow(1 - p, 2.2))
+            progress = p < 0.5 ? "Reading the watch…" : "Sending to the hub…"
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        isSyncing = false
+        progress = nil
+        fraction = nil
+        lastSync = Summary(listed: 3, byKind: ["activity": 1, "monitor": 2], downloaded: 3, uploaded: 3, failed: nil, finishedAt: .now)
+    }
+}
+#endif

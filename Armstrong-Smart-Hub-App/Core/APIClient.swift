@@ -151,6 +151,9 @@ final class APIClient: @unchecked Sendable {
     /// Reads (GETs) that hit a transient network error get one more try after a short pause:
     /// a hiccup shouldn't show as an error, and changes are never sent twice.
     private func fetch(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        #if DEBUG
+        if Demo.isOn { return await DemoHub.respond(req) }
+        #endif
         do {
             return try await session.data(for: req)
         } catch let error as URLError where Self.transient.contains(error.code) && (req.httpMethod ?? "GET") == "GET" {

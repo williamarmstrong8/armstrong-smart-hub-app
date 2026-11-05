@@ -41,6 +41,9 @@ final class FitnessStore {
             try? data.write(to: Self.cacheURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch is CancellationError {
         } catch {
+            #if DEBUG
+            print("FITNESS load failed:", error)
+            #endif
             self.error = error.localizedDescription
         }
     }

@@ -369,7 +369,7 @@ struct BrickTagPage: View {
     @Binding var path: [BrickRoute]
 
     var body: some View {
-        BrickPage(title: "My Bricks") {
+        BrickPage(title: Demo.copy("My Bricks", "My Tags")) {
             Image("BrickDevice").resizable().scaledToFit().frame(width: 140, height: 140)
                 .shadow(color: .black.opacity(0.16), radius: 18, y: 12)
                 .padding(.vertical, 28)
@@ -479,7 +479,7 @@ struct BrickEmergencyPage: View {
     @State private var confirming = false
 
     var body: some View {
-        BrickPage(title: "Emergency Unbrick") {
+        BrickPage(title: Demo.copy("Emergency Unbrick", "Emergency Unlock")) {
             VStack(spacing: 8) {
                 Text("\(store.emergencyLeft)").font(.system(size: 72, weight: .light).monospacedDigit())
                 Text("of \(BrickStore.emergencyAllowance) left").font(.system(size: 18)).foregroundStyle(BrickLook.soft)

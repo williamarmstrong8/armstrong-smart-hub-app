@@ -10,7 +10,7 @@ Audience for the film: **non-technical builders**, so the film sells the feeling
 | Xcode project | `Armstrong-Smart-Hub-App.xcodeproj` (file-system–synchronized groups: new `.swift` files in the app folder are picked up automatically) |
 | Targets / schemes | `Armstrong-Smart-Hub-App` (app), `WorkoutWidgets`, `BrickReport` (Screen Time report ext.), `BrickMonitor`, `BrickShield` |
 | Bundle ID | `com.paularmstrong.ArmstrongSmartHubApp` |
-| Minimum iOS | **27.0** (iOS 27.0 simulator runtime is installed; newest Pro sim = **iPhone 17 Pro**) |
+| Minimum iOS | **27.0** (iOS 27.0 simulator runtime is installed; newest Pro sim = **iPhone 18 Pro** (iOS 27.0)) |
 | UI | SwiftUI, `TabView` with 5 tabs on iPhone; iPad shows an always-on dashboard instead |
 | Packages | ONNX Runtime (SPM) for the "Hey Jarvis" wake word |
 
