@@ -13,7 +13,7 @@ import { Finish, Glow } from './components/Backdrop';
 const layout = (vertical: boolean) =>
   vertical
     ? { cold: 96, headline: 112, name: 132, icon: 300, phone: 560, montagePhone: 600, tagline: 46, caps: 24, capsY: 150, capsBottom: 160, tilt: 0.5 }
-    : { cold: 120, headline: 140, name: 168, icon: 260, phone: 420, montagePhone: 400, tagline: 56, caps: 24, capsY: 70, capsBottom: 90, tilt: 1 };
+    : { cold: 120, headline: 140, name: 168, icon: 260, phone: 390, montagePhone: 390, tagline: 56, caps: 24, capsY: 36, capsBottom: 90, tilt: 1 };
 
 const Centered: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: 80 }}>{children}</AbsoluteFill>
