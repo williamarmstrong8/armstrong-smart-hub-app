@@ -107,6 +107,10 @@ final class WatchLink: NSObject {
         settings.link = self
         savedWatchID = UserDefaults.standard.string(forKey: Self.savedKey).flatMap(UUID.init(uuidString:))
         savedWatchName = UserDefaults.standard.string(forKey: Self.savedNameKey)
+        #if DEBUG
+        // The film's watch: connected, beating, and never touching Bluetooth (no permission prompt).
+        if Demo.isOn { startDemoWatch(); return }
+        #endif
         central = CBCentralManager(delegate: self, queue: .main, options: [CBCentralManagerOptionRestoreIdentifierKey: Self.restoreID])
     }
 
@@ -120,6 +124,7 @@ final class WatchLink: NSObject {
     // MARK: Commands
 
     func startScan() {
+        guard !Demo.isOn else { return }
         guard central.state == .poweredOn else { return }
         candidates = []
         discovered = [:]
@@ -170,6 +175,7 @@ final class WatchLink: NSObject {
     /// Reconnects to the remembered watch. iOS keeps the request open until
     /// the watch is in range.
     func connectSaved() {
+        guard !Demo.isOn else { return }
         guard central.state == .poweredOn, let id = savedWatchID else { return }
         if let known = central.retrievePeripherals(withIdentifiers: [id]).first {
             connect(known)
@@ -184,6 +190,7 @@ final class WatchLink: NSObject {
     /// that never finishes). A fresh attempt while the watch is out of range
     /// just renews iOS's pending request.
     func ensureConnected() {
+        guard !Demo.isOn else { return }
         guard savedWatchID != nil, central.state == .poweredOn, state != .connected, state != .scanning else { return }
         if isBusy {
             guard Date.now.timeIntervalSince(stateChangedAt) > 30, let peripheral else { return }
@@ -366,6 +373,7 @@ final class WatchLink: NSObject {
     /// link is down, and if it's up but no reading has come for 20 seconds,
     /// opens the heart rate stream again (at most every 30 seconds).
     func keepHeartRateFlowing() {
+        guard !Demo.isOn else { return }
         guard savedWatchID != nil else { return }
         if state != .connected {
             ensureConnected()
@@ -722,3 +730,29 @@ extension WatchLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         MainActor.assumeIsolated { flush() }
     }
 }
+
+#if DEBUG
+extension WatchLink {
+    /// A Forerunner 965 that is already paired and connected, with a steady, repeatable pulse.
+    fileprivate func startDemoWatch() {
+        savedWatchID = UUID(uuidString: "9E5D1C2A-965A-4F00-9D3E-000000000965")
+        savedWatchName = "Forerunner 965"
+        state = .connected
+        bodyBattery = 78
+        bodyBatteryAt = .now
+        stress = 18
+        stressAt = .now
+        files.demoLastSync()
+        Task { @MainActor [weak self] in
+            var tick = 0.0
+            while let self {
+                let bpm = 66 + Int((3 * DemoHub.wave(tick / 6)).rounded())
+                self.heartRate = HeartRateReading([0, UInt8(bpm), 48])
+                self.heartRateAt = .now
+                tick += 1
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+}
+#endif

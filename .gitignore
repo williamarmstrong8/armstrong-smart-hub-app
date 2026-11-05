@@ -7,3 +7,11 @@ build/
 
 # macOS
 .DS_Store
+
+# Launch film (demo-video)
+demo-video/node_modules/
+demo-video/out/
+demo-video/raw/*
+!demo-video/raw/CLIPS.md
+demo-video/_reference/
+demo-video/.build/

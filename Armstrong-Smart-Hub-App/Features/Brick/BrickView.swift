@@ -20,7 +20,8 @@ struct BrickView: View {
                 VStack(spacing: HubLayout.sectionGap) {
                     BrickSheet(store: store, path: $path)
                     // Keep the hosted report mounted instead of recreating it on scroll.
-                    BrickScreenTimeSection(store: store, path: $path)
+                    // The hosted Screen Time report can't run in the Simulator; the film leaves it out.
+                    if !Demo.isOn { BrickScreenTimeSection(store: store, path: $path) }
                     LazyVStack(spacing: HubLayout.sectionGap) {
                         BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()))
                         settings
@@ -49,7 +50,7 @@ struct BrickView: View {
                 }
             }
         }
-        .alert("Brick", isPresented: Binding(get: { store.message != nil },
+        .alert(Demo.copy("Brick", "Focus"), isPresented: Binding(get: { store.message != nil },
                                              set: { if !$0 { store.message = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(store.message ?? "") }
@@ -62,13 +63,13 @@ struct BrickView: View {
             BrickCard(padding: 0) {
                 VStack(spacing: 0) {
                     NavigationLink(value: BrickRoute.tag) {
-                        BrickRow(icon: "wave.3.right", title: "My Bricks",
+                        BrickRow(icon: "wave.3.right", title: Demo.copy("My Bricks", "My Tags"),
                                  value: store.tags.isEmpty ? "Set up" : store.tags.count == 1 ? "1 tag" : "\(store.tags.count) tags",
                                  dot: store.tags.isEmpty)
                     }
                     BrickDivider()
                     NavigationLink(value: BrickRoute.emergency) {
-                        BrickRow(icon: "lock.open", title: "Emergency Unbrick", value: "\(store.emergencyLeft)")
+                        BrickRow(icon: "lock.open", title: Demo.copy("Emergency Unbrick", "Emergency Unlock"), value: "\(store.emergencyLeft)")
                     }
                 }
                 .padding(.horizontal, 24)
@@ -143,16 +144,16 @@ private struct BrickSheet: View {
             .buttonStyle(.plain)
             .padding(.top, HubLayout.topInset)
             device.padding(.top, HubLayout.sectionGap)
-            Text(p?.name ?? "Unbricked")
+            Text(p?.name ?? Demo.copy("Unbricked", "Ready to focus"))
                 .font(.largeTitle.weight(.light))
                 .multilineTextAlignment(.center)
                 .padding(.top, HubLayout.sectionGap)
             Group {
                 if store.isBlocking, let s = store.current {
                     if let end = store.endsAt {
-                        Text("Unbricks in \(Text(timerInterval: Date()...max(Date(), end)))")
+                        Text("\(Demo.copy("Unbricks", "Ends")) in \(Text(timerInterval: Date()...max(Date(), end)))")
                     } else {
-                        Text("Bricked for \(Text(s.start, style: .timer))")
+                        Text("\(Demo.copy("Bricked", "Focused")) for \(Text(s.start, style: .timer))")
                     }
                 } else {
                     Text(store.hasTag ? "Tap a tag to start its mode" : "Register a tag to start")
@@ -196,8 +197,7 @@ private struct BrickSheet: View {
 
     private var device: some View {
         Button { store.tapTag() } label: {
-            Image("BrickDevice")
-                .resizable().scaledToFit()
+            deviceArt
                 .frame(width: 168, height: 168)
                 .shadow(color: .black.opacity(0.16), radius: 20, y: 14)
                 .saturation(store.isBlocking ? 0 : 1)
@@ -206,6 +206,20 @@ private struct BrickSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(store.isBlocking ? "Unbrick with tag" : "Brick with tag")
+    }
+
+    /// The device picture; the film uses a plain circle in its place.
+    @ViewBuilder private var deviceArt: some View {
+        if Demo.isOn {
+            ZStack {
+                Circle().fill(store.isBlocking ? BrickLook.pill : BrickLook.ink)
+                Circle().strokeBorder(BrickLook.ink, lineWidth: store.isBlocking ? 6 : 0)
+            }
+            .padding(14)
+            .hubAnimation(value: store.isBlocking)
+        } else {
+            Image("BrickDevice").resizable().scaledToFit()
+        }
     }
 
     /// Lockdowns on now. They don't count as Brick time, so they get a line here rather than the timer.
@@ -242,7 +256,7 @@ private struct BrickSheet: View {
     private var brickButton: some View {
         VStack(spacing: 14) {
             Button { store.tapTag() } label: {
-                Text(store.isBlocking ? "Tap to Unbrick" : "Tap to Brick")
+                Text(store.isBlocking ? Demo.copy("Tap to Unbrick", "Tap to End") : Demo.copy("Tap to Brick", "Tap to Focus"))
                     .font(.headline)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, HubLayout.cardPadding)
@@ -261,7 +275,7 @@ private struct BrickSheet: View {
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-            } else if store.isBlocking, store.blockingProfile?.strict == false {
+            } else if store.isBlocking, store.blockingProfile?.strict == false, !Demo.isOn {
                 Button { if let id = store.blockingProfileID { store.unlockWithoutTag(id) } } label: {
                     Text("Unbrick without tag")
                         .font(.subheadline.weight(.medium)).foregroundStyle(BrickLook.soft)
@@ -279,7 +293,7 @@ struct BrickAverage: View {
     var value: TimeInterval?
     var body: some View {
         VStack(spacing: 6) {
-            Text("Avg Brick Time").font(.subheadline).foregroundStyle(BrickLook.soft)
+            Text(Demo.copy("Avg Brick Time", "Avg Focus Time")).font(.subheadline).foregroundStyle(BrickLook.soft)
             if let value {
                 Text(brickDuration(value)).font(.largeTitle.monospacedDigit())
             } else {

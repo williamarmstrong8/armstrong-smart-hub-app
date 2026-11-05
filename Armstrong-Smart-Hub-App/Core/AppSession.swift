@@ -19,7 +19,7 @@ final class AppSession {
     private(set) var user: HubUser?
     private(set) var api: APIClient
 
-    var isSignedIn: Bool { token != nil && serverURL != nil }
+    var isSignedIn: Bool { Demo.isOn || (token != nil && serverURL != nil) }
 
     private static let serverKey = "hub.serverURL"
     private static let userKey = "hub.user"
@@ -30,6 +30,7 @@ final class AppSession {
         serverURL = url
         self.token = token
         user = UserDefaults.standard.data(forKey: Self.userKey).flatMap { try? JSONDecoder().decode(HubUser.self, from: $0) }
+        if Demo.isOn { user = HubUser(id: "demo", email: "alex@riverahome.net", name: "Alex Rivera") }
         api = APIClient(baseURL: url ?? URL(string: "https://localhost")!, token: token)
         wire()
         shareWithWidgets()

@@ -41,6 +41,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
 
     /// Replaces the next week of check-in notifications from what the store knows now.
     func schedule(_ store: CheckinStore) async {
+        guard !Demo.isOn else { return }
         guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
         let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.prefix) }
         center.removePendingNotificationRequests(withIdentifiers: pending)

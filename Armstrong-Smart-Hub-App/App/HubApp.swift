@@ -91,6 +91,16 @@ struct MainTabView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tab: HubTab = {
         #if DEBUG
+        if Demo.isOn {
+            BrickStore.shared.demoSeed()
+            switch Demo.startTab {
+            case "fitness": return .fitness
+            case "focus", "brick": return .brick
+            case "finance": return .finance
+            case "calendar": return .calendar
+            default: return .home
+            }
+        }
         if ProcessInfo.processInfo.environment["BRICK_PREVIEW"] != nil {
             BrickStore.shared.debugSeed()
             return .brick
@@ -113,7 +123,7 @@ struct MainTabView: View {
             Tab("Fitness", systemImage: "figure.run", value: .fitness) {
                 FitnessView()
             }
-            Tab("Brick", systemImage: "iphone.slash", value: .brick) {
+            Tab(Demo.copy("Brick", "Focus"), systemImage: Demo.isOn ? "circle" : "iphone.slash", value: .brick) {
                 BrickView()
             }
         }
