@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "launch-film-studio",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--prefix", "demo-video", "remotion", "studio", "demo-video/src/index.ts", "--no-open", "--port", "3123"],
+      "cwd": "demo-video",
+      "port": 3123
+    }
+  ]
+}
