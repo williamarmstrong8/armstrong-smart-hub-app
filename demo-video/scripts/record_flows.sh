@@ -74,6 +74,35 @@ case "$FLOW" in
     sleep 1.0; "$C" focus; sleep 4.2; "$C" scroll 520 1.8; sleep 2.6; "$C" nav activity; sleep 3.0; "$C" back
     sleep 1.2; "$C" scroll top 1.2; sleep 2.0; "$C" focus; sleep 4.0
     "$R" stop ;;
+  fitness-one)
+    # One continuous exploration: rings fill, sync, every metric, Sleep, a workout's sets, a live workout.
+    xcrun simctl ui "${UDID:-DE4D0BA1-1D0F-4522-B175-AE044A8BCF8B}" appearance "$MODE"
+    "$R" start "$NAME"
+    EXTRA="-DemoFitnessDelay 4" WAIT=11 "$R" launch fitness "$MODE"
+    sleep 3.8; "$C" sync; sleep 2.6; "$C" scroll 1450 3.2; sleep 3.6
+    "$C" nav sleep; sleep 1.0; "$C" scroll 520 1.2; sleep 1.6; "$C" back; sleep 0.9
+    "$C" nav workout; sleep 1.2; "$C" scroll 760 1.4; sleep 1.8; "$C" back; sleep 0.8
+    "$C" workout.start; sleep 1.6; "$C" workout.set; sleep 1.0; "$C" workout.set; sleep 2.2; "$C" workout.end
+    sleep 1.5
+    "$R" stop ;;
+  home-one)
+    "$R" launch home "$MODE"; "$R" start "$NAME"
+    sleep 1.5; "$C" light.toggle; sleep 1.1; "$C" light.sheet; sleep 0.9; "$C" light.bright; sleep 1.5; "$C" light.close
+    sleep 0.8; "$C" lock; sleep 1.0; "$C" scroll 640 1.4; sleep 2.5
+    "$R" stop ;;
+  finance-one)
+    "$R" launch finance "$MODE"; "$R" start "$NAME"
+    sleep 1.5; "$C" tag; sleep 1.2; "$C" tag; sleep 1.2; "$C" scroll 720 1.6; sleep 2.2
+    "$C" nav transactions; sleep 1.1; "$C" scroll 900 1.8; sleep 2.5
+    "$R" stop ;;
+  calendar-one)
+    "$R" launch calendar "$MODE"; "$R" start "$NAME"
+    sleep 1.8; "$C" scroll 640 1.8; sleep 2.6; "$C" scroll 1280 1.6; sleep 2.4
+    "$R" stop ;;
+  focus-one)
+    "$R" launch focus "$MODE"; "$R" start "$NAME"
+    sleep 1.5; "$C" focus; sleep 3.2; "$C" scroll 520 1.2; sleep 1.6; "$C" nav activity; sleep 2.4
+    "$R" stop ;;
   focus-start)
     "$R" launch focus "$MODE"; "$R" start "$NAME"
     sleep 0.8; "$C" focus; sleep 4.2
