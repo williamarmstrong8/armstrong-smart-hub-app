@@ -29,7 +29,6 @@ final class MusicStore {
         if !Demo.isOn, let data = try? Data(contentsOf: Self.cacheURL),
            let cached = try? APIClient.decoder.decode(MusicSummary.self, from: data) {
             summary = cached
-            if let id = cached.clientId { SpotifyRemote.shared.configure(clientID: id) }
         }
     }
 
@@ -37,7 +36,7 @@ final class MusicStore {
         do {
             let data = try await api.data(api.request("/api/mobile/spotify"))
             summary = try APIClient.decoder.decode(MusicSummary.self, from: data)
-            if let id = summary?.clientId { SpotifyRemote.shared.configure(clientID: id) }
+            if let id = summary?.clientId { SpotifyRemote.shared.configure(clientID: id, hub: api.baseURL) }
             error = nil
             guard !Demo.isOn else { return }
             try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
