@@ -305,8 +305,10 @@ final class WorkoutStore {
     func toggle(_ exercise: DraftExercise.ID, _ set: DraftSet.ID, liveHr: Int?) {
         guard let workout = active, let e = workout.exercises.first(where: { $0.id == exercise }) else { return }
         var startedRest = false
+        var unchecked = false
         update(exercise, set) { set in
             if set.completedAt != nil {
+                unchecked = true
                 set.completedAt = nil
                 set.liveHr = nil
                 set.isPR = false
@@ -324,6 +326,8 @@ final class WorkoutStore {
             startedRest = true
         }
         if setTimer?.set == set { setTimer = nil }
+        // Unchecking a set cancels the rest it started.
+        if unchecked { skipRest() }
         if startedRest {
             startRest(TimeInterval(e.restSeconds ?? Self.defaultRest))
             if let bpm = liveHr { record(bpm: bpm, at: .now) }
