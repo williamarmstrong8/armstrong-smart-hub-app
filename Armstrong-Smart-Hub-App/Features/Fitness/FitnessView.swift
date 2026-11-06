@@ -29,7 +29,6 @@ struct FitnessView: View {
                     LazyVStack(spacing: HubLayout.sectionGap) {
                         if watch.savedWatchID == nil {
                             workoutsSection
-                            routinesButton
                         } else {
                             if let error = store.error, !store.loaded {
                                 ErrorBanner(message: error)
@@ -44,7 +43,6 @@ struct FitnessView: View {
                             // Keep the carousel's horizontal scroll targets together.
                             workoutsSection
                             syncStatus
-                            routinesButton
                         }
                     }
                     .environment(\.fitnessCards, true)
@@ -149,10 +147,6 @@ struct FitnessView: View {
     private func startWorkout(_ routine: Routine?) {
         if workouts.active == nil { workouts.start(routine, unit: unit) }
         workouts.isPresented = true
-    }
-
-    private var routinesButton: some View {
-        RoutinesAndHistoryButton(store: workouts, onStart: startWorkout)
     }
 
     // MARK: Watch

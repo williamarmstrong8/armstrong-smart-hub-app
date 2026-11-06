@@ -20,6 +20,7 @@ struct WorkoutsSection: View {
             if let last = store.workouts.first {
                 LastWorkoutCard(store: store, workout: last)
             }
+            RoutinesAndHistoryButton(store: store, onStart: onStart)
         }
     }
 
@@ -150,7 +151,7 @@ struct LastWorkoutCard: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.bottom, 36)
+        .padding(.bottom, 16)
     }
 
     private func stat(_ value: String, _ label: String, tint: Color? = nil) -> some View {
@@ -291,15 +292,7 @@ struct WorkoutsPage: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                FitSection(title: "Quick Start", divider: false) {
-                    Button { onStart(nil) } label: {
-                        Label(store.active == nil ? "Start Empty Workout" : "Resume Workout",
-                              systemImage: store.active == nil ? "plus" : "play.fill").blueButton()
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                FitSection(title: "Routines", trailing: store.routines.isEmpty ? nil : "\(store.routines.count)") {
+                FitSection(title: "Routines", trailing: store.routines.isEmpty ? nil : "\(store.routines.count)", divider: false) {
                     Button { creating = true } label: {
                         Label("New Routine", systemImage: "doc.badge.plus").greyButton(.primary)
                     }
