@@ -80,7 +80,7 @@ struct RootView: View {
 }
 
 enum HubTab: Hashable {
-    case home, finance, calendar, fitness, music, brick
+    case home, finance, fitness, music, brick
 }
 
 /// The iPhone's tabs.
@@ -98,7 +98,7 @@ struct MainTabView: View {
             case "music": return .music
             case "focus", "brick": return .brick
             case "finance": return .finance
-            case "calendar": return .calendar
+            case "calendar": return .home
             default: return .home
             }
         }
@@ -117,9 +117,6 @@ struct MainTabView: View {
             }
             Tab("Finance", systemImage: "wallet.bifold", value: .finance) {
                 FinanceView()
-            }
-            Tab("Calendar", systemImage: "calendar", value: .calendar) {
-                CalendarView()
             }
             Tab("Fitness", systemImage: "figure.run", value: .fitness) {
                 FitnessView()
@@ -175,7 +172,7 @@ struct MainTabView: View {
                 switch name {
                 case "home": tab = .home
                 case "finance": tab = .finance
-                case "calendar": tab = .calendar
+                case "calendar": tab = .home
                 case "fitness": tab = .fitness
                 case "music": tab = .music
                 case "focus", "brick": tab = .brick
@@ -189,7 +186,7 @@ struct MainTabView: View {
             switch url.host() {
             case "home": tab = .home
             case "finance": tab = .finance
-            case "calendar": tab = .calendar
+            case "calendar": tab = .home
             case "fitness": tab = .fitness
             case "music", "spotify": tab = .music
             case "brick": tab = .brick

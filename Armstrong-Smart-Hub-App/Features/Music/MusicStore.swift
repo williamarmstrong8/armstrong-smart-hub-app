@@ -88,6 +88,131 @@ final class MusicStore {
         }
     }
 
+    // MARK: Playing anything, anywhere
+
+    /// The library: playlists, liked songs, albums, shows and saved episodes.
+    private(set) var library: SpotifyLibrary?
+    /// Everywhere Spotify can play right now.
+    private(set) var devices: [SpotifyDevice] = []
+    private(set) var loadingDevices = false
+    /// The row being started, so it can show a spinner until Spotify answers.
+    private(set) var starting: String?
+
+    func loadLibrary(api: APIClient) async {
+        guard summary?.isConnected == true else { return }
+        do { library = try await api.get("/api/mobile/spotify/library") }
+        catch is CancellationError {}
+        catch { if library == nil { toast.error(error) } }
+    }
+
+    func loadDevices(api: APIClient) async {
+        loadingDevices = true
+        defer { loadingDevices = false }
+        do {
+            let r: SpotifyDevicesResponse = try await api.get("/api/mobile/spotify/devices")
+            devices = r.devices
+        } catch is CancellationError {
+        } catch { toast.error(error) }
+    }
+
+    private struct PlayBody: Encodable {
+        var contextUri: String?
+        var uri: String?
+        var positionMs: Int?
+        var deviceId: String?
+    }
+
+    /// Plays a row: a song from its list (so the list carries on after it), an episode
+    /// from where it was left, or a whole playlist, album, artist or show.
+    func play(_ item: SpotifyItem, in contextUri: String? = nil, api: APIClient) async {
+        let body: PlayBody = item.isPlayable
+            ? PlayBody(contextUri: contextUri, uri: item.uri,
+                       positionMs: item.kind == "episode" && !item.played ? item.resumeMs : nil)
+            : PlayBody(contextUri: item.uri)
+        await start(body, id: item.uri, api: api)
+    }
+
+    /// Plays a list from the top, shuffled or not.
+    func playAll(_ contextUri: String, shuffle: Bool, api: APIClient) async {
+        if summary?.nowPlaying?.shuffle != shuffle {
+            _ = try? await api.post("/api/mobile/spotify/adjust", body: ["action": JSONValue.string("shuffle"), "state": .bool(shuffle)]) as SpotifyNowResponse
+        }
+        await start(PlayBody(contextUri: contextUri), id: contextUri, api: api)
+    }
+
+    private func start(_ body: PlayBody, id: String, api: APIClient) async {
+        guard starting == nil else { return }
+        starting = id
+        defer { starting = nil }
+        do {
+            let r: SpotifyNowResponse = try await api.post("/api/mobile/spotify/play", body: body)
+            if let now = r.nowPlaying { summary?.nowPlaying = now }
+        } catch {
+            toast.error(error)
+        }
+    }
+
+    /// Moves playback to a device (and keeps it playing).
+    func transfer(to device: SpotifyDevice, api: APIClient) async {
+        starting = device.id
+        defer { starting = nil }
+        do {
+            let r: SpotifyNowResponse = try await api.post("/api/mobile/spotify/transfer", body: ["deviceId": JSONValue.string(device.id), "play": .bool(true)])
+            summary?.nowPlaying = r.nowPlaying
+            await loadDevices(api: api)
+            toast.show("Playing on \(device.name)")
+        } catch {
+            toast.error(error)
+        }
+    }
+
+    func seek(to fraction: Double, api: APIClient) async {
+        guard var now = summary?.nowPlaying else { return }
+        let ms = Int(Double(now.durationMs) * min(max(fraction, 0), 1))
+        now.progressMs = ms
+        now.at = SpotifyTrack.iso.string(from: .now)
+        summary?.nowPlaying = now
+        await adjust(["action": .string("seek"), "positionMs": .int(ms)], api: api)
+    }
+
+    func setVolume(_ percent: Int, api: APIClient) async {
+        summary?.nowPlaying?.volume = percent
+        if let i = devices.firstIndex(where: \.isActive) { devices[i].volume = percent }
+        await adjust(["action": .string("volume"), "percent": .int(percent)], api: api)
+    }
+
+    /// Off, then the whole list, then this one song.
+    func cycleRepeat(api: APIClient) async {
+        let next = switch summary?.nowPlaying?.repeat ?? "off" {
+        case "off": "context"
+        case "context": "track"
+        default: "off"
+        }
+        summary?.nowPlaying?.repeat = next
+        await adjust(["action": .string("repeat"), "state": .string(next)], api: api)
+    }
+
+    func toggleShuffle(api: APIClient) async {
+        let next = !(summary?.nowPlaying?.shuffle ?? false)
+        summary?.nowPlaying?.shuffle = next
+        await adjust(["action": .string("shuffle"), "state": .bool(next)], api: api)
+    }
+
+    func queue(_ item: SpotifyItem, api: APIClient) async {
+        await adjust(["action": .string("queue"), "uri": .string(item.uri)], api: api)
+        toast.show("Added to the queue")
+    }
+
+    private func adjust(_ body: [String: JSONValue], api: APIClient) async {
+        do {
+            let r: SpotifyNowResponse = try await api.post("/api/mobile/spotify/adjust", body: body)
+            if let now = r.nowPlaying { summary?.nowPlaying = now }
+        } catch {
+            toast.error(error)
+            await poll(api: api)
+        }
+    }
+
     // MARK: Linking
 
     /// Opens Spotify's sign-in in a browser sheet. The hub's callback lands on armstronghub://spotify.

@@ -16,6 +16,8 @@ struct HomeView: View {
     @State private var store = HomeStore()
     @State private var habits = HabitsStore()
     @State private var fitness = FitnessStore()
+    @State private var agenda = AgendaStore()
+    @State private var pickedDay: PickedDay?
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
@@ -60,13 +62,17 @@ struct HomeView: View {
                 async let a: Void = store.refresh(api: session.api)
                 async let b: Void = habits.load(api: session.api)
                 async let f: Void = fitness.load(api: session.api)
-                _ = await (a, b, f)
+                async let c: Void = agenda.load(api: session.api, refresh: true)
+                _ = await (a, b, f, c)
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 habits.rollDay()
+                async let c: Void = agenda.load(api: session.api, refresh: true)
                 await store.poll(api: session.api)
+                await c
             }
+            .sheet(item: $pickedDay) { HabitDaySheet(store: habits, day: $0.day, toast: toast) }
             .task { if !habits.fetched { await habits.load(api: session.api) } }
             .task { await fitness.load(api: session.api) }
             .sheet(item: $light) { e in
@@ -146,27 +152,36 @@ struct HomeView: View {
         }
     }
 
-    /// The house at a glance, with one tap to turn every lamp off.
+    /// Today at a glance: what's next on the calendar, then habits, steps and the lights.
     private var hero: some View {
         let lamps = store.shownEntities.filter { $0.control == .light && !$0.isUnavailable }
         let lit = lamps.filter(\.isOn)
-        return VStack(spacing: 14) {
-            Text(lamps.isEmpty ? "Home" : lit.isEmpty ? "Lights off" : "\(lit.count) of \(lamps.count) lights on")
-                .font(.system(size: 34, weight: .light).monospacedDigit())
-                .multilineTextAlignment(.center)
-                .accessibilityAddTraits(.isHeader)
-            if !lit.isEmpty {
+        let next = agenda.next
+        let hour = Calendar.current.component(.hour, from: .now)
+        let greeting = hour < 5 ? "Late night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
+        return BrickHero(
+            caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
+            title: next?.event.title ?? greeting,
+            subtitle: next.map { "Next up · " + $0.start.formatted(.dateTime.weekday(.wide).hour().minute()) }
+                ?? (agenda.hasAgenda ? "Nothing else on today" : nil)
+        ) {
+            if habits.loaded, !habits.habits.isEmpty {
+                BrickPill(text: "\(habits.doneToday)/\(habits.habits.count)", icon: "checkmark.circle")
+            }
+            if let steps = fitness.today?.steps {
+                BrickPill(text: steps.formatted(), icon: "figure.walk")
+            }
+            if !lamps.isEmpty {
                 Button {
                     for lamp in lit { Task { await store.toggle(lamp, api: session.api, toast: toast) } }
                 } label: {
-                    BrickPill(text: "All lights off", icon: "lightbulb.slash")
+                    BrickPill(text: lit.isEmpty ? "Lights off" : "\(lit.count) on · all off", icon: lit.isEmpty ? "lightbulb.slash" : "lightbulb.fill")
                 }
                 .buttonStyle(.plain)
+                .disabled(lit.isEmpty)
                 .sensoryFeedback(.impact(weight: .medium), trigger: lit.count)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, HubLayout.sectionGap)
     }
 
     @ViewBuilder
@@ -199,6 +214,8 @@ struct HomeView: View {
             }
 
             habitsSection
+
+            AgendaSections(agenda: agenda, habits: habits) { pickedDay = PickedDay(day: $0) }
 
             // Keep the actual control mounted: a fixed-height placeholder jumps at larger text sizes.
             MediaSearchBar { searching = true }
