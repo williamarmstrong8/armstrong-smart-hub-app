@@ -9,6 +9,8 @@ struct TodoSection: View {
     @State private var draft = ""
     @State private var error: String?
     @FocusState private var adding: Bool
+    /// Changes sent and not answered yet; the hub's list only replaces the screen's once none are.
+    @State private var inFlight = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -30,7 +32,7 @@ struct TodoSection: View {
 
     private func row(_ item: TodoItem) -> some View {
         Button {
-            Task { await send("PATCH", Change(id: item.id, done: !item.done)) }
+            toggle(item)
         } label: {
             HStack(spacing: 16) {
                 Image(systemName: item.done ? "checkmark.square.fill" : "square")
@@ -51,7 +53,7 @@ struct TodoSection: View {
         .sensoryFeedback(.success, trigger: item.done) { old, new in new && !old }
         .contextMenu {
             Button("Delete", systemImage: "trash", role: .destructive) {
-                Task { await send("DELETE", Target(id: item.id)) }
+                remove(item)
             }
         }
     }
@@ -75,7 +77,31 @@ struct TodoSection: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draft = ""
+        // Shows at once under a temporary id; the hub's list replaces it when it answers.
+        let temp = TodoItem(id: "local-\(UUID().uuidString)", text: text, done: false)
+        items = (items ?? []) + [temp]
+        save()
         Task { await send("POST", New(text: text)) }
+    }
+
+    private func toggle(_ item: TodoItem) {
+        guard let i = items?.firstIndex(where: { $0.id == item.id }) else { return }
+        items?[i] = TodoItem(id: item.id, text: item.text, done: !item.done)
+        save()
+        // A to-do the hub hasn't answered for yet has no id there to patch.
+        guard !item.id.hasPrefix("local-") else { return }
+        Task { await send("PATCH", Change(id: item.id, done: !item.done)) }
+    }
+
+    private func remove(_ item: TodoItem) {
+        items?.removeAll { $0.id == item.id }
+        save()
+        guard !item.id.hasPrefix("local-") else { return }
+        Task { await send("DELETE", Target(id: item.id)) }
+    }
+
+    private func save() {
+        if let items { DiskCache.write(items, todoCacheName) }
     }
 
     private struct New: Encodable { let text: String }
@@ -84,14 +110,24 @@ struct TodoSection: View {
 
     /// Every change answers with the whole list.
     private func send(_ method: String, _ body: some Encodable) async {
+        inFlight += 1
+        defer { inFlight -= 1 }
         do {
             let api = session.api
             let reply: TodoList = try await api.send(api.request("/api/mobile/todos", method: method, body: body))
-            items = reply.items
             error = nil
+            if inFlight == 1 {
+                items = reply.items
+                save()
+            }
         } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription
+            // Put back what the hub really has.
+            if let real: TodoList = try? await session.api.get("/api/mobile/todos"), inFlight == 1 {
+                items = real.items
+                save()
+            }
         }
     }
 }

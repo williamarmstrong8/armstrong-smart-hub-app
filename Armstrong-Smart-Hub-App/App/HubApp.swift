@@ -197,6 +197,8 @@ struct MainTabView: View {
             }
         }
         .toast(titles.toast)
+        // The rest timer's line around the screen, while the workout is minimised.
+        .overlay { RestStroke(store: workouts) }
         .fullScreenCover(isPresented: $workouts.isPresented) {
             ActiveWorkoutView(store: workouts, maxHr: workouts.maxHr)
         }

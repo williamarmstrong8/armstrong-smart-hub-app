@@ -9,7 +9,7 @@ struct CalendarView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// The last agenda on the phone shows until the hub answers.
     @State private var data: CalendarResponse? = DiskCache.read(calendarCacheName)
-    @State private var todos: [TodoItem]?
+    @State private var todos: [TodoItem]? = DiskCache.read(todoCacheName)
     @State private var habits = HabitsStore()
     @State private var pickedDay: PickedDay?
     @State private var toast = Toast()
@@ -138,12 +138,13 @@ struct CalendarView: View {
             self.error = error.localizedDescription
         }
         // A list that won't load still shows (empty), so adding says what went wrong.
-        if let items = await list?.items { todos = items } else if todos == nil { todos = [] }
+        if let items = await list?.items { todos = items; DiskCache.write(items, todoCacheName) } else if todos == nil { todos = [] }
         await board
     }
 }
 
 let calendarCacheName = "calendar"
+let todoCacheName = "todos"
 
 /// The event coming up next, big.
 private struct CalendarHero: View {

@@ -48,8 +48,10 @@ struct ActiveWorkoutView: View {
         // Over every page of the stack, and pinned to the bottom of the screen
         // so the keyboard covers it instead of pushing it up.
         .overlay(alignment: .bottom) {
-            RestPanel(store: store)
-                .ignoresSafeArea(.keyboard)
+            Color.clear
+        }
+        .overlay {
+            RestStroke(store: store)
                 .hubAnimation(value: store.restEndsAt != nil)
         }
         // While the workout is open, keep the heart rate coming: reconnect, or reopen a stream that went quiet.
@@ -223,8 +225,7 @@ struct ActiveWorkoutView: View {
         .scrollContentBackground(.hidden)
         .background(BrickLook.page)
         .scrollDismissesKeyboard(.immediately)
-        .contentMargins(.bottom, store.restEndsAt == nil ? 0 : 210, for: .scrollContent)
-    }
+            }
 
     @ViewBuilder
     private func exerciseBlock(_ exercise: DraftExercise, workout: ActiveWorkout) -> some View {
@@ -235,7 +236,7 @@ struct ActiveWorkoutView: View {
         .workoutRow(top: 18, bottom: 4)
 
         ExerciseOptions(store: store, exercise: exercise, noteOpen: Binding(
-            get: { openNotes.contains(exercise.id) || !(exercise.notes ?? "").isEmpty },
+            get: { openNotes.contains(exercise.id) || !(exercise.notes ?? "").isEmpty || store.lastNote(exercise.exerciseId) != nil },
             set: { open in if open { openNotes.insert(exercise.id) } else { openNotes.remove(exercise.id) } }))
             .workoutRow(top: 4, bottom: 8)
 
@@ -563,7 +564,7 @@ private struct ExerciseOptions: View {
                     .buttonStyle(.borderless)
             }
             if noteOpen {
-                TextField("Add notes here...", text: Binding(
+                TextField(store.lastNote(exercise.exerciseId).map { "Last time: \($0)" } ?? "Add notes here...", text: Binding(
                     get: { exercise.notes ?? "" },
                     set: { value in store.updateExercise(exercise.id) { $0.notes = value.isEmpty ? nil : value } }),
                           axis: .vertical)
@@ -676,14 +677,9 @@ private struct SetRow: View {
                 .buttonStyle(.borderless)
                 .accessibilityLabel(done ? "Uncheck set" : "Check off set")
             }
-            if done, entry.liveHr != nil || entry.isPR {
+            if done, entry.isPR {
                 HStack(spacing: 10) {
-                    if let bpm = entry.liveHr {
-                        HStack(spacing: 3) { Image(systemName: "heart.fill"); Text("\(bpm) bpm") }.foregroundStyle(Fit.heart)
-                    }
-                    if entry.isPR {
-                        HStack(spacing: 3) { Image(systemName: "trophy.fill"); Text("PR") }.foregroundStyle(Fit.fair)
-                    }
+                    HStack(spacing: 3) { Image(systemName: "trophy.fill"); Text("PR") }.foregroundStyle(Fit.fair)
                 }
                 .font(.caption2.weight(.medium))
                 .padding(.leading, WorkoutColumns.set + 8)
@@ -771,50 +767,52 @@ private struct SetRow: View {
 
 // MARK: Rest timer
 
-/// The countdown after a checked set: a draining bar, the time in big numbers,
-/// and −15, +15 and Skip.
-private struct RestPanel: View {
+/// The rest timer: a line around the edge of the screen that runs out clockwise from the top, so
+/// there's nothing to cover the sets. Skip and +/-15 s stay on the lock screen's Live Activity.
+struct RestStroke: View {
     var store: WorkoutStore
+
+    private static let radius: CGFloat = {
+        let screen = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen }.first
+        return (screen?.value(forKey: "_displayCornerRadius") as? CGFloat).flatMap { $0 > 0 ? $0 : nil } ?? 55
+    }()
 
     var body: some View {
         if let end = store.restEndsAt {
-            TimelineView(.periodic(from: .now, by: 0.25)) { context in
+            TimelineView(.animation) { context in
                 let remaining = max(0, end.timeIntervalSince(context.date))
-                VStack(spacing: 0) {
-                    GeometryReader { geo in
-                        Rectangle().fill(BrickLook.bar)
-                            .frame(width: geo.size.width * (store.restTotal > 0 ? min(1, remaining / store.restTotal) : 0))
-                    }
-                    .frame(height: 4)
-                    VStack(spacing: 16) {
-                        Text(WorkoutFormat.timer(String(Int(remaining.rounded(.up)))))
-                            .font(.system(size: 64, weight: .light)).monospacedDigit()
-                            .contentTransition(.numericText(countsDown: true))
-                        HStack(spacing: 12) {
-                            button("-15", fill: BrickLook.card, text: BrickLook.ink) { store.adjustRest(by: -15) }
-                            button("+15", fill: BrickLook.card, text: BrickLook.ink) { store.adjustRest(by: 15) }
-                            button("Skip", fill: BrickLook.bar, text: BrickLook.page) { store.skipRest() }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 10)
-                }
-                .background(BrickLook.sheet.ignoresSafeArea(edges: .bottom))
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: BrickLook.cardRadius, topTrailingRadius: BrickLook.cardRadius, style: .continuous))
-                .shadow(color: .black.opacity(0.12), radius: 10, y: -2)
+                let left = store.restTotal > 0 ? min(1, remaining / store.restTotal) : 0
+                ScreenEdge(radius: Self.radius, inset: 2)
+                    .trim(from: 0, to: left)
+                    .stroke(BrickLook.live, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
             }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(.opacity)
         }
     }
+}
 
-    private func button(_ title: String, fill: Color, text: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).font(.title3.weight(.medium)).foregroundStyle(text)
-                .frame(maxWidth: .infinity).frame(height: 52)
-                .background(fill, in: .rect(cornerRadius: 18, style: .continuous))
-        }
-        .buttonStyle(.plain)
+/// The screen's outline from the top centre, clockwise.
+private struct ScreenEdge: Shape {
+    var radius: CGFloat
+    var inset: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: inset, dy: inset)
+        let c = max(radius - inset, 0)
+        var p = Path()
+        p.move(to: CGPoint(x: r.midX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX - c, y: r.minY))
+        p.addArc(center: CGPoint(x: r.maxX - c, y: r.minY + c), radius: c, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - c))
+        p.addArc(center: CGPoint(x: r.maxX - c, y: r.maxY - c), radius: c, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        p.addLine(to: CGPoint(x: r.minX + c, y: r.maxY))
+        p.addArc(center: CGPoint(x: r.minX + c, y: r.maxY - c), radius: c, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        p.addLine(to: CGPoint(x: r.minX, y: r.minY + c))
+        p.addArc(center: CGPoint(x: r.minX + c, y: r.minY + c), radius: c, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        p.closeSubpath()
+        return p
     }
 }
 

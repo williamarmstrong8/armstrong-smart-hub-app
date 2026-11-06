@@ -13,6 +13,7 @@ struct FitnessView: View {
     @State private var store = FitnessStore()
     @State private var checkins = CheckinStore.shared
     @State private var showingWatch = false
+    @State private var showingFaces = false
     @State private var pairing = false
     @State private var workouts = WorkoutStore.shared
     /// The pages open on top of the overview.
@@ -134,6 +135,7 @@ struct FitnessView: View {
             }
             #endif
             .sheet(isPresented: $showingWatch) { WatchSheet() }
+            .sheet(isPresented: $showingFaces) { WatchFacesSheet() }
             .sheet(isPresented: $pairing) { PairWatchSheet() }
         }
     }
@@ -270,8 +272,13 @@ struct FitnessView: View {
             .buttonStyle(.plain)
             .frame(minHeight: HubLayout.minHitTarget)
             .padding(.top, HubLayout.topInset)
-            WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil)
-                .padding(.top, 4)
+            Button { if watch.savedWatchID != nil { showingFaces = true } } label: {
+                WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Watch faces")
+            .padding(.top, 4)
             if watch.savedWatchID != nil {
                 Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
                     .font(.caption.weight(.medium)).tracking(1.2)
@@ -388,7 +395,6 @@ struct WatchSheet: View {
                     }
                     .disabled(reparse == "Working…")
                     NavigationLink("Inspect files") { FitnessInspectView() }
-                    NavigationLink("Install to watch") { FitnessInstallView() }
                     LabeledContent("Files on this phone", value: "\(files.store.saved.count)")
                     LabeledContent("Waiting to send", value: "\(files.store.pendingUpload)")
                     if let last = files.lastSync {

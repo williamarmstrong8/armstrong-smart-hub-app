@@ -158,10 +158,19 @@ final class WorkoutStore {
             exercise.restSeconds = item.restSeconds
             exercise.superset = item.superset
             let previous = home?.previous[item.exerciseId] ?? []
-            exercise.sets = item.sets.enumerated().map { i, target in
-                var set = DraftSet(kind: SetKind(rawValue: target.kind) ?? .normal)
-                hint(&set, previous: previous[safe: i], target: target, unit: unit, duration: exercise.isDuration)
-                return set
+            if previous.isEmpty {
+                exercise.sets = item.sets.map { target in
+                    var set = DraftSet(kind: SetKind(rawValue: target.kind) ?? .normal)
+                    hint(&set, previous: nil, target: target, unit: unit, duration: exercise.isDuration)
+                    return set
+                }
+            } else {
+                // As many sets, at the same weights and reps, as the last time this exercise was done.
+                exercise.sets = previous.map { last in
+                    var set = DraftSet(kind: SetKind(rawValue: last.kind) ?? .normal)
+                    hint(&set, previous: last, target: nil, unit: unit, duration: exercise.isDuration)
+                    return set
+                }
             }
             if exercise.sets.isEmpty { addSet(to: &exercise, unit: unit) }
             workout.exercises.append(exercise)
@@ -183,7 +192,7 @@ final class WorkoutStore {
     func addExercises(_ picked: [Exercise]) {
         guard var workout = active else { return }
         for exercise in picked {
-            workout.exercises.append(draft(for: exercise.id, name: exercise.name, unit: workout.unit, count: 3))
+            workout.exercises.append(draft(for: exercise.id, name: exercise.name, unit: workout.unit, count: max(home?.previous[exercise.id]?.count ?? 3, 1)))
         }
         active = workout
     }
@@ -257,11 +266,13 @@ final class WorkoutStore {
         exercise.restSeconds = old.restSeconds
         exercise.superset = old.superset
         let previous = home?.previous[picked.id] ?? []
-        exercise.sets = old.sets.enumerated().map { i, oldSet in
-            var set = DraftSet(kind: oldSet.kind)
-            hint(&set, previous: previous[safe: i], target: nil, unit: workout.unit, duration: picked.isDuration)
-            return set
-        }
+        exercise.sets = previous.isEmpty
+            ? old.sets.map { DraftSet(kind: $0.kind) }
+            : previous.map { last in
+                var set = DraftSet(kind: SetKind(rawValue: last.kind) ?? .normal)
+                hint(&set, previous: last, target: nil, unit: workout.unit, duration: picked.isDuration)
+                return set
+            }
         if exercise.sets.isEmpty { addSet(to: &exercise, unit: workout.unit) }
         workout.exercises[e] = exercise
         active = workout
@@ -416,10 +427,29 @@ final class WorkoutStore {
         setTimer = nil
         active = nil
         guard !workout.completedSets.isEmpty else { return }
+        rememberNotes(workout)
         pending.append(workout)
         save(pending, to: Self.pendingURL)
         await load(api: api)
         justFinished = FinishedWorkout(id: workout.id.uuidString.lowercased(), name: workout.name)
+    }
+
+    // MARK: Exercise notes
+
+    private static let notesKey = "workouts.lastNotes"
+
+    /// The note left on an exercise the last time it was logged, shown the next time.
+    func lastNote(_ exerciseId: String) -> String? {
+        (UserDefaults.standard.dictionary(forKey: Self.notesKey) as? [String: String])?[exerciseId]
+    }
+
+    private func rememberNotes(_ workout: ActiveWorkout) {
+        var all = (UserDefaults.standard.dictionary(forKey: Self.notesKey) as? [String: String]) ?? [:]
+        for exercise in workout.exercises where exercise.sets.contains(where: { $0.completedAt != nil }) {
+            let note = exercise.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            all[exercise.exerciseId] = note.isEmpty ? nil : note
+        }
+        UserDefaults.standard.set(all, forKey: Self.notesKey)
     }
 
     func discard() {
