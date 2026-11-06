@@ -20,7 +20,7 @@ final class MusicStore {
     private(set) var lastPressed: WalkmanKey?
     let toast = Toast()
 
-    var nowPlaying: NowPlaying? { summary?.nowPlaying }
+    var nowPlaying: SpotifyTrack? { summary?.nowPlaying }
     var loaded: Bool { summary != nil }
 
     private static let cacheURL = URL.applicationSupportDirectory.appending(path: "Music/summary.json")
@@ -50,7 +50,7 @@ final class MusicStore {
     func poll(api: APIClient) async {
         guard summary?.isConnected == true, busyKey == nil else { return }
         do {
-            let r: NowPlayingResponse = try await api.get("/api/mobile/spotify/now")
+            let r: SpotifyNowResponse = try await api.get("/api/mobile/spotify/now")
             let changed = r.nowPlaying?.id != summary?.nowPlaying?.id
             summary?.nowPlaying = r.nowPlaying
             // A new song means the last one joined the recent plays.
@@ -75,11 +75,11 @@ final class MusicStore {
         if key == .stop, var now = summary?.nowPlaying {
             now.progressMs = Int(now.elapsed() * 1000)
             now.isPlaying.toggle()
-            now.at = NowPlaying.iso.string(from: .now)
+            now.at = SpotifyTrack.iso.string(from: .now)
             summary?.nowPlaying = now
         }
         do {
-            let r: NowPlayingResponse = try await api.post("/api/mobile/spotify/control", body: ["action": key.action])
+            let r: SpotifyNowResponse = try await api.post("/api/mobile/spotify/control", body: ["action": key.action])
             summary?.nowPlaying = r.nowPlaying
             if key == .play { toast.show("Shuffling") }
         } catch {
@@ -122,16 +122,16 @@ final class MusicStore {
 
     #if DEBUG
     func demoSeed() {
-        let now = NowPlaying.iso.string(from: .now)
+        let now = SpotifyTrack.iso.string(from: .now)
         summary = MusicSummary(
             status: "connected", account: "Will",
-            nowPlaying: NowPlaying(kind: "track", id: "demo", title: "Dreams", subtitle: "Fleetwood Mac", detail: "Rumours",
+            nowPlaying: SpotifyTrack(kind: "track", id: "demo", title: "Dreams", subtitle: "Fleetwood Mac", detail: "Rumours",
                                    image: nil, url: nil, durationMs: 257_000, progressMs: 92_000, isPlaying: true,
                                    shuffle: true, device: "iPhone", at: now),
             recent: [
-                RecentPlay(kind: "track", id: "a", title: "Everywhere", subtitle: "Fleetwood Mac", image: nil, url: nil, playedAt: NowPlaying.iso.string(from: .now.addingTimeInterval(-600)), minutes: 4),
-                RecentPlay(kind: "episode", id: "b", title: "The future of batteries", subtitle: "Acquired", image: nil, url: nil, playedAt: NowPlaying.iso.string(from: .now.addingTimeInterval(-7200)), minutes: 38),
-                RecentPlay(kind: "track", id: "c", title: "Heroes", subtitle: "David Bowie", image: nil, url: nil, playedAt: NowPlaying.iso.string(from: .now.addingTimeInterval(-9000)), minutes: 6),
+                SpotifyRecentPlay(kind: "track", id: "a", title: "Everywhere", subtitle: "Fleetwood Mac", image: nil, url: nil, playedAt: SpotifyTrack.iso.string(from: .now.addingTimeInterval(-600)), minutes: 4),
+                SpotifyRecentPlay(kind: "episode", id: "b", title: "The future of batteries", subtitle: "Acquired", image: nil, url: nil, playedAt: SpotifyTrack.iso.string(from: .now.addingTimeInterval(-7200)), minutes: 38),
+                SpotifyRecentPlay(kind: "track", id: "c", title: "Heroes", subtitle: "David Bowie", image: nil, url: nil, playedAt: SpotifyTrack.iso.string(from: .now.addingTimeInterval(-9000)), minutes: 6),
             ],
             mix: ListeningMix(
                 days: (0..<7).map { i in

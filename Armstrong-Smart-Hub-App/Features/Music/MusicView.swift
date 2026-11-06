@@ -243,7 +243,7 @@ struct MusicView: View {
     }
 
     @ViewBuilder
-    private func pills(_ playing: NowPlaying) -> some View {
+    private func pills(_ playing: SpotifyTrack) -> some View {
         BrickPill(text: playing.isEpisode ? "Podcast" : "Music", icon: playing.isEpisode ? "mic" : "music.note")
         if playing.shuffle { BrickPill(text: "Shuffle", icon: "shuffle") }
         if let device = playing.device { BrickPill(text: device, icon: "hifispeaker") }
@@ -422,7 +422,7 @@ private struct MixSection: View {
 // MARK: Recent
 
 private struct RecentSection: View {
-    var plays: [RecentPlay]
+    var plays: [SpotifyRecentPlay]
 
     var body: some View {
         FitSection(title: "Recently played", trailing: plays.isEmpty ? nil : "\(plays.count) plays") {
@@ -442,7 +442,7 @@ private struct RecentSection: View {
 }
 
 private struct RecentRow: View {
-    var play: RecentPlay
+    var play: SpotifyRecentPlay
 
     var body: some View {
         if let url = play.url.flatMap(URL.init(string:)) {

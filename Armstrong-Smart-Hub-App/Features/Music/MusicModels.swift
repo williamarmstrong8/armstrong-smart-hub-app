@@ -5,14 +5,14 @@ struct MusicSummary: Decodable, Equatable {
     /// "connected", "not_connected" or "unconfigured" (no Spotify app keys on the hub).
     var status: String
     var account: String?
-    var nowPlaying: NowPlaying?
-    var recent: [RecentPlay]
+    var nowPlaying: SpotifyTrack?
+    var recent: [SpotifyRecentPlay]
     var mix: ListeningMix?
 
     var isConnected: Bool { status == "connected" }
 }
 
-struct NowPlaying: Decodable, Equatable {
+struct SpotifyTrack: Decodable, Equatable {
     /// "track" or "episode".
     var kind: String
     var id: String
@@ -49,7 +49,7 @@ struct NowPlaying: Decodable, Equatable {
     static let isoPlain = ISO8601DateFormatter()
 }
 
-struct RecentPlay: Decodable, Equatable, Identifiable {
+struct SpotifyRecentPlay: Decodable, Equatable, Identifiable {
     var kind: String
     var id: String
     var title: String
@@ -60,7 +60,7 @@ struct RecentPlay: Decodable, Equatable, Identifiable {
     var minutes: Int
 
     var isEpisode: Bool { kind == "episode" }
-    var date: Date { NowPlaying.iso.date(from: playedAt) ?? NowPlaying.isoPlain.date(from: playedAt) ?? .now }
+    var date: Date { SpotifyTrack.iso.date(from: playedAt) ?? SpotifyTrack.isoPlain.date(from: playedAt) ?? .now }
     /// Unique per play: the same song twice is two rows.
     var rowID: String { "\(id)|\(playedAt)" }
 }
@@ -89,7 +89,7 @@ struct ListeningMix: Decodable, Equatable {
     var topShow: String?
 }
 
-struct NowPlayingResponse: Decodable { var nowPlaying: NowPlaying? }
+struct SpotifyNowResponse: Decodable { var nowPlaying: SpotifyTrack? }
 struct SpotifyConnectResponse: Decodable { var url: String }
 
 /// A Walkman key, as the hub's control route names them.

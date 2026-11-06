@@ -5,7 +5,7 @@ import SwiftUI
 /// warped onto it in perspective, and each of the four top keys is its own layer so
 /// it can sink into the body when pressed.
 struct WalkmanHero: View {
-    var playing: NowPlaying?
+    var playing: SpotifyTrack?
     /// 0...1 per key: how far down it is.
     var depth: [WalkmanKey: Double]
     /// A key just pressed: its word shows across the window for a moment.
@@ -144,7 +144,7 @@ private extension WalkmanKey {
 /// What shows through the window: two tape reels that turn while it plays (the left one
 /// emptying into the right as the track goes on), the title, a tape counter and the flags.
 struct WalkmanLCD: View {
-    var playing: NowPlaying?
+    var playing: SpotifyTrack?
     var flash: WalkmanKey?
     var winding: WalkmanKey?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
