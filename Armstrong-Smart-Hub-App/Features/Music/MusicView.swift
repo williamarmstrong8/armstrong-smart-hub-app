@@ -141,9 +141,9 @@ struct MusicView: View {
 
             walkman
                 .padding(.horizontal, 8)
-                .padding(.top, 8)
+                .padding(.top, 4)
 
-            heroText.padding(.top, 18)
+            heroText.padding(.top, 12)
 
             if store.summary?.isConnected == true {
                 transport.padding(.top, HubLayout.sectionGap)
@@ -178,7 +178,7 @@ struct MusicView: View {
         return WalkmanHero(playing: store.nowPlaying, depth: depth, flash: flash, winding: winding) { key in
             press(key)
         }
-        .frame(maxWidth: 360)
+        .frame(maxWidth: 250)
         // A little give in the whole body when a key goes down, and a turn toward a swipe.
         .offset(x: swipe * 0.25, y: pressed * 2)
         .rotation3DEffect(.degrees(reduceMotion ? 0 : Double(swipe) / 9), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
@@ -233,38 +233,25 @@ struct MusicView: View {
         }
     }
 
-    @ViewBuilder
+    /// Just the title and who it's by; the device, mode and album live in the controls.
     private var heroText: some View {
-        let playing = store.nowPlaying
-        VStack(spacing: 8) {
-            BrickCaps(text: caption).foregroundStyle(BrickLook.soft)
-                .multilineTextAlignment(.center)
+        VStack(spacing: 6) {
+            if store.nowPlaying == nil {
+                BrickCaps(text: caption).foregroundStyle(BrickLook.soft)
+                    .multilineTextAlignment(.center)
+            }
             Text(title)
-                .font(.largeTitle.weight(.light))
+                .font(store.nowPlaying == nil ? .largeTitle.weight(.light) : .title2.weight(.regular))
                 .multilineTextAlignment(.center)
-                .lineLimit(3)
+                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             if let subtitle {
-                Text(subtitle).font(.body).foregroundStyle(BrickLook.soft).multilineTextAlignment(.center)
-            }
-            if let playing {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { pills(playing) }
-                    VStack(spacing: 8) { pills(playing) }
-                }
-                .padding(.top, 8)
+                Text(subtitle).font(.subheadline).foregroundStyle(BrickLook.soft).multilineTextAlignment(.center).lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity)
-        .animation(reduceMotion ? nil : HubMotion.standard, value: playing?.id)
-    }
-
-    @ViewBuilder
-    private func pills(_ playing: SpotifyTrack) -> some View {
-        BrickPill(text: playing.isEpisode ? "Podcast" : "Music", icon: playing.isEpisode ? "mic" : "music.note")
-        if playing.shuffle { BrickPill(text: "Shuffle", icon: "shuffle") }
-        if let device = playing.device { BrickPill(text: device, icon: "hifispeaker") }
+        .animation(reduceMotion ? nil : HubMotion.standard, value: store.nowPlaying?.id)
     }
 
     private var caption: String {
@@ -287,7 +274,7 @@ struct MusicView: View {
         case "not_connected": return "Link your account and the Walkman shows what's playing, with your library and picks for what to hear next."
         default:
             guard let playing = summary.nowPlaying else { return "Open Spotify on a device, then pull the page down." }
-            return [playing.subtitle, playing.detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+            return playing.subtitle
         }
     }
 
@@ -299,8 +286,9 @@ struct MusicView: View {
         return VStack(spacing: 18) {
             if let now { scrubber(now) }
             HStack(spacing: 10) {
-                toggleButton("shuffle", on: now?.shuffle == true, label: "Shuffle") {
-                    Task { await store.toggleShuffle(api: session.api) }
+                toggleButton(store.smartShuffle ? "sparkles" : "shuffle", on: now?.shuffle == true,
+                             label: store.smartShuffle ? "Smart shuffle" : "Shuffle") {
+                    Task { await store.cycleShuffle(api: session.api) }
                 }
                 transportButton("backward.fill", label: "Previous", key: .rew)
                 transportButton(playing ? "pause.fill" : "play.fill", label: playing ? "Pause" : "Play", key: .stop, large: true)
@@ -329,7 +317,7 @@ struct MusicView: View {
 
     /// Drag to seek; the clock runs between the hub's readings.
     private func scrubber(_ now: SpotifyTrack) -> some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: now.isPlaying == false || scrub != nil)) { context in
             let live = now.progress(at: context.date)
             let shown = scrub ?? live
             VStack(spacing: 4) {

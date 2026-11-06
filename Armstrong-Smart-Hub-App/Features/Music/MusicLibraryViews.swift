@@ -491,7 +491,7 @@ struct MusicMiniBar: View {
             .padding(.horizontal, 12).padding(.vertical, 8)
             .background(HubDesign.raised, in: .rect(cornerRadius: HubLayout.controlRadius, style: .continuous))
             .overlay(alignment: .bottom) {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !now.isPlaying)) { context in
                     GeometryReader { geo in
                         Capsule().fill(spotifyGreen)
                             .frame(width: geo.size.width * now.progress(at: context.date), height: 2)

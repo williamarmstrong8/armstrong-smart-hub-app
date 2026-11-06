@@ -53,7 +53,17 @@ final class MusicStore {
         do {
             let r: SpotifyNowResponse = try await api.get("/api/mobile/spotify/now")
             let changed = r.nowPlaying?.id != summary?.nowPlaying?.id
-            summary?.nowPlaying = r.nowPlaying
+            // Same song still playing: keep the running clock unless the hub's reading
+            // is well off, so the progress bar glides instead of nudging back and forth.
+            if var fresh = r.nowPlaying, let old = summary?.nowPlaying, !changed, fresh.isPlaying, old.isPlaying,
+               abs(fresh.elapsed() - old.elapsed()) < 2.5 {
+                fresh.progressMs = old.progressMs
+                fresh.at = old.at
+                summary?.nowPlaying = fresh
+            } else {
+                summary?.nowPlaying = r.nowPlaying
+            }
+            if changed { await smartShuffleTick(api: api) }
             // A new song means the last one joined the recent plays.
             if changed { await load(api: api) }
         } catch {}
@@ -182,7 +192,8 @@ final class MusicStore {
                 // start it through the link, then (for a song inside a list, or an episode
                 // part-way) let the hub start it exactly, on the phone.
                 SpotifyRemote.shared.play(body.contextUri ?? body.uri ?? "")
-                guard body.contextUri != nil && body.uri != nil || body.positionMs != nil else {
+                let isEpisode = body.uri?.hasPrefix("spotify:episode:") == true
+                guard body.contextUri != nil && body.uri != nil || body.positionMs != nil || isEpisode else {
                     try? await Task.sleep(for: .milliseconds(700))
                     await poll(api: api, force: true)
                     return
@@ -339,6 +350,49 @@ final class MusicStore {
         let next = !(summary?.nowPlaying?.shuffle ?? false)
         summary?.nowPlaying?.shuffle = next
         await adjust(["action": .string("shuffle"), "state": .bool(next)], api: api)
+    }
+
+    // MARK: Smart shuffle
+
+    /// Spotify's own Smart Shuffle isn't open to apps, so the hub does the same job: with
+    /// shuffle on, it slips a pick you haven't played lately in among the songs every few plays.
+    private(set) var smartShuffle: Bool = UserDefaults.standard.bool(forKey: "spotify.smartShuffle") {
+        didSet { UserDefaults.standard.set(smartShuffle, forKey: "spotify.smartShuffle") }
+    }
+    private var songsSinceSmart = 0
+
+    /// Off → shuffle → smart shuffle → off, like Spotify's own button.
+    func cycleShuffle(api: APIClient) async {
+        let shuffling = summary?.nowPlaying?.shuffle ?? false
+        if !shuffling {
+            smartShuffle = false
+            await toggleShuffle(api: api)
+            toast.show("Shuffle on")
+        } else if !smartShuffle {
+            smartShuffle = true
+            songsSinceSmart = 0
+            toast.show("Smart shuffle on")
+            await addSmartPick(api: api)
+        } else {
+            smartShuffle = false
+            await toggleShuffle(api: api)
+            toast.show("Shuffle off")
+        }
+    }
+
+    private func smartShuffleTick(api: APIClient) async {
+        guard smartShuffle, summary?.nowPlaying?.isEpisode == false else { return }
+        songsSinceSmart += 1
+        if songsSinceSmart >= 3 {
+            songsSinceSmart = 0
+            await addSmartPick(api: api)
+        }
+    }
+
+    private func addSmartPick(api: APIClient) async {
+        struct Pick: Decodable { var added: SpotifyItem? }
+        let artist = summary?.nowPlaying?.subtitle
+        _ = try? await api.post("/api/mobile/spotify/smart", body: ["artist": JSONValue.string(artist ?? "")]) as Pick
     }
 
     func queue(_ item: SpotifyItem, api: APIClient) async {
