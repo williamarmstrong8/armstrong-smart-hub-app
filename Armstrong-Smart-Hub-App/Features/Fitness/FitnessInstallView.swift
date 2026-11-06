@@ -92,7 +92,7 @@ struct WatchFacesSheet: View {
             Text("Version \(face.version) · \(max(face.size / 1024, 1)) KB")
                 .font(.caption).foregroundStyle(.secondary)
         }
-        .containerRelativeFrame(.horizontal, count: 1, spacing: 0) { width, _ in min(width - 120, 220) }
+        .containerRelativeFrame(.horizontal) { width, _ in min(width - 120, 220) }
         .offset(y: up)
         .scaleEffect(ready ? 1.06 : 1)
         .opacity(1 - min(-up / 400, 0.5))
