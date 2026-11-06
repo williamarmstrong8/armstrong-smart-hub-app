@@ -27,6 +27,8 @@ final class SpotifyRemote: NSObject {
     @ObservationIgnored private var clientID: String?
     @ObservationIgnored private var waiters: [CheckedContinuation<Bool, Never>] = []
     @ObservationIgnored private var attempt = 0
+    /// Connecting with a token Spotify just handed back, so a failure ends the sign-in too.
+    @ObservationIgnored private var connectingWithNewToken = false
 
     /// App Remote's token from the Spotify app; it only lets this phone talk to Spotify on this phone.
     @ObservationIgnored private var token: String? {
@@ -51,17 +53,44 @@ final class SpotifyRemote: NSObject {
     /// person said no, or it didn't come back in time.
     func wake(playing uri: String) async -> Bool {
         guard let remote = appRemote else { return false }
-        if remote.isConnected {
-            if !uri.isEmpty { remote.playerAPI?.play(uri, callback: nil) }
-            return true
+        lastError = nil
+        if !remote.isConnected, remote.connectionParameters.accessToken != nil {
+            // Spotify may still be running: try the link without leaving the app.
+            if await connect(remote, within: .seconds(3)) == false { remote.disconnect() }
         }
+        if !remote.isConnected {
+            // Sign in with no song: asking App Remote to play a URI while authorizing is a
+            // known cause of Spotify showing an X and bouncing back. The song plays after.
+            guard await authorize(remote) else { return false }
+        }
+        if !uri.isEmpty { remote.playerAPI?.play(uri, callback: nil) }
+        else { remote.playerAPI?.resume(nil) }
+        return true
+    }
+
+    private func connect(_ remote: SPTAppRemote, within limit: Duration) async -> Bool {
+        attempt += 1
+        let this = attempt
+        return await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+            remote.connect()
+            Task { @MainActor in
+                try? await Task.sleep(for: limit)
+                if self.attempt == this { self.finish(false) }
+            }
+        }
+    }
+
+    private func authorize(_ remote: SPTAppRemote) async -> Bool {
+        lastError = nil
+        connectingWithNewToken = false
         waking = true
         defer { waking = false }
         attempt += 1
         let this = attempt
         return await withCheckedContinuation { continuation in
             waiters.append(continuation)
-            remote.authorizeAndPlayURI(uri) { installed in
+            remote.authorizeAndPlayURI("") { installed in
                 guard !installed else { return }
                 Task { @MainActor in
                     self.lastError = "Spotify isn't installed on this phone."
@@ -70,7 +99,10 @@ final class SpotifyRemote: NSObject {
             }
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(25))
-                if self.attempt == this { self.finish(false) }
+                if self.attempt == this {
+                    if self.lastError == nil { self.lastError = "Spotify didn't come back." }
+                    self.finish(false)
+                }
             }
         }
     }
@@ -78,13 +110,19 @@ final class SpotifyRemote: NSObject {
     /// armstronghub://spotify-remote, on the way back from Spotify.
     @discardableResult
     func handle(_ url: URL) -> Bool {
-        guard let remote = appRemote, let params = remote.authorizationParameters(from: url) else { return false }
+        guard let remote = appRemote else { return false }
+        guard let params = remote.authorizationParameters(from: url) else {
+            lastError = "Spotify came back without a token (\(url.query ?? url.absoluteString))."
+            finish(false)
+            return true
+        }
         if let token = params[SPTAppRemoteAccessTokenKey] {
             self.token = token
             remote.connectionParameters.accessToken = token
+            connectingWithNewToken = true
             remote.connect()
         } else {
-            lastError = params[SPTAppRemoteErrorDescriptionKey] ?? "Spotify didn't connect."
+            lastError = "Spotify said: \(params[SPTAppRemoteErrorDescriptionKey] ?? "no").".replacingOccurrences(of: "..", with: ".")
             finish(false)
         }
         return true
@@ -116,7 +154,9 @@ extension SpotifyRemote: SPTAppRemoteDelegate {
         let message = error?.localizedDescription
         Task { @MainActor in
             self.isConnected = false
-            self.lastError = message
+            // An old token failing while the sign-in is open isn't the sign-in failing.
+            guard !self.waking || self.connectingWithNewToken else { return }
+            if let message { self.lastError = "Spotify said: \(message)" }
             self.finish(false)
         }
     }

@@ -124,12 +124,20 @@ struct LastWorkoutCard: View {
                         Spacer(minLength: 8)
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Fit.faint)
                     }
-                    HStack(alignment: .top, spacing: 12) {
-                        stat(FitnessFormat.duration(workout.duration), "Time")
-                        stat(WorkoutFormat.volumeNumber(workout.volumeKg, unit: unit), "Volume (\(unit.rawValue))")
-                        stat(workout.avgHr.map(String.init) ?? "–", "Avg HR", tint: workout.avgHr == nil ? nil : Fit.heart)
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 18) {
+                        GridRow {
+                            stat(FitnessFormat.duration(workout.duration), "Time")
+                            stat(WorkoutFormat.volumeNumber(workout.volumeKg, unit: unit), "Volume (\(unit.rawValue))")
+                            stat("\(workout.sets)", "Sets")
+                        }
+                        if workout.avgHr != nil || workout.maxHr != nil {
+                            GridRow {
+                                stat(workout.avgHr.map(String.init) ?? "–", "Avg HR", tint: Fit.heart)
+                                stat(workout.maxHr.map(String.init) ?? "–", "Max HR", tint: Fit.heart)
+                                stat("\(workout.exercises.count)", "Exercises")
+                            }
+                        }
                     }
-                    volumeBars
                     if !workout.exercises.isEmpty {
                         Text(workout.exercises.joined(separator: " · "))
                             .font(.footnote).foregroundStyle(BrickLook.soft).lineLimit(2)
@@ -151,26 +159,6 @@ struct LastWorkoutCard: View {
             Text(label).font(.caption).foregroundStyle(BrickLook.soft)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Volume of the last few workouts, oldest first, this one in blue.
-    @ViewBuilder private var volumeBars: some View {
-        let recent = Array(store.workouts.prefix(8).reversed())
-        let top = recent.map(\.volumeKg).max() ?? 0
-        if recent.count > 1, top > 0 {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .bottom, spacing: 6) {
-                    ForEach(recent) { item in
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(item.id == workout.id ? Fit.action : BrickLook.track)
-                            .frame(height: max(4, 56 * item.volumeKg / top))
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .frame(height: 56, alignment: .bottom)
-                Text("Volume, last \(recent.count) workouts").font(.caption).foregroundStyle(BrickLook.soft)
-            }
-        }
     }
 }
 

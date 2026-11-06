@@ -115,14 +115,14 @@ final class MusicStore {
         catch { if library == nil { toast.error(error) } }
     }
 
-    func loadDevices(api: APIClient) async {
+    func loadDevices(api: APIClient, quiet: Bool = false) async {
         loadingDevices = true
         defer { loadingDevices = false }
         do {
             let r: SpotifyDevicesResponse = try await api.get("/api/mobile/spotify/devices")
             devices = r.devices
         } catch is CancellationError {
-        } catch { toast.error(error) }
+        } catch { if !quiet { toast.error(error) } }
     }
 
     private struct PlayBody: Encodable {
@@ -150,34 +150,56 @@ final class MusicStore {
         await start(PlayBody(contextUri: contextUri), id: contextUri, api: api)
     }
 
+    /// Plays go to this iPhone unless another device was picked in the device list.
+    private(set) var preferPhone: Bool = UserDefaults.standard.object(forKey: "spotify.preferPhone") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(preferPhone, forKey: "spotify.preferPhone") }
+    }
+
     private func start(_ body: PlayBody, id: String, api: APIClient) async {
         guard starting == nil else { return }
         starting = id
         defer { starting = nil }
-        do {
-            let r: SpotifyNowResponse = try await api.post("/api/mobile/spotify/play", body: body)
-            if let now = r.nowPlaying { summary?.nowPlaying = now }
-        } catch where Self.isNoDevice(error) {
-            // No device awake: start it in Spotify on this phone. App Remote plays one URI, so a
-            // song inside a list is started again through the hub once the phone is a device,
-            // to keep the list going after it.
-            let first = body.contextUri ?? body.uri ?? ""
-            guard await wakePhone(playing: first) else { return }
-            if body.contextUri != nil, body.uri != nil || body.positionMs != nil {
+        var body = body
+        if body.deviceId == nil, preferPhone {
+            if let phone = await phoneDeviceID(api: api) {
+                body.deviceId = phone
+            } else if await wakePhone(playing: body.contextUri ?? body.uri ?? "", quiet: true) {
+                // Spotify on the phone is up and playing the list (or the song) from the top;
+                // the hub then starts it at the row tapped, on the phone.
                 try? await Task.sleep(for: .milliseconds(800))
-                if let r: SpotifyNowResponse = try? await api.post("/api/mobile/spotify/play", body: body), let now = r.nowPlaying {
-                    summary?.nowPlaying = now
+                body.deviceId = await phoneDeviceID(api: api)
+                if body.deviceId == nil || (body.contextUri == nil && body.positionMs == nil) {
+                    await poll(api: api, force: true)
                     return
                 }
             }
-            await poll(api: api, force: true)
+            // Otherwise it plays wherever Spotify is active, and says so below if nowhere is.
+        }
+        do {
+            let r: SpotifyNowResponse = try await api.post("/api/mobile/spotify/play", body: body)
+            if let now = r.nowPlaying { summary?.nowPlaying = now }
+            // Wanted the phone but it wouldn't wake: say where it went instead, and why.
+            if preferPhone, body.deviceId == nil, let why = SpotifyRemote.shared.lastError {
+                toast.show("Playing on \(r.nowPlaying?.device ?? "another device"). This phone: \(why)", error: true)
+            }
+        } catch where Self.isNoDevice(error) {
+            toast.show(SpotifyRemote.shared.lastError.map { "Couldn't start Spotify on this phone. \($0)" }
+                       ?? "Open Spotify on a device, or pick one from the speaker button.", error: true)
         } catch {
             toast.error(error)
         }
     }
 
+    /// This phone's entry in Spotify's device list, while Spotify on it is awake.
+    private func phoneDeviceID(api: APIClient) async -> String? {
+        await loadDevices(api: api, quiet: true)
+        let phones = devices.filter { $0.type.lowercased() == "smartphone" && !$0.restricted }
+        return (phones.first(where: \.isActive) ?? phones.first)?.id
+    }
+
     /// Starts Spotify on this phone where it left off, so it joins the device list.
     func wakeThisPhone(api: APIClient) async {
+        preferPhone = true
         guard await wakePhone(playing: "") else { return }
         try? await Task.sleep(for: .milliseconds(600))
         await poll(api: api, force: true)
@@ -191,19 +213,20 @@ final class MusicStore {
     }
 
     /// Opens Spotify on this phone for a moment (it comes straight back) so it can play.
-    private func wakePhone(playing uri: String) async -> Bool {
+    private func wakePhone(playing uri: String, quiet: Bool = false) async -> Bool {
         let remote = SpotifyRemote.shared
         guard remote.isConfigured else {
-            toast.show("Open Spotify on a device first.", error: true)
+            if !quiet { toast.show("Open Spotify on a device first.", error: true) }
             return false
         }
         if await remote.wake(playing: uri) { return true }
-        toast.show(remote.lastError ?? "Spotify didn't open. Open it on a device and try again.", error: true)
+        if !quiet { toast.show("Couldn't start Spotify on this phone. \(remote.lastError ?? "Spotify didn't come back.")", error: true) }
         return false
     }
 
     /// Moves playback to a device (and keeps it playing).
     func transfer(to device: SpotifyDevice, api: APIClient) async {
+        preferPhone = device.type.lowercased() == "smartphone"
         starting = device.id
         defer { starting = nil }
         do {
