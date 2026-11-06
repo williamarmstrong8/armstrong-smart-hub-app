@@ -108,6 +108,8 @@ final class MusicStore {
 
     /// The library: playlists, liked songs, albums, shows and saved episodes.
     private(set) var library: SpotifyLibrary?
+    /// Episodes to listen to and the picks from the listening history.
+    private(set) var discover: SpotifyDiscover?
     /// Everywhere Spotify can play right now.
     private(set) var devices: [SpotifyDevice] = []
     private(set) var loadingDevices = false
@@ -119,6 +121,11 @@ final class MusicStore {
         do { library = try await api.get("/api/mobile/spotify/library") }
         catch is CancellationError {}
         catch { if library == nil { toast.error(error) } }
+    }
+
+    func loadDiscover(api: APIClient) async {
+        guard summary?.isConnected == true else { return }
+        if let found: SpotifyDiscover = try? await api.get("/api/mobile/spotify/discover") { discover = found }
     }
 
     func loadDevices(api: APIClient, quiet: Bool = false) async {
@@ -388,20 +395,7 @@ final class MusicStore {
             status: "connected", account: "Will",
             nowPlaying: SpotifyTrack(kind: "track", id: "demo", title: "Dreams", subtitle: "Fleetwood Mac", detail: "Rumours",
                                    image: nil, url: nil, durationMs: 257_000, progressMs: 92_000, isPlaying: true,
-                                   shuffle: true, device: "iPhone", at: now),
-            recent: [
-                SpotifyRecentPlay(kind: "track", id: "a", title: "Everywhere", subtitle: "Fleetwood Mac", image: nil, url: nil, playedAt: SpotifyTrack.iso.string(from: .now.addingTimeInterval(-600)), minutes: 4),
-                SpotifyRecentPlay(kind: "episode", id: "b", title: "The future of batteries", subtitle: "Acquired", image: nil, url: nil, playedAt: SpotifyTrack.iso.string(from: .now.addingTimeInterval(-7200)), minutes: 38),
-                SpotifyRecentPlay(kind: "track", id: "c", title: "Heroes", subtitle: "David Bowie", image: nil, url: nil, playedAt: SpotifyTrack.iso.string(from: .now.addingTimeInterval(-9000)), minutes: 6),
-            ],
-            mix: ListeningMix(
-                days: (0..<7).map { i in
-                    let d = Calendar.current.date(byAdding: .day, value: i - 6, to: .now)!
-                    let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-                    return .init(day: f.string(from: d), musicMinutes: [42, 65, 30, 88, 54, 120, 70][i], podcastMinutes: [35, 20, 60, 15, 40, 0, 25][i])
-                },
-                musicMinutes: 469, podcastMinutes: 195, podcastShare: 0.29, mood: "Mostly music",
-                line: "Music first, with 29% talk mixed in.", topArtist: "Fleetwood Mac", topShow: "Acquired"))
+                                   shuffle: true, device: "iPhone", at: now))
     }
     #endif
 }

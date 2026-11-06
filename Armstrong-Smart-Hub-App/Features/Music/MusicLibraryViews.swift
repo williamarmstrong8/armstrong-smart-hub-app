@@ -58,29 +58,29 @@ struct SpotifyArt: View {
 
 // MARK: Library on the Music page
 
-/// Liked songs and saved episodes up top, then shelves of playlists, shows and albums.
+/// No cards: Liked Songs, then shelves of covers and a list of episodes, all floating
+/// on the page as artwork with its name and details beside or under it.
 struct LibrarySection: View {
     var library: SpotifyLibrary
+    var discover: SpotifyDiscover?
 
     var body: some View {
-        FitSection(title: "Your library") {
-            VStack(spacing: 0) {
-                NavigationLink(value: MusicRoute.collection(kind: "liked", id: "liked", title: "Liked Songs")) {
-                    shortcut(kind: "liked", title: "Liked Songs", detail: "\(library.liked.total) songs")
-                }
-                if !library.episodes.isEmpty {
-                    BrickDivider()
-                    NavigationLink(value: MusicRoute.episodes) {
-                        shortcut(kind: "episode", title: "Your Episodes",
-                                 detail: "\(library.episodes.count) saved", image: library.episodes.first?.image)
-                    }
-                }
+        VStack(alignment: .leading, spacing: 28) {
+            NavigationLink(value: MusicRoute.collection(kind: "liked", id: "liked", title: "Liked Songs")) {
+                shortcut(kind: "liked", title: "Liked Songs", detail: "\(library.liked.total) songs")
             }
             .buttonStyle(.plain)
             if !library.playlists.isEmpty { Shelf(title: "Playlists", items: library.playlists) }
-            if !library.shows.isEmpty { Shelf(title: "Podcasts", items: library.shows) }
+            if let episodes = discover?.episodes, !episodes.isEmpty { EpisodeList(episodes: episodes) }
+            if let picks = discover?.recommendedPodcasts, !picks.isEmpty {
+                Shelf(title: "Podcasts for you", items: picks)
+            }
+            if let picks = discover?.recommendedPlaylists, !picks.isEmpty {
+                Shelf(title: "Playlists for you", items: picks)
+            }
             if !library.albums.isEmpty { Shelf(title: "Albums", items: library.albums) }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func shortcut(kind: String, title: String, detail: String, image: String? = nil) -> some View {
@@ -94,8 +94,21 @@ struct LibrarySection: View {
             Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium)).foregroundStyle(BrickLook.soft)
         }
         .foregroundStyle(BrickLook.ink)
-        .padding(.vertical, 10)
         .contentShape(.rect)
+    }
+}
+
+/// Podcast episodes to play now, newest first; tap to play from where you left off.
+private struct EpisodeList: View {
+    var episodes: [SpotifyItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Podcasts").font(.headline)
+            LazyVStack(spacing: 0) {
+                ForEach(episodes) { item in ItemRow(item: item) }
+            }
+        }
     }
 }
 
@@ -249,15 +262,12 @@ struct CollectionPage: View {
                     Text(note).font(.subheadline).foregroundStyle(BrickLook.soft).multilineTextAlignment(.center)
                 }
                 if !page.items.isEmpty {
-                    BrickCard(padding: 16) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(page.items.enumerated()), id: \.offset) { index, item in
-                                if index > 0 { BrickDivider() }
-                                ItemRow(item: item, contextUri: page.contextUri, showArt: kind != "album")
-                                    .onAppear { if index == page.items.count - 5 { Task { await more() } } }
-                            }
-                            if loadingMore { ProgressView().padding() }
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(page.items.enumerated()), id: \.offset) { index, item in
+                            ItemRow(item: item, contextUri: page.contextUri, showArt: kind != "album")
+                                .onAppear { if index == page.items.count - 5 { Task { await more() } } }
                         }
+                        if loadingMore { ProgressView().padding() }
                     }
                 }
             } else if let error {
@@ -335,33 +345,6 @@ struct CollectionPage: View {
     }
 }
 
-// MARK: Saved episodes
-
-struct EpisodesPage: View {
-    @State private var store = MusicStore.shared
-
-    var body: some View {
-        BrickPage(title: "Your Episodes") {
-            let episodes = store.library?.episodes ?? []
-            if episodes.isEmpty {
-                MessageView(title: "No saved episodes", systemImage: "mic",
-                            message: "Episodes you save in Spotify show up here.")
-            } else {
-                BrickCard(padding: 16) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(episodes.enumerated()), id: \.element.id) { index, item in
-                            if index > 0 { BrickDivider() }
-                            ItemRow(item: item)
-                        }
-                    }
-                }
-            }
-        }
-        .safeAreaInset(edge: .bottom) { MusicMiniBar() }
-        .toast(store.toast)
-    }
-}
-
 // MARK: Search
 
 struct MusicSearchPage: View {
@@ -425,16 +408,13 @@ struct MusicSearchPage: View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text(title).font(.headline)
-                BrickCard(padding: 16) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                            if index > 0 { BrickDivider() }
-                            if item.kind == "artist" {
-                                // Artist pages are gone for development apps; tapping plays the artist.
-                                ArtistRow(item: item)
-                            } else {
-                                ItemRow(item: item)
-                            }
+                VStack(spacing: 0) {
+                    ForEach(items) { item in
+                        if item.kind == "artist" {
+                            // Artist pages are gone for development apps; tapping plays the artist.
+                            ArtistRow(item: item)
+                        } else {
+                            ItemRow(item: item)
                         }
                     }
                 }

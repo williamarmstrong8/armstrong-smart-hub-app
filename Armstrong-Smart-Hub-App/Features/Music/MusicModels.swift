@@ -8,8 +8,6 @@ struct MusicSummary: Decodable, Equatable {
     var clientId: String?
     var account: String?
     var nowPlaying: SpotifyTrack?
-    var recent: [SpotifyRecentPlay]
-    var mix: ListeningMix?
 
     var isConnected: Bool { status == "connected" || status == "needs_reconnect" }
     /// Linked before the hub asked to read the library: playback works, the library doesn't.
@@ -59,47 +57,6 @@ struct SpotifyTrack: Decodable, Equatable {
         return f
     }()
     static let isoPlain = ISO8601DateFormatter()
-}
-
-struct SpotifyRecentPlay: Decodable, Equatable, Identifiable {
-    var kind: String
-    var id: String
-    var title: String
-    var subtitle: String
-    var image: String?
-    var url: String?
-    var playedAt: String
-    var minutes: Int
-
-    var isEpisode: Bool { kind == "episode" }
-    var uri: String { "spotify:\(kind):\(id)" }
-    var date: Date { SpotifyTrack.iso.date(from: playedAt) ?? SpotifyTrack.isoPlain.date(from: playedAt) ?? .now }
-    /// Unique per play: the same song twice is two rows.
-    var rowID: String { "\(id)|\(playedAt)" }
-}
-
-struct ListeningMix: Decodable, Equatable {
-    struct Day: Decodable, Equatable, Identifiable {
-        var day: String
-        var musicMinutes: Int
-        var podcastMinutes: Int
-        var id: String { day }
-        var date: Date {
-            let f = DateFormatter()
-            f.calendar = Calendar(identifier: .gregorian)
-            f.dateFormat = "yyyy-MM-dd"
-            return f.date(from: day) ?? .now
-        }
-    }
-
-    var days: [Day]
-    var musicMinutes: Int
-    var podcastMinutes: Int
-    var podcastShare: Double
-    var mood: String
-    var line: String
-    var topArtist: String?
-    var topShow: String?
 }
 
 struct SpotifyNowResponse: Decodable { var nowPlaying: SpotifyTrack? }
@@ -168,6 +125,13 @@ struct SpotifyLibrary: Decodable, Equatable {
     var liked: Liked
 }
 
+/// Episodes to listen to, and podcasts and playlists picked from the listening history.
+struct SpotifyDiscover: Decodable, Equatable {
+    var episodes: [SpotifyItem]
+    var recommendedPodcasts: [SpotifyItem]
+    var recommendedPlaylists: [SpotifyItem]
+}
+
 struct SpotifyCollection: Decodable, Equatable {
     var header: SpotifyItem
     /// What a row plays from; nil plays the row alone (podcast episodes).
@@ -219,7 +183,6 @@ struct SpotifyDevicesResponse: Decodable { var devices: [SpotifyDevice] }
 /// A list to open from the Music page.
 enum MusicRoute: Hashable {
     case collection(kind: String, id: String, title: String)
-    case episodes
     case search
 }
 

@@ -1,9 +1,8 @@
-import Charts
 import SwiftUI
 
 /// Spotify, like the Fitness tab: a hero sheet with the Walkman floating on it and
-/// what's playing in its cassette window, then the recent plays and the week's
-/// podcast-versus-music mix.
+/// what's playing in its cassette window, then the library, episodes to listen to
+/// and picks from the listening history, all floating on the page with no cards.
 ///
 /// The Walkman is played by hand: pull the page down and let go to press PLAY
 /// (shuffle play), swipe it left or right for FF and REW, tap the window to
@@ -43,13 +42,10 @@ struct MusicView: View {
                         }
                         if let summary = store.summary, summary.isConnected {
                             if summary.needsReconnect { reconnectCard }
-                            else if let library = store.library { LibrarySection(library: library) }
-                            RecentSection(plays: summary.recent)
-                            if let mix = summary.mix { MixSection(mix: mix) }
+                            else if let library = store.library { LibrarySection(library: library, discover: store.discover) }
                             if let account = summary.account { accountFooter(account) }
                         }
                     }
-                    .environment(\.fitnessCards, true)
                     .padding(.horizontal, HubLayout.gutter)
                 }
                 .padding(.bottom, HubLayout.bottomInset)
@@ -81,7 +77,6 @@ struct MusicView: View {
             .navigationDestination(for: MusicRoute.self) { route in
                 switch route {
                 case .collection(let kind, let id, let title): CollectionPage(kind: kind, id: id, title: title)
-                case .episodes: EpisodesPage()
                 case .search: MusicSearchPage()
                 }
             }
@@ -92,6 +87,7 @@ struct MusicView: View {
                 #endif
                 await store.load(api: session.api)
                 await store.loadLibrary(api: session.api)
+                await store.loadDiscover(api: session.api)
             }
             // While the page is open, keep what's playing fresh.
             .task(id: scenePhase) {
@@ -288,7 +284,7 @@ struct MusicView: View {
         guard let summary = store.summary else { return nil }
         switch summary.status {
         case "unconfigured": return "The hub needs a Spotify app first: add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to its environment."
-        case "not_connected": return "Link your account and the Walkman shows what's playing, your recent plays and the week's mix."
+        case "not_connected": return "Link your account and the Walkman shows what's playing, with your library and picks for what to hear next."
         default:
             guard let playing = summary.nowPlaying else { return "Open Spotify on a device, then pull the page down." }
             return [playing.subtitle, playing.detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
@@ -411,29 +407,29 @@ struct MusicView: View {
 
     /// Linked before the hub asked to read the library: one more pass through Spotify's sign-in.
     private var reconnectCard: some View {
-        BrickCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Reconnect Spotify").font(.headline)
-                Text("Spotify needs one more yes so the hub can show your liked songs, playlists and saved podcasts.")
-                    .font(.subheadline).foregroundStyle(BrickLook.soft)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button {
-                    Task {
-                        await store.connect(api: session.api)
-                        await store.loadLibrary(api: session.api)
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        if store.connecting { ProgressView() } else { Image(systemName: "arrow.triangle.2.circlepath") }
-                        Text("Reconnect")
-                    }
-                    .frame(minHeight: HubLayout.minHitTarget)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Reconnect Spotify").font(.headline)
+            Text("Spotify needs one more yes so the hub can show your liked songs, playlists and podcast episodes.")
+                .font(.subheadline).foregroundStyle(BrickLook.soft)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                Task {
+                    await store.connect(api: session.api)
+                    await store.loadLibrary(api: session.api)
+                    await store.loadDiscover(api: session.api)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(spotifyGreen)
-                .disabled(store.connecting)
+            } label: {
+                HStack(spacing: 8) {
+                    if store.connecting { ProgressView() } else { Image(systemName: "arrow.triangle.2.circlepath") }
+                    Text("Reconnect")
+                }
+                .frame(minHeight: HubLayout.minHitTarget)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(spotifyGreen)
+            .disabled(store.connecting)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func accountFooter(_ account: String) -> some View {
@@ -449,179 +445,5 @@ struct MusicView: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Shows the option to disconnect")
-    }
-}
-
-// MARK: Mix
-
-/// Podcasts against music over the last seven days, with a word for the week.
-private struct MixSection: View {
-    var mix: ListeningMix
-
-    static let music = Fit.adaptive(0x16893F, 0x1ED760)
-    static let talk = Fit.sleep
-
-    private struct Bar: Identifiable {
-        var date: Date
-        var kind: String
-        var minutes: Int
-        var id: String { "\(date.timeIntervalSince1970)|\(kind)" }
-    }
-
-    private var bars: [Bar] {
-        mix.days.flatMap { day in
-            [Bar(date: day.date, kind: "Music", minutes: day.musicMinutes),
-             Bar(date: day.date, kind: "Podcasts", minutes: day.podcastMinutes)]
-        }
-    }
-
-    var body: some View {
-        FitSection(title: "Podcasts vs music", trailing: "Last 7 days") {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(mix.mood).font(.system(.title, design: .default).weight(.light))
-                Text(mix.line).font(.subheadline).foregroundStyle(BrickLook.soft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            shareBar
-            Chart(bars) { bar in
-                BarMark(x: .value("Day", bar.date, unit: .day), y: .value("Minutes", bar.minutes))
-                    .foregroundStyle(by: .value("Kind", bar.kind))
-                    .cornerRadius(3)
-            }
-            .chartForegroundStyleScale(["Music": Self.music, "Podcasts": Self.talk])
-            .chartLegend(.hidden)
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .day)) { _ in
-                    AxisValueLabel(format: .dateTime.weekday(.narrow)).font(Fit.axis)
-                }
-            }
-            .chartYAxis {
-                AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
-                    AxisGridLine().foregroundStyle(Fit.hairline)
-                    AxisValueLabel { if let m = value.as(Int.self) { Text("\(m)m").font(Fit.axis) } }
-                }
-            }
-            .frame(height: 150)
-            .accessibilityLabel("Minutes of music and podcasts each day")
-            HStack(spacing: 16) {
-                LegendDot(color: Self.music, text: "Music \(hours(mix.musicMinutes))")
-                LegendDot(color: Self.talk, text: "Podcasts \(hours(mix.podcastMinutes))")
-            }
-            if mix.topArtist != nil || mix.topShow != nil {
-                VStack(spacing: 0) {
-                    if let artist = mix.topArtist { DetailRow(label: "Most played artist", value: artist, last: mix.topShow == nil) }
-                    if let show = mix.topShow { DetailRow(label: "Most played show", value: show, last: true) }
-                }
-            }
-        }
-    }
-
-    /// The week's split as one bar: music from the left, talk from the right.
-    private var shareBar: some View {
-        let total = mix.musicMinutes + mix.podcastMinutes
-        let talk = total > 0 ? mix.podcastShare : 0
-        return GeometryReader { geo in
-            HStack(spacing: 3) {
-                Capsule().fill(total > 0 ? Self.music : Fit.track)
-                    .frame(width: max(6, geo.size.width * (1 - talk) - 1.5))
-                if talk > 0.005 {
-                    Capsule().fill(Self.talk).frame(maxWidth: .infinity)
-                }
-            }
-        }
-        .frame(height: 12)
-        .accessibilityElement()
-        .accessibilityLabel("\(Int((talk * 100).rounded())) percent podcasts")
-    }
-
-    private func hours(_ minutes: Int) -> String {
-        minutes >= 60 ? String(format: "%.1f h", Double(minutes) / 60) : "\(minutes) min"
-    }
-}
-
-// MARK: Recent
-
-private struct RecentSection: View {
-    var plays: [SpotifyRecentPlay]
-
-    var body: some View {
-        FitSection(title: "Recently played", trailing: plays.isEmpty ? nil : "\(plays.count) plays") {
-            if plays.isEmpty {
-                Text("Plays show up here as you listen. Podcasts count once the app has seen them playing.")
-                    .font(.subheadline).foregroundStyle(BrickLook.soft)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(plays.enumerated()), id: \.element.rowID) { index, play in
-                        if index > 0 { BrickDivider() }
-                        RecentRow(play: play)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct RecentRow: View {
-    var play: SpotifyRecentPlay
-    @Environment(AppSession.self) private var session
-    @State private var store = MusicStore.shared
-
-    private var item: SpotifyItem {
-        SpotifyItem(kind: play.kind, id: play.id, uri: play.uri, title: play.title, subtitle: play.subtitle, image: play.image,
-                    durationMs: nil, explicit: false, date: nil, resumeMs: nil, played: false)
-    }
-
-    var body: some View {
-        Button {
-            Task { await store.play(item, api: session.api) }
-        } label: { row }
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button { Task { await store.queue(item, api: session.api) } } label: {
-                Label("Add to queue", systemImage: "text.badge.plus")
-            }
-        }
-        .accessibilityHint("Plays it")
-    }
-
-    private var row: some View {
-        HStack(spacing: 12) {
-            AsyncImage(url: play.image.flatMap(URL.init(string:))) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    Image(systemName: play.isEpisode ? "mic" : "music.note")
-                        .foregroundStyle(BrickLook.soft)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(BrickLook.pill)
-                }
-            }
-            .frame(width: 48, height: 48)
-            .clipShape(.rect(cornerRadius: play.isEpisode ? 10 : 6, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(play.title).font(.body).lineLimit(1)
-                    .foregroundStyle(store.nowPlaying?.id == play.id ? spotifyGreen : BrickLook.ink)
-                HStack(spacing: 4) {
-                    if play.isEpisode { Image(systemName: "mic.fill").font(.caption2) }
-                    Text(play.isEpisode ? "\(play.subtitle) · \(play.minutes) min" : play.subtitle).lineLimit(1)
-                }
-                .font(.subheadline).foregroundStyle(BrickLook.soft)
-            }
-            Spacer(minLength: 8)
-            if store.starting == play.uri {
-                ProgressView()
-            } else if store.nowPlaying?.id == play.id, store.nowPlaying?.isPlaying == true {
-                Image(systemName: "waveform").foregroundStyle(spotifyGreen)
-                    .symbolEffect(.variableColor.iterative, options: .repeating)
-                    .accessibilityLabel("Playing")
-            } else {
-                Text(play.date, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
-                    .font(.caption).foregroundStyle(BrickLook.soft).monospacedDigit()
-            }
-        }
-        .padding(.vertical, 10)
-        .foregroundStyle(BrickLook.ink)
-        .contentShape(.rect)
-        .accessibilityElement(children: .combine)
     }
 }
