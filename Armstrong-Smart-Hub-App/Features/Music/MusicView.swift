@@ -24,12 +24,16 @@ struct MusicView: View {
     /// A key tapped a moment ago, held down briefly even if the hub answers fast.
     @State private var tapped: WalkmanKey?
     @State private var flash: WalkmanKey?
+    @State private var path = NavigationPath()
+    @State private var pickingDevice = false
+    /// The scrubber while a finger is on it, 0...1.
+    @State private var scrub: Double?
 
     private static let pullToShuffle: CGFloat = 110
     private static let swipeToSkip: CGFloat = 80
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView(.vertical) {
                 VStack(spacing: HubLayout.sectionGap) {
                     sheet
@@ -38,8 +42,9 @@ struct MusicView: View {
                             ErrorBanner(message: error) { Task { await store.load(api: session.api) } }
                         }
                         if let summary = store.summary, summary.isConnected {
-                            if let mix = summary.mix { MixSection(mix: mix) }
+                            if let library = store.library { LibrarySection(library: library) }
                             RecentSection(plays: summary.recent)
+                            if let mix = summary.mix { MixSection(mix: mix) }
                             if let account = summary.account { accountFooter(account) }
                         }
                     }
@@ -72,11 +77,20 @@ struct MusicView: View {
             .demoScroll()
             .hubPageStyle()
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: MusicRoute.self) { route in
+                switch route {
+                case .collection(let kind, let id, let title): CollectionPage(kind: kind, id: id, title: title)
+                case .episodes: EpisodesPage()
+                case .search: MusicSearchPage()
+                }
+            }
+            .sheet(isPresented: $pickingDevice) { DevicePicker() }
             .task {
                 #if DEBUG
                 if Demo.isOn { store.demoSeed(); return }
                 #endif
                 await store.load(api: session.api)
+                await store.loadLibrary(api: session.api)
             }
             // While the page is open, keep what's playing fresh.
             .task(id: scenePhase) {
@@ -107,13 +121,19 @@ struct MusicView: View {
     private var sheet: some View {
         VStack(spacing: 0) {
             BrickTopBar {
-                if let url = store.nowPlaying?.url.flatMap(URL.init(string:)) {
-                    Link(destination: url) {
-                        Image(systemName: "arrow.up.right.square")
+                if store.summary?.isConnected == true {
+                    NavigationLink(value: MusicRoute.search) {
+                        Image(systemName: "magnifyingglass")
                             .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
                             .contentShape(.rect)
                     }
-                    .accessibilityLabel("Open in Spotify")
+                    .accessibilityLabel("Search")
+                    Button { pickingDevice = true } label: {
+                        Image(systemName: SpotifyDevice.symbol(for: store.nowPlaying?.deviceType))
+                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                            .contentShape(.rect)
+                    }
+                    .accessibilityLabel("Choose where it plays")
                 }
             }
             .frame(minHeight: HubLayout.minHitTarget)
@@ -276,14 +296,85 @@ struct MusicView: View {
     // MARK: Controls
 
     private var transport: some View {
-        let playing = store.nowPlaying?.isPlaying == true
-        return HStack(spacing: 12) {
-            transportButton("backward.fill", label: "Previous", key: .rew)
-            transportButton(playing ? "pause.fill" : "play.fill", label: playing ? "Pause" : "Play", key: .stop, large: true)
-            transportButton("forward.fill", label: "Next", key: .ff)
-            transportButton("shuffle", label: "Shuffle play", key: .play)
+        let now = store.nowPlaying
+        let playing = now?.isPlaying == true
+        return VStack(spacing: 18) {
+            if let now { scrubber(now) }
+            HStack(spacing: 10) {
+                toggleButton("shuffle", on: now?.shuffle == true, label: "Shuffle") {
+                    Task { await store.toggleShuffle(api: session.api) }
+                }
+                transportButton("backward.fill", label: "Previous", key: .rew)
+                transportButton(playing ? "pause.fill" : "play.fill", label: playing ? "Pause" : "Play", key: .stop, large: true)
+                transportButton("forward.fill", label: "Next", key: .ff)
+                toggleButton(now?.repeat == "track" ? "repeat.1" : "repeat", on: (now?.repeat ?? "off") != "off",
+                             label: now?.repeat == "track" ? "Repeat one" : now?.repeat == "context" ? "Repeat all" : "Repeat off") {
+                    Task { await store.cycleRepeat(api: session.api) }
+                }
+            }
+            .disabled(store.busyKey != nil)
+            Button { pickingDevice = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: SpotifyDevice.symbol(for: now?.deviceType))
+                    Text(now?.device.map { "Playing on \($0)" } ?? "Choose a device")
+                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(now?.device == nil ? BrickLook.soft : spotifyGreen)
+                .frame(minHeight: HubLayout.minHitTarget)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Choose where it plays")
         }
-        .disabled(store.busyKey != nil)
+    }
+
+    /// Drag to seek; the clock runs between the hub's readings.
+    private func scrubber(_ now: SpotifyTrack) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let live = now.progress(at: context.date)
+            let shown = scrub ?? live
+            VStack(spacing: 4) {
+                Slider(value: Binding(get: { shown }, set: { scrub = $0 }), in: 0...1) { editing in
+                    if !editing, let value = scrub {
+                        Task {
+                            await store.seek(to: value, api: session.api)
+                            scrub = nil
+                        }
+                    }
+                }
+                .tint(spotifyGreen)
+                .accessibilityLabel("Position")
+                .accessibilityValue(Self.clock(shown * Double(now.durationMs) / 1000))
+                HStack {
+                    Text(Self.clock(shown * Double(now.durationMs) / 1000))
+                    Spacer()
+                    Text("-" + Self.clock((1 - shown) * Double(now.durationMs) / 1000))
+                }
+                .font(.caption).monospacedDigit().foregroundStyle(BrickLook.soft)
+            }
+        }
+    }
+
+    private static func clock(_ seconds: Double) -> String {
+        let s = max(0, Int(seconds.rounded(.down)))
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private func toggleButton(_ icon: String, on: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(on ? spotifyGreen : BrickLook.soft)
+                .frame(width: 44, height: 44)
+                .overlay(alignment: .bottom) {
+                    if on { Circle().fill(spotifyGreen).frame(width: 4, height: 4).offset(y: -4) }
+                }
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func transportButton(_ icon: String, label: String, key: WalkmanKey, large: Bool = false) -> some View {
@@ -443,13 +534,25 @@ private struct RecentSection: View {
 
 private struct RecentRow: View {
     var play: SpotifyRecentPlay
+    @Environment(AppSession.self) private var session
+    @State private var store = MusicStore.shared
+
+    private var item: SpotifyItem {
+        SpotifyItem(kind: play.kind, id: play.id, uri: play.uri, title: play.title, subtitle: play.subtitle, image: play.image,
+                    durationMs: nil, explicit: false, date: nil, resumeMs: nil, played: false)
+    }
 
     var body: some View {
-        if let url = play.url.flatMap(URL.init(string:)) {
-            Link(destination: url) { row }.buttonStyle(.plain)
-        } else {
-            row
+        Button {
+            Task { await store.play(item, api: session.api) }
+        } label: { row }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button { Task { await store.queue(item, api: session.api) } } label: {
+                Label("Add to queue", systemImage: "text.badge.plus")
+            }
         }
+        .accessibilityHint("Plays it")
     }
 
     private var row: some View {
@@ -468,6 +571,7 @@ private struct RecentRow: View {
             .clipShape(.rect(cornerRadius: play.isEpisode ? 10 : 6, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(play.title).font(.body).lineLimit(1)
+                    .foregroundStyle(store.nowPlaying?.id == play.id ? spotifyGreen : BrickLook.ink)
                 HStack(spacing: 4) {
                     if play.isEpisode { Image(systemName: "mic.fill").font(.caption2) }
                     Text(play.isEpisode ? "\(play.subtitle) · \(play.minutes) min" : play.subtitle).lineLimit(1)
@@ -475,8 +579,16 @@ private struct RecentRow: View {
                 .font(.subheadline).foregroundStyle(BrickLook.soft)
             }
             Spacer(minLength: 8)
-            Text(play.date, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
-                .font(.caption).foregroundStyle(BrickLook.soft).monospacedDigit()
+            if store.starting == play.uri {
+                ProgressView()
+            } else if store.nowPlaying?.id == play.id, store.nowPlaying?.isPlaying == true {
+                Image(systemName: "waveform").foregroundStyle(spotifyGreen)
+                    .symbolEffect(.variableColor.iterative, options: .repeating)
+                    .accessibilityLabel("Playing")
+            } else {
+                Text(play.date, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+                    .font(.caption).foregroundStyle(BrickLook.soft).monospacedDigit()
+            }
         }
         .padding(.vertical, 10)
         .foregroundStyle(BrickLook.ink)

@@ -48,7 +48,7 @@ final class MusicStore {
 
     /// Just what's playing; cheap enough to poll while the page is open.
     func poll(api: APIClient) async {
-        guard summary?.isConnected == true, busyKey == nil else { return }
+        guard summary?.isConnected == true, busyKey == nil, starting == nil else { return }
         do {
             let r: SpotifyNowResponse = try await api.get("/api/mobile/spotify/now")
             let changed = r.nowPlaying?.id != summary?.nowPlaying?.id

@@ -68,6 +68,7 @@ struct SpotifyRecentPlay: Decodable, Equatable, Identifiable {
     var minutes: Int
 
     var isEpisode: Bool { kind == "episode" }
+    var uri: String { "spotify:\(kind):\(id)" }
     var date: Date { SpotifyTrack.iso.date(from: playedAt) ?? SpotifyTrack.isoPlain.date(from: playedAt) ?? .now }
     /// Unique per play: the same song twice is two rows.
     var rowID: String { "\(id)|\(playedAt)" }
