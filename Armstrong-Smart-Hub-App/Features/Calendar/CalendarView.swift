@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 /// The Google Calendar agenda from the Calendar page, next 14 days, with the to-do list and a
@@ -13,6 +14,7 @@ struct CalendarView: View {
     @State private var pickedDay: PickedDay?
     @State private var toast = Toast()
     @State private var error: String?
+    @State private var connectError: String?
 
     var body: some View {
         NavigationStack {
@@ -74,9 +76,9 @@ struct CalendarView: View {
         case "not_connected", "missing_scope":
             MessageView(title: data.status == "missing_scope" ? "Reconnect Google Calendar" : "Connect Google Calendar",
                         systemImage: "calendar.badge.plus",
-                        message: "Connecting Google happens in the browser. Open the hub's Calendar page, connect, then pull to refresh here.",
-                        actionTitle: "Open in Safari") {
-                if let url = session.webURL("/calendar") { openURL(url) }
+                        message: connectError ?? "Sign in with Google right here. You only do this once.",
+                        actionTitle: "Connect Google") {
+                Task { await connectGoogle() }
             }
         default:
             if let error = data.error {
@@ -103,6 +105,19 @@ struct CalendarView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Google's sign-in sheet, then the hub keeps the tokens and the agenda reloads.
+    private func connectGoogle() async {
+        connectError = nil
+        do {
+            _ = try await GoogleSignIn.connect(api: session.api)
+            await load(refresh: true)
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            return
+        } catch {
+            connectError = error.localizedDescription
         }
     }
 
