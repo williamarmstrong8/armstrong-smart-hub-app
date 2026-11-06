@@ -146,17 +146,27 @@ struct HomeView: View {
         }
     }
 
-    /// How you're doing, from the watch, with the rest of the house under it.
+    /// The house at a glance, with one tap to turn every lamp off.
     private var hero: some View {
-        let shown = store.shownEntities
-        let active = shown.filter { $0.isOn && $0.control != .light }.count
-        let status = fitness.dayStatus
-        return BrickHero(caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
-                         title: status?.title ?? "Home", subtitle: status?.summary) {
-            if active > 0 { BrickPill(text: "\(active) active", icon: "bolt.fill") }
-            if habits.loaded, !habits.habits.isEmpty { BrickPill(text: "\(habits.doneToday) of \(habits.habits.count) habits", icon: "checkmark.circle") }
-            if store.isBusy { BrickPill(text: "Downloading", icon: "arrow.down.circle") }
+        let lamps = store.shownEntities.filter { $0.control == .light && !$0.isUnavailable }
+        let lit = lamps.filter(\.isOn)
+        return VStack(spacing: 14) {
+            Text(lamps.isEmpty ? "Home" : lit.isEmpty ? "Lights off" : "\(lit.count) of \(lamps.count) lights on")
+                .font(.system(size: 34, weight: .light).monospacedDigit())
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+            if !lit.isEmpty {
+                Button {
+                    for lamp in lit { Task { await store.toggle(lamp, api: session.api, toast: toast) } }
+                } label: {
+                    BrickPill(text: "All lights off", icon: "lightbulb.slash")
+                }
+                .buttonStyle(.plain)
+                .sensoryFeedback(.impact(weight: .medium), trigger: lit.count)
+            }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, HubLayout.sectionGap)
     }
 
     @ViewBuilder

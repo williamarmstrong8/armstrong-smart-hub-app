@@ -453,13 +453,15 @@ struct DeviceButton: View {
     var body: some View {
         let on = entity.isOn
         let tint = tintColor
+        // Home's lamps are bare glyphs: the card's own tint already says on or off.
+        let bareIcon = compact && entity.control == .light
         VStack(alignment: .leading, spacing: compact ? 10 : large ? 18 : 14) {
             HStack {
                 Image(systemName: entity.symbol)
                     .font(compact ? .title3 : large ? .system(size: 30) : .title2)
                     .frame(width: compact ? 40 : large ? 64 : 48, height: compact ? 40 : large ? 64 : 48)
-                    .foregroundStyle(on ? .white : .secondary)
-                    .background(on ? tint : Color(.tertiarySystemFill), in: .circle)
+                    .foregroundStyle(bareIcon ? (on ? tint : .secondary) : (on ? .white : .secondary))
+                    .background(bareIcon ? Color.clear : (on ? tint : Color(.tertiarySystemFill)), in: .circle)
                 Spacer()
                 if !compact, entity.hasLightControls || entity.isTV {
                     Image(systemName: entity.isTV ? "chevron.right" : "slider.horizontal.3")

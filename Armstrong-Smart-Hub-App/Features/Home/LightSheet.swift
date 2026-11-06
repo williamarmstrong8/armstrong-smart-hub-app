@@ -42,6 +42,8 @@ struct LightSheet: View {
     @Environment(AppSession.self) private var session
     @State private var brightness: Double = 100
     @State private var kelvin: Double = 4000
+    /// A drag in progress owns the sliders; polls must not yank them back.
+    @State private var dragging = false
 
     var body: some View {
         if let entity = store.entity(entityID) {
@@ -51,6 +53,7 @@ struct LightSheet: View {
                         if entity.supportsBrightness {
                             LightControlBar(
                                 value: $brightness,
+                                dragging: $dragging,
                                 range: 1...100,
                                 colors: [Color.black.opacity(0.72), .white],
                                 thumb: .white,
@@ -66,6 +69,7 @@ struct LightSheet: View {
                             let maxK = Double(max(entity.maxKelvin ?? 6500, Int(minK) + 1))
                             LightControlBar(
                                 value: $kelvin,
+                                dragging: $dragging,
                                 range: minK...maxK,
                                 colors: temperatureGradient(from: Int(minK), through: Int(maxK)),
                                 thumb: temperatureColor(Int(kelvin)),
@@ -132,14 +136,21 @@ struct LightSheet: View {
                 }
             }
             #endif
+            // Show the lamp as it is right now: sync on open, fetch fresh, and follow every poll.
             .onAppear {
-                brightness = Double(max(entity.brightnessPct, 1))
-                if entity.brightnessPct == 0 { brightness = 100 }
-                let minK = entity.minKelvin ?? 2000, maxK = entity.maxKelvin ?? 6500
-                kelvin = Double(entity.colorTempKelvin ?? (minK + maxK) / 2)
+                sync(entity)
+                Task { await store.refresh(api: session.api) }
             }
+            .onChange(of: entity) { _, latest in sync(latest) }
             .sensoryFeedback(.impact(weight: .light), trigger: entity.state)
         }
+    }
+
+    private func sync(_ entity: HAEntity) {
+        guard !dragging else { return }
+        brightness = entity.brightnessPct == 0 ? 100 : Double(entity.brightnessPct)
+        let minK = entity.minKelvin ?? 2000, maxK = entity.maxKelvin ?? 6500
+        kelvin = Double(entity.colorTempKelvin ?? (minK + maxK) / 2)
     }
 
     private func send(_ entity: HAEntity, _ change: HomeStore.LightChange) {
@@ -150,6 +161,7 @@ struct LightSheet: View {
 /// A large custom gradient track. Dragging previews continuously and sends once released.
 private struct LightControlBar: View {
     @Binding var value: Double
+    @Binding var dragging: Bool
     let range: ClosedRange<Double>
     let colors: [Color]
     let thumb: Color
@@ -178,10 +190,11 @@ private struct LightControlBar: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { gesture in
+                            dragging = true
                             let progress = max(0, min(1, gesture.location.x / width))
                             value = range.lowerBound + progress * (range.upperBound - range.lowerBound)
                         }
-                        .onEnded { _ in onCommit() }
+                        .onEnded { _ in dragging = false; onCommit() }
                 )
         }
         .frame(height: 54)
