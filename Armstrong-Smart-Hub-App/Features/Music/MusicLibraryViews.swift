@@ -559,6 +559,24 @@ struct DevicePicker: View {
                     }
                 }
                 Section {
+                    // Spotify on this phone drops off the list while it sleeps; App Remote wakes it.
+                    if SpotifyRemote.shared.isConfigured, !store.devices.contains(where: { $0.type.lowercased() == "smartphone" }) {
+                        Button {
+                            Task {
+                                await store.wakeThisPhone(api: session.api)
+                                dismiss()
+                            }
+                        } label: {
+                            HStack {
+                                Label("This iPhone", systemImage: "iphone")
+                                Spacer()
+                                if SpotifyRemote.shared.waking { ProgressView() } else {
+                                    Text("Wake Spotify").font(.subheadline).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .disabled(SpotifyRemote.shared.waking)
+                    }
                     ForEach(store.devices.filter { !$0.isActive }) { device in
                         Button {
                             Task {

@@ -4,12 +4,16 @@ import Foundation
 struct MusicSummary: Decodable, Equatable {
     /// "connected", "not_connected" or "unconfigured" (no Spotify app keys on the hub).
     var status: String
+    /// The Spotify app's client ID, for App Remote (SpotifyRemote.swift).
+    var clientId: String?
     var account: String?
     var nowPlaying: SpotifyTrack?
     var recent: [SpotifyRecentPlay]
     var mix: ListeningMix?
 
-    var isConnected: Bool { status == "connected" }
+    var isConnected: Bool { status == "connected" || status == "needs_reconnect" }
+    /// Linked before the hub asked to read the library: playback works, the library doesn't.
+    var needsReconnect: Bool { status == "needs_reconnect" }
 }
 
 struct SpotifyTrack: Decodable, Equatable {

@@ -183,6 +183,12 @@ struct MainTabView: View {
         #endif
         .onOpenURL { url in
             guard url.scheme == "armstronghub" else { return }
+            // Back from the Spotify app with App Remote's token (SpotifyRemote.swift).
+            if url.host() == "spotify-remote" {
+                SpotifyRemote.shared.handle(url)
+                tab = .music
+                return
+            }
             switch url.host() {
             case "home": tab = .home
             case "finance": tab = .finance

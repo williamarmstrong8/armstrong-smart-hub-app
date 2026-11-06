@@ -42,7 +42,8 @@ struct MusicView: View {
                             ErrorBanner(message: error) { Task { await store.load(api: session.api) } }
                         }
                         if let summary = store.summary, summary.isConnected {
-                            if let library = store.library { LibrarySection(library: library) }
+                            if summary.needsReconnect { reconnectCard }
+                            else if let library = store.library { LibrarySection(library: library) }
                             RecentSection(plays: summary.recent)
                             if let mix = summary.mix { MixSection(mix: mix) }
                             if let account = summary.account { accountFooter(account) }
@@ -95,6 +96,7 @@ struct MusicView: View {
             // While the page is open, keep what's playing fresh.
             .task(id: scenePhase) {
                 guard scenePhase == .active, !Demo.isOn else { return }
+                SpotifyRemote.shared.reconnect()
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(5))
                     guard !Task.isCancelled else { return }
@@ -404,6 +406,33 @@ struct MusicView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(store.connecting)
+        }
+    }
+
+    /// Linked before the hub asked to read the library: one more pass through Spotify's sign-in.
+    private var reconnectCard: some View {
+        BrickCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Reconnect Spotify").font(.headline)
+                Text("Spotify needs one more yes so the hub can show your liked songs, playlists and saved podcasts.")
+                    .font(.subheadline).foregroundStyle(BrickLook.soft)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    Task {
+                        await store.connect(api: session.api)
+                        await store.loadLibrary(api: session.api)
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if store.connecting { ProgressView() } else { Image(systemName: "arrow.triangle.2.circlepath") }
+                        Text("Reconnect")
+                    }
+                    .frame(minHeight: HubLayout.minHitTarget)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(spotifyGreen)
+                .disabled(store.connecting)
+            }
         }
     }
 
