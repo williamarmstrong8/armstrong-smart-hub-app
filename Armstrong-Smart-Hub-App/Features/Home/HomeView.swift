@@ -16,8 +16,6 @@ struct HomeView: View {
     @State private var store = HomeStore()
     @State private var habits = HabitsStore()
     @State private var fitness = FitnessStore()
-    @State private var agenda = AgendaStore()
-    @State private var pickedDay: PickedDay?
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
@@ -62,17 +60,13 @@ struct HomeView: View {
                 async let a: Void = store.refresh(api: session.api)
                 async let b: Void = habits.load(api: session.api)
                 async let f: Void = fitness.load(api: session.api)
-                async let c: Void = agenda.load(api: session.api, refresh: true)
-                _ = await (a, b, f, c)
+                _ = await (a, b, f)
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 habits.rollDay()
-                async let c: Void = agenda.load(api: session.api, refresh: true)
                 await store.poll(api: session.api)
-                await c
             }
-            .sheet(item: $pickedDay) { HabitDaySheet(store: habits, day: $0.day, toast: toast) }
             .task { if !habits.fetched { await habits.load(api: session.api) } }
             .task { await fitness.load(api: session.api) }
             .sheet(item: $light) { e in
@@ -152,18 +146,16 @@ struct HomeView: View {
         }
     }
 
-    /// Today at a glance: what's next on the calendar, then habits, steps and the lights.
+    /// Today at a glance: the date, then habits, steps and the lights.
     private var hero: some View {
         let lamps = store.shownEntities.filter { $0.control == .light && !$0.isUnavailable }
         let lit = lamps.filter(\.isOn)
-        let next = agenda.next
         let hour = Calendar.current.component(.hour, from: .now)
         let greeting = hour < 5 ? "Late night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
         return BrickHero(
             caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
-            title: next?.event.title ?? greeting,
-            subtitle: next.map { "Next up · " + $0.start.formatted(.dateTime.weekday(.wide).hour().minute()) }
-                ?? (agenda.hasAgenda ? "Nothing else on today" : nil)
+            title: greeting,
+            subtitle: nil
         ) {
             if habits.loaded, !habits.habits.isEmpty {
                 BrickPill(text: "\(habits.doneToday)/\(habits.habits.count)", icon: "checkmark.circle")
@@ -214,8 +206,6 @@ struct HomeView: View {
             }
 
             habitsSection
-
-            AgendaSections(agenda: agenda, habits: habits) { pickedDay = PickedDay(day: $0) }
 
             // Keep the actual control mounted: a fixed-height placeholder jumps at larger text sizes.
             MediaSearchBar { searching = true }
