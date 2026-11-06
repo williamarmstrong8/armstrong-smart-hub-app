@@ -96,7 +96,7 @@ struct MusicView: View {
             // While the page is open, keep what's playing fresh.
             .task(id: scenePhase) {
                 guard scenePhase == .active, !Demo.isOn else { return }
-                SpotifyRemote.shared.reconnect()
+                await store.resumePending(api: session.api)
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(5))
                     guard !Task.isCancelled else { return }

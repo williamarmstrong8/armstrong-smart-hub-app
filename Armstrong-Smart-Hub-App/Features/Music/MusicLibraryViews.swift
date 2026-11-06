@@ -570,12 +570,12 @@ struct DevicePicker: View {
                             HStack {
                                 Label("This iPhone", systemImage: "iphone")
                                 Spacer()
-                                if SpotifyRemote.shared.waking { ProgressView() } else {
+                                if store.linking { ProgressView() } else {
                                     Text("Wake Spotify").font(.subheadline).foregroundStyle(.secondary)
                                 }
                             }
                         }
-                        .disabled(SpotifyRemote.shared.waking)
+                        .disabled(store.linking)
                     }
                     ForEach(store.devices.filter { !$0.isActive }) { device in
                         Button {
