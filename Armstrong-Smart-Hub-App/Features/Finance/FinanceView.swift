@@ -86,13 +86,23 @@ struct FinanceView: View {
     private func overview(_ r: FinanceResponse, _ d: Dashboard) -> some View {
         let money = { (v: Double) in Fmt.compact(v, d.currency) }
         let month = Date.now.formatted(.dateTime.month(.wide))
-        let pace = d.monthSpending.total - d.monthSpending.lastMonthToDate
+        // Rent is a fixed cost, so it stays out of "Spent in <month>" and the pace against last month.
+        let cal = Calendar.current
+        let rentNow = d.monthSpending.byCategory.filter { $0.category == "Rent" }.reduce(0) { $0 + $1.amount }
+        let rentLast = d.transactions.filter { t in
+            guard t.category == "Rent", t.netEffect < 0, !t.hold,
+                  let prev = cal.date(byAdding: .month, value: -1, to: .now),
+                  cal.isDate(t.date, equalTo: prev, toGranularity: .month) else { return false }
+            return cal.component(.day, from: t.date) <= cal.component(.day, from: .now)
+        }.reduce(0) { $0 + abs($1.netEffect) }
+        let spent = d.monthSpending.total - rentNow
+        let pace = spent - (d.monthSpending.lastMonthToDate - rentLast)
 
         if let failure = r.sync?.failureReason {
             ErrorBanner(message: "Last sync failed: \(failure)")
         }
 
-        BrickHero(caption: "Spent in \(month)", title: money(d.monthSpending.total),
+        BrickHero(caption: "Spent in \(month)", title: money(spent),
                   subtitle: abs(pace) < 1 ? "Same pace as last month" : "\(money(abs(pace))) \(pace > 0 ? "more" : "less") than last month by now",
                   subtitleColor: pace > 0 ? Color.negative : Color.positive) {
             BrickPill(text: money(d.cash), icon: "banknote")

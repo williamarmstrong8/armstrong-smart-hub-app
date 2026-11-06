@@ -80,7 +80,7 @@ struct RootView: View {
 }
 
 enum HubTab: Hashable {
-    case home, finance, calendar, fitness, brick
+    case home, finance, calendar, fitness, music, brick
 }
 
 /// The iPhone's tabs.
@@ -95,6 +95,7 @@ struct MainTabView: View {
             BrickStore.shared.demoSeed()
             switch Demo.startTab {
             case "fitness": return .fitness
+            case "music": return .music
             case "focus", "brick": return .brick
             case "finance": return .finance
             case "calendar": return .calendar
@@ -122,6 +123,9 @@ struct MainTabView: View {
             }
             Tab("Fitness", systemImage: "figure.run", value: .fitness) {
                 FitnessView()
+            }
+            Tab("Music", systemImage: "music.note", value: .music) {
+                MusicView()
             }
             Tab(Demo.copy("Brick", "Focus"), systemImage: Demo.isOn ? "circle" : "iphone.slash", value: .brick) {
                 BrickView()
@@ -173,6 +177,7 @@ struct MainTabView: View {
                 case "finance": tab = .finance
                 case "calendar": tab = .calendar
                 case "fitness": tab = .fitness
+                case "music": tab = .music
                 case "focus", "brick": tab = .brick
                 default: break
                 }
@@ -186,6 +191,7 @@ struct MainTabView: View {
             case "finance": tab = .finance
             case "calendar": tab = .calendar
             case "fitness": tab = .fitness
+            case "music", "spotify": tab = .music
             case "brick": tab = .brick
             default: break
             }

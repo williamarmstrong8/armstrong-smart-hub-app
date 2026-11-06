@@ -55,6 +55,23 @@ hub library id to an entry in `Features/Workouts/ExerciseMedia.swift` and loads 
 the phone. Hevy's own illustrations are licensed to Hevy, so they aren't used. An exercise's page also needs the hub's
 `GET /api/mobile/workouts/exercises?id=` for its history, chart and records.
 
+## Music (Spotify)
+
+The Music tab is a hero like Fitness's with a Walkman floating on it: what's playing shows in its cassette window
+(tape reels that turn and wind from one side to the other as the track goes on), then the recent plays and the
+week's podcasts-versus-music mix. Pull the page down and let go to press PLAY (shuffle play), swipe the Walkman for
+FF and REW, or tap the window to play or pause; the round buttons under it do the same.
+
+The hub holds the Spotify link (`/api/mobile/spotify`, `/now`, `/control`, `/connect`, and the sign-in callback at
+`/api/spotify/callback`); the phone never sees a Spotify token. Spotify has no podcast history, so the hub logs an
+episode whenever the app sees it playing, and the mix counts those plus recently-played tracks. Controls need
+Spotify Premium and a device with Spotify open.
+
+The Walkman is a Sony WM-41, photo by Dillan Payne,
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), via
+[Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Sony_Walkman_WM-41.jpg); the background was removed and
+the four top keys cut into their own layers (`Walkman*` image sets).
+
 ## Design
 
 See [design.md](design.md) for shared UI tokens, layout and motion conventions, accessibility requirements,
