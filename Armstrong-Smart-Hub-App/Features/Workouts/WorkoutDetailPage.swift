@@ -67,7 +67,12 @@ struct WorkoutDetailPage: View {
     }
 
     private func content(_ detail: WorkoutDetail) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // The phone files each exercise's note under its name ("Squat: felt heavy"); show those under the exercise.
+        let lines = (detail.notes ?? "").split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+        let names = Set(detail.exercises.map(\.name))
+        func note(for name: String) -> String? { lines.first { $0.hasPrefix("\(name): ") }.map { String($0.dropFirst(name.count + 2)) } }
+        let general = lines.filter { line in !names.contains { line.hasPrefix("\($0): ") } }
+        return VStack(alignment: .leading, spacing: 0) {
             VStack(spacing: 6) {
                 Text(detail.name).font(.system(size: 26, weight: .regular)).multilineTextAlignment(.center)
                 if let start = detail.start {
@@ -100,8 +105,8 @@ struct WorkoutDetailPage: View {
 
             SessionFeedbackSection(kind: "workout", id: detail.id)
 
-            if let notes = detail.notes, !notes.isEmpty {
-                FitSection(title: "Notes") { Takeaway(text: notes) }
+            if !general.isEmpty {
+                FitSection(title: "Notes") { Takeaway(text: general.joined(separator: "\n")) }
             }
 
             ForEach(detail.exercises) { group in
@@ -119,6 +124,13 @@ struct WorkoutDetailPage: View {
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
+                    if let note = note(for: group.name) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Image(systemName: "note.text").font(.caption)
+                            Text(note).font(.subheadline)
+                        }
+                        .foregroundStyle(BrickLook.soft)
+                    }
                     VStack(spacing: 12) {
                         ForEach(Array(group.sets.enumerated()), id: \.offset) { index, set in
                             setRow(set, label: label(index, group.sets))

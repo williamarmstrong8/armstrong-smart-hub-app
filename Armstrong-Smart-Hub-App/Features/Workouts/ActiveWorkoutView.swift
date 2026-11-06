@@ -45,11 +45,7 @@ struct ActiveWorkoutView: View {
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: store) }
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: store) }
         }
-        // Over every page of the stack, and pinned to the bottom of the screen
-        // so the keyboard covers it instead of pushing it up.
-        .overlay(alignment: .bottom) {
-            Color.clear
-        }
+        // Over every page of the stack: the rest timer's line around the screen.
         .overlay {
             RestStroke(store: store)
                 .hubAnimation(value: store.restEndsAt != nil)
