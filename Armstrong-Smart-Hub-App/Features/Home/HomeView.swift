@@ -200,7 +200,7 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     BirthdayCards()
                     VStack(alignment: .leading, spacing: HubLayout.sectionGap) {
-                        DeviceGroups(store: store, large: false, onOpen: open, onToggle: toggle)
+                        DeviceGroups(store: store, large: false, onOpen: open, onToggle: toggle, onBrightness: setBrightness)
                     }
                 }
             }
@@ -244,6 +244,10 @@ struct HomeView: View {
         if entity.isTV { remote = entity } else if entity.hasLightControls { light = entity }
     }
 
+    private func setBrightness(_ entity: HAEntity, _ pct: Int) {
+        Task { await store.setLight(entity, .init(on: true, brightnessPct: pct), api: session.api, toast: toast) }
+    }
+
     private func toggle(_ entity: HAEntity) {
         if entity.isTV { remote = entity; return }
         Task { await store.toggle(entity, api: session.api, toast: toast) }
@@ -258,6 +262,7 @@ struct DeviceGroups: View {
     var tapToToggle = true
     let onOpen: (HAEntity) -> Void
     let onToggle: (HAEntity) -> Void
+    var onBrightness: (HAEntity, Int) -> Void = { _, _ in }
 
     var body: some View {
         let shown = store.shownEntities
@@ -273,6 +278,8 @@ struct DeviceGroups: View {
                                     onToggle(e)
                                 } onAdjust: {
                                     onOpen(e)
+                                } onBrightness: { pct in
+                                    onBrightness(e, pct)
                                 }
                             }
                         }

@@ -36,6 +36,8 @@ struct DisplayModeView: View {
                     if e.isTV { remote = e } else { light = e }
                 }, onToggle: { e in
                     Task { await store.toggle(e, api: session.api, toast: toast) }
+                }, onBrightness: { e, pct in
+                    Task { await store.setLight(e, .init(on: true, brightnessPct: pct), api: session.api, toast: toast) }
                 })
 
                 if !store.activeDownloads.isEmpty {
