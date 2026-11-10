@@ -29,7 +29,7 @@ struct HomeView: View {
         NavigationStack {
             HubTabPage(topBar: { topBar }, content: {
                 content
-            })
+            }, mountains: true)
             // The search page's keyboard mustn't resize Home underneath it: that scrolled the page
             // when search closed.
             .ignoresSafeArea(.keyboard)

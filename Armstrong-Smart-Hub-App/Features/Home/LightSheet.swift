@@ -125,12 +125,12 @@ struct LightSheet: View {
                     .padding(.top, 16)
                     .padding(.bottom, 28)
                 }
-                .hubPageStyle()
+                .hubPageStyle(backdrop: true)
                 .navigationTitle(entity.name)
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(HubDesign.page, for: .navigationBar)
+                .toolbarBackground(.hidden, for: .navigationBar)
             }
-            .presentationBackground(HubDesign.page)
+            .presentationBackground { MountainBackdrop() }
             #if DEBUG
             // Film cue: glide the brightness up like a slow drag, then send it once, as a release would.
             .onAppear {

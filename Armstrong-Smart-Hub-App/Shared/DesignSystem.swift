@@ -60,8 +60,10 @@ extension View {
         modifier(HubAnimation(value: value))
     }
 
-    func hubPageStyle() -> some View {
-        background(HubDesign.page.ignoresSafeArea())
+    func hubPageStyle(backdrop: Bool = false) -> some View {
+        background {
+            if backdrop { MountainBackdrop() } else { HubDesign.page.ignoresSafeArea() }
+        }
             .foregroundStyle(HubDesign.ink)
             .tint(HubDesign.action)
     }
@@ -88,6 +90,8 @@ struct HubToolbarButtonStyle: ButtonStyle {
 struct HubTabPage<TopBar: View, Content: View>: View {
     @ViewBuilder var topBar: TopBar
     @ViewBuilder var content: Content
+    /// Snowy mountains behind the page, for screens built from Liquid Glass.
+    var mountains = false
 
     var body: some View {
         ScrollView(.vertical) {
@@ -104,6 +108,6 @@ struct HubTabPage<TopBar: View, Content: View>: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .demoScroll()
-        .hubPageStyle()
+        .hubPageStyle(backdrop: mountains)
     }
 }
