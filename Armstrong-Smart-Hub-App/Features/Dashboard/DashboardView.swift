@@ -569,18 +569,22 @@ struct HabitButton: View {
         let color = Color(hex: habit.color)
         Button(action: onTap) {
             VStack(spacing: size * 0.09) {
-                ZStack {
-                    Circle().strokeBorder(color, lineWidth: size > 90 ? 5 : 4)
-                    Circle().fill(done ? color : color.opacity(0.08)).padding(done ? 0 : 5)
-                    if done {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: size * 0.4, weight: .bold))
-                            .foregroundStyle(.white)
-                            .transition(.scale.combined(with: .opacity))
-                    } else if let icon = habit.icon {
-                        Text(icon).font(.system(size: size * 0.36))
+                // Native Liquid Glass: clear until it's done, then it fills with the habit's color.
+                Circle()
+                    .fill(.clear)
+                    .glassEffect(.regular.tint(done ? color.opacity(0.9) : color.opacity(0.12)).interactive(), in: .circle)
+                    .overlay {
+                        if done {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: size * 0.4, weight: .bold))
+                                .foregroundStyle(.white)
+                                .shadow(color: color.opacity(0.6), radius: 6)
+                                .transition(.scale.combined(with: .opacity))
+                        } else if let icon = habit.icon {
+                            Text(icon).font(.system(size: size * 0.36))
+                        }
                     }
-                }
+                    .animation(.spring(duration: 0.3, bounce: 0.2), value: done)
                 .frame(width: size, height: size)
                 if showsName {
                     Text(habit.name)
