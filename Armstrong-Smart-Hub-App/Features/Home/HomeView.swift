@@ -266,6 +266,17 @@ struct DeviceGroups: View {
             if !items.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     if large { SectionHeader(title: group.title) }
+                    if group.kinds.contains(.light) {
+                        VStack(spacing: 12) {
+                            ForEach(items) { e in
+                                LightSwitch(entity: e, pending: store.pending.contains(e.id), large: large) {
+                                    onToggle(e)
+                                } onAdjust: {
+                                    onOpen(e)
+                                }
+                            }
+                        }
+                    } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: large ? 200 : 150), spacing: 10)], spacing: 10) {
                         ForEach(items) { e in
                             DeviceButton(entity: e, pending: store.pending.contains(e.id), compact: !large) {
@@ -274,6 +285,7 @@ struct DeviceGroups: View {
                                 onOpen(e)
                             }
                         }
+                    }
                     }
                 }
             }
