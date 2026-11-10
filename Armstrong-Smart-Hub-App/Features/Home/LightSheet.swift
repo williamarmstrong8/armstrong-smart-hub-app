@@ -130,7 +130,7 @@ struct LightSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
             }
-            .presentationBackground { MountainBackdrop() }
+            .presentationBackground { AmbientBackdrop() }
             #if DEBUG
             // Film cue: glide the brightness up like a slow drag, then send it once, as a release would.
             .onAppear {

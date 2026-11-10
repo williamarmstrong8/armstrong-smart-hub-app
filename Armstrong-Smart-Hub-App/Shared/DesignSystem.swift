@@ -62,7 +62,7 @@ extension View {
 
     func hubPageStyle(backdrop: Bool = false) -> some View {
         background {
-            if backdrop { MountainBackdrop() } else { HubDesign.page.ignoresSafeArea() }
+            if backdrop { AmbientBackdrop() } else { HubDesign.page.ignoresSafeArea() }
         }
             .foregroundStyle(HubDesign.ink)
             .tint(HubDesign.action)
@@ -90,7 +90,7 @@ struct HubToolbarButtonStyle: ButtonStyle {
 struct HubTabPage<TopBar: View, Content: View>: View {
     @ViewBuilder var topBar: TopBar
     @ViewBuilder var content: Content
-    /// Snowy mountains behind the page, for screens built from Liquid Glass.
+    /// An ambient gradient behind the page, for screens built from Liquid Glass.
     var mountains = false
 
     var body: some View {
