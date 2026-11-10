@@ -14,6 +14,9 @@ struct LightSwitch: View {
     /// 0...1 while the knob is being dragged; the lamp is only told on release.
     @State private var dragProgress: Double?
     @State private var dragBase: Double?
+    /// Where the knob was released, held until the lamp's own state catches up so it never snaps back.
+    @State private var settled: Double?
+    @State private var settleTask: Task<Void, Never>?
 
     var body: some View {
         let on = entity.isOn
@@ -22,8 +25,8 @@ struct LightSwitch: View {
         let inset: CGFloat = large ? 10 : 8
         let knob = height - inset * 2
         let adjustable = entity.supportsBrightness && !entity.isUnavailable
-        let progress = dragProgress ?? (on ? max(0.04, Double(entity.brightnessPct) / 100) : 0)
-        let lit = on || dragProgress != nil
+        let progress = dragProgress ?? settled ?? (on ? max(0.04, Double(entity.brightnessPct) / 100) : 0)
+        let lit = on || dragProgress != nil || settled != nil
 
         GeometryReader { geo in
             let travel = max(geo.size.width - knob - inset * 2, 1)
@@ -33,30 +36,28 @@ struct LightSwitch: View {
                 // Glow that follows the knob, in the lamp's color.
                 Capsule()
                     .fill(LinearGradient(
-                        colors: [tint.opacity(0.95), tint.opacity(0.35), .clear],
+                        colors: [tint.opacity(0.75), tint.opacity(0.25), .clear],
                         startPoint: UnitPoint(x: x / geo.size.width + 0.1, y: 0.5),
                         endPoint: UnitPoint(x: max(0, x / geo.size.width - 0.55), y: 0.5)
                     ))
                     .blur(radius: 6)
                     .clipShape(.capsule)
                     .opacity(lit ? 1 : 0)
+                    .allowsHitTesting(false)
 
-                // The name sits on whichever side has more room.
-                HStack(spacing: 0) {
-                    if progress > 0.5 { label; Spacer(minLength: 0) } else { Spacer(minLength: 0); label }
-                }
-                .padding(.horizontal, knob * 0.45 + inset)
-                .allowsHitTesting(false)
+                // The name stays put, just right of where the knob rests when off.
+                label
+                    .padding(.leading, inset + knob + 14)
+                    .allowsHitTesting(false)
 
                 Circle()
                     .fill(.clear)
                     .frame(width: knob, height: knob)
-                    .glassEffect(.regular.tint(lit ? tint.opacity(0.85) : .clear).interactive(), in: .circle)
+                    .glassEffect(.regular.interactive(), in: .circle)
                     .overlay {
                         Image(systemName: lit ? "lightbulb.max.fill" : "lightbulb")
                             .font(.system(size: knob * 0.42, weight: .medium))
-                            .foregroundStyle(lit ? .white : .secondary)
-                            .shadow(color: lit ? tint.opacity(0.8) : .clear, radius: 6)
+                            .foregroundStyle(lit ? tint : .secondary)
                     }
                     .offset(x: x)
                     .highPriorityGesture(
@@ -68,19 +69,27 @@ struct LightSwitch: View {
                             }
                             .onEnded { _ in
                                 guard let p = dragProgress else { return }
+                                settled = p
                                 dragProgress = nil
                                 dragBase = nil
                                 onBrightness(max(1, Int((p * 100).rounded())))
+                                settleTask?.cancel()
+                                settleTask = Task {
+                                    try? await Task.sleep(for: .seconds(4))
+                                    if !Task.isCancelled { settled = nil }
+                                }
                             }
                     )
             }
         }
         .frame(height: height)
         .glassEffect(.regular, in: .capsule)
-        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
         .contentShape(.capsule)
         .scaleEffect(pressed ? 0.98 : 1)
         .opacity(entity.isUnavailable ? 0.5 : pending ? 0.8 : 1)
+        .onChange(of: entity.brightnessPct) { _, new in
+            if let settled, abs(Double(new) / 100 - settled) < 0.03 { self.settled = nil; settleTask?.cancel() }
+        }
         .animation(dragProgress == nil ? .spring(duration: 0.35, bounce: 0.2) : nil, value: progress)
         .animation(.spring(duration: 0.2), value: pressed)
         // Double-tap opens the color and temperature panel; a single tap toggles.

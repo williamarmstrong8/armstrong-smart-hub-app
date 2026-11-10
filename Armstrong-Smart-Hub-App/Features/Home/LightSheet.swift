@@ -41,20 +41,27 @@ struct LightSheet: View {
     let toast: Toast
 
     @Environment(AppSession.self) private var session
-    @State private var brightness: Double = 100
-    @State private var kelvin: Double = 4000
-    @State private var hue: Double = 0.08
-    @State private var saturation: Double = 0.8
+    @State private var brightness: Double
+    @State private var kelvin: Double
     /// A drag in progress owns the sliders; polls must not yank them back.
     @State private var dragging = false
+
+    init(entityID: String, store: HomeStore, toast: Toast) {
+        self.entityID = entityID
+        self.store = store
+        self.toast = toast
+        // Open already showing the lamp as it is, not a default that jumps a moment later.
+        let e = store.entity(entityID)
+        _brightness = State(initialValue: e.map { $0.brightnessPct == 0 ? 100 : Double($0.brightnessPct) } ?? 100)
+        let minK = e?.minKelvin ?? 2000, maxK = e?.maxKelvin ?? 6500
+        _kelvin = State(initialValue: Double(e?.colorTempKelvin ?? (minK + maxK) / 2))
+    }
 
     var body: some View {
         if let entity = store.entity(entityID) {
             NavigationStack {
                 ScrollView {
                     VStack(spacing: 22) {
-                        LightOrb(color: currentColor(entity), on: entity.isOn)
-
                         if entity.supportsBrightness {
                             LightControlBar(
                                 value: $brightness,
@@ -86,16 +93,9 @@ struct LightSheet: View {
                         }
 
                         if entity.supportsColor {
-                            ColorPad(hue: $hue, saturation: $saturation, dragging: $dragging) {
-                                let c = UIColor(hue: hue, saturation: saturation, brightness: 1, alpha: 1)
-                                var r: CGFloat = 0, g: CGFloat = 0, bl: CGFloat = 0
-                                c.getRed(&r, green: &g, blue: &bl, alpha: nil)
-                                send(entity, .init(on: true, rgb: [Int(r * 255), Int(g * 255), Int(bl * 255)]))
-                            }
-
                             GlassEffectContainer(spacing: 10) {
                                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 10) {
-                                    ForEach(swatches) { swatch in
+                                    ForEach(swatches.prefix(18)) { swatch in
                                         let active = entity.rgbColor == swatch.rgb
                                         Button {
                                             send(entity, .init(on: true, rgb: swatch.rgb))
@@ -162,17 +162,6 @@ struct LightSheet: View {
         brightness = entity.brightnessPct == 0 ? 100 : Double(entity.brightnessPct)
         let minK = entity.minKelvin ?? 2000, maxK = entity.maxKelvin ?? 6500
         kelvin = Double(entity.colorTempKelvin ?? (minK + maxK) / 2)
-        if let rgb = entity.rgbColor {
-            var h: CGFloat = 0, sat: CGFloat = 0
-            UIColor(Color(rgb: rgb)).getHue(&h, saturation: &sat, brightness: nil, alpha: nil)
-            hue = h; saturation = max(sat, 0.05)
-        }
-    }
-
-    private func currentColor(_ entity: HAEntity) -> Color {
-        if let rgb = entity.rgbColor { return Color(rgb: rgb) }
-        if entity.colorTempKelvin != nil { return temperatureColor(Int(kelvin)) }
-        return .orange
     }
 
     private func send(_ entity: HAEntity, _ change: HomeStore.LightChange) {
@@ -204,7 +193,7 @@ private struct LightControlBar: View {
                     Circle()
                         .fill(.clear)
                         .frame(width: 44, height: 44)
-                        .glassEffect(.regular.tint(thumb.opacity(0.7)).interactive(), in: .circle)
+                        .glassEffect(.regular.interactive(), in: .circle)
                         .padding(5)
                         .offset(x: max(0, min(width - 54, progress * (width - 54))))
                         .allowsHitTesting(false)
@@ -233,71 +222,6 @@ private struct LightControlBar: View {
             }
             onCommit()
         }
-    }
-}
-
-/// A glowing glass orb that shows the lamp's color right now.
-private struct LightOrb: View {
-    let color: Color
-    let on: Bool
-
-    var body: some View {
-        ZStack {
-            Circle().fill(color.opacity(on ? 0.85 : 0.1)).blur(radius: 34).frame(width: 150, height: 150)
-            Circle()
-                .fill(.clear)
-                .frame(width: 96, height: 96)
-                .glassEffect(.regular.tint(on ? color.opacity(0.8) : .clear), in: .circle)
-                .overlay {
-                    Image(systemName: on ? "lightbulb.max.fill" : "lightbulb")
-                        .font(.system(size: 38, weight: .medium))
-                        .foregroundStyle(on ? .white : .secondary)
-                }
-        }
-        .frame(height: 140)
-        .animation(.easeOut(duration: 0.3), value: color)
-    }
-}
-
-/// Hue across, saturation down: drag the glass bead anywhere on the pane to pick a color.
-private struct ColorPad: View {
-    @Binding var hue: Double
-    @Binding var saturation: Double
-    @Binding var dragging: Bool
-    let onCommit: () -> Void
-
-    var body: some View {
-        GeometryReader { geo in
-            let size = geo.size
-            let color = Color(hue: hue, saturation: saturation, brightness: 1)
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(LinearGradient(colors: (0...12).map { Color(hue: Double($0) / 12, saturation: 1, brightness: 1) },
-                                     startPoint: .leading, endPoint: .trailing))
-                .overlay(LinearGradient(colors: [.clear, .white], startPoint: .top, endPoint: .bottom))
-                .opacity(0.9)
-                .glassEffect(.regular, in: .rect(cornerRadius: 28))
-                .overlay { RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(.white.opacity(0.22), lineWidth: 1) }
-                .overlay(alignment: .topLeading) {
-                    Circle()
-                        .fill(.clear)
-                        .frame(width: 46, height: 46)
-                        .glassEffect(.regular.tint(color).interactive(), in: .circle)
-                        .offset(x: hue * size.width - 23, y: (1 - saturation) * size.height - 23)
-                        .allowsHitTesting(false)
-                }
-                .contentShape(.rect)
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { g in
-                            dragging = true
-                            hue = max(0, min(0.999, g.location.x / max(size.width, 1)))
-                            saturation = max(0.05, min(1, 1 - g.location.y / max(size.height, 1)))
-                        }
-                        .onEnded { _ in dragging = false; onCommit() }
-                )
-        }
-        .frame(height: 190)
-        .accessibilityLabel("Color")
     }
 }
 
