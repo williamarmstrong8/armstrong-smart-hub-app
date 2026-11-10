@@ -84,6 +84,21 @@ struct MountainBackdrop: View {
                 ]),
                 startPoint: CGPoint(x: 0, y: top), endPoint: CGPoint(x: 0, y: max(snowEnd + amp, top + 1) + h * 0.12)))
 
+            // Faces turned from the sun fall into shadow, so each peak reads as solid rock and snow.
+            var xs: CGFloat = 0
+            while xs <= w {
+                let y0 = base - ridge(Double(xs) / Double(w), layer: i) * amp
+                let y1 = base - ridge(Double(xs + 6) / Double(w), layer: i) * amp
+                let slope = y1 - y0 // > 0: this face drops away to the right, away from the sun
+                if slope > 0.4 {
+                    let depth = min(amp * 0.5, slope * 9)
+                    ctx.fill(Path(CGRect(x: xs, y: y0, width: 6.5, height: depth)),
+                             with: .linearGradient(Gradient(colors: [l.shade.opacity(dark ? 0.55 : 0.5), .clear]),
+                                                   startPoint: CGPoint(x: 0, y: y0), endPoint: CGPoint(x: 0, y: y0 + depth)))
+                }
+                xs += 6
+            }
+
             // Mist between layers, drifting a little
             let mistY = base - amp * 0.15 + 8 * sin(t / 7 + Double(i))
             ctx.fill(Path(CGRect(x: 0, y: mistY, width: w, height: h - mistY)),

@@ -572,7 +572,7 @@ struct HabitButton: View {
                 // Native Liquid Glass: clear until it's done, then it fills with the habit's color.
                 Circle()
                     .fill(.clear)
-                    .glassEffect(.regular.tint(done ? color.opacity(0.9) : color.opacity(0.12)).interactive(), in: .circle)
+                    .glassGlare(.regular.tint(done ? color.opacity(0.9) : color.opacity(0.12)).interactive(), in: .circle)
                     .overlay {
                         if done {
                             Image(systemName: "checkmark")

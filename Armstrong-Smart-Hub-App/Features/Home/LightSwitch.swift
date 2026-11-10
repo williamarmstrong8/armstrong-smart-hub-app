@@ -55,7 +55,7 @@ struct LightSwitch: View {
                 Circle()
                     .fill(.clear)
                     .frame(width: knob, height: knob)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .glassGlare(.regular.interactive(), in: .circle)
                     .overlay {
                         Image(systemName: lit ? "lightbulb.max.fill" : "lightbulb")
                             .font(.system(size: knob * 0.42, weight: .medium))
@@ -85,7 +85,7 @@ struct LightSwitch: View {
             }
         }
         .frame(height: height)
-        .glassEffect(.regular, in: .capsule)
+        .glassGlare(.regular, in: .capsule)
         .contentShape(.capsule)
         .scaleEffect(pressed ? 0.98 : 1)
         .opacity(entity.isUnavailable ? 0.5 : pending ? 0.8 : 1)

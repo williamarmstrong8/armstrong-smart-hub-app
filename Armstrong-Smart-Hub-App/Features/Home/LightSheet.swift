@@ -103,7 +103,7 @@ struct LightSheet: View {
                                             Circle()
                                                 .fill(.clear)
                                                 .aspectRatio(1, contentMode: .fit)
-                                                .glassEffect(.regular.tint(Color(rgb: swatch.rgb).opacity(0.9)).interactive(), in: .circle)
+                                                .glassGlare(.regular.tint(Color(rgb: swatch.rgb).opacity(0.9)).interactive(), in: .circle)
                                                 .overlay {
                                                     if active {
                                                         Image(systemName: "checkmark")
@@ -187,13 +187,13 @@ private struct LightControlBar: View {
 
             Capsule()
                 .fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing).opacity(0.9))
-                .glassEffect(.regular, in: .capsule)
+                .glassGlare(.regular, in: .capsule)
                 .overlay { Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 1) }
                 .overlay(alignment: .leading) {
                     Circle()
                         .fill(.clear)
                         .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: .circle)
+                        .glassGlare(.regular.interactive(), in: .circle)
                         .padding(5)
                         .offset(x: max(0, min(width - 54, progress * (width - 54))))
                         .allowsHitTesting(false)
