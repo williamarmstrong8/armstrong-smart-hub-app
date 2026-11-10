@@ -47,7 +47,9 @@ struct LightSwitch: View {
 
                 // The name stays put, just right of where the knob rests when off.
                 label
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, inset + knob + 14)
+                    .padding(.trailing, 16)
                     .allowsHitTesting(false)
 
                 Circle()
@@ -111,6 +113,7 @@ struct LightSwitch: View {
     private var label: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(entity.name)
+                .multilineTextAlignment(.leading)
                 .font(.system(size: large ? 22 : 18, weight: .medium))
                 .lineLimit(1)
             Text(dragProgress.map { "\(max(1, Int(($0 * 100).rounded())))%" } ?? entity.stateLabel)
