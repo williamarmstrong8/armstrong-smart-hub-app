@@ -60,7 +60,7 @@ struct Card<Content: View>: View {
         }
         .padding(HubLayout.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(HubDesign.raised, in: .rect(cornerRadius: HubLayout.cardRadius))
+        .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
     }
 }
 
@@ -106,11 +106,7 @@ struct ToastOverlay: ViewModifier {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                         .frame(minHeight: HubLayout.minHitTarget)
-                        .background(HubDesign.raised, in: .rect(cornerRadius: HubLayout.controlRadius))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: HubLayout.controlRadius)
-                                .strokeBorder(HubDesign.separator, lineWidth: 1)
-                        }
+                        .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.controlRadius))
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Dismiss message")

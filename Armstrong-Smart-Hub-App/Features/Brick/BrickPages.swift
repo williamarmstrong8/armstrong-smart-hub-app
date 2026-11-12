@@ -24,7 +24,7 @@ struct BrickModesPage: View {
                             .foregroundStyle(BrickLook.soft)
                     }
                     .padding(20)
-                    .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                    .glassGlare(.regular.interactive(), in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
                     .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -321,7 +321,7 @@ struct BrickActivityPage: View {
                     stat("\(store.streak)", "Day streak")
                 }
                 .padding(.vertical, 22)
-                .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+                .glassGlare(.regular, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
                 .padding(.horizontal, Fit.gutter).padding(.top, 28)
                 VStack(spacing: 16) {
                     ForEach(Array(shown)) { d in
@@ -465,7 +465,7 @@ struct BrickTagDetailPage: View {
                 Spacer(minLength: 0)
             }
             .padding(20)
-            .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+            .glassGlare(.regular.interactive(), in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
         }
         .buttonStyle(.plain)

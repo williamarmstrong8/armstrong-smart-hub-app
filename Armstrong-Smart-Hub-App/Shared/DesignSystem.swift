@@ -60,7 +60,7 @@ extension View {
         modifier(HubAnimation(value: value))
     }
 
-    func hubPageStyle(backdrop: Bool = false) -> some View {
+    func hubPageStyle(backdrop: Bool = true) -> some View {
         background {
             if backdrop { AmbientBackdrop() } else { HubDesign.page.ignoresSafeArea() }
         }

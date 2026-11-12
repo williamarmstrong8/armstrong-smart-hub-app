@@ -14,6 +14,7 @@ struct AmbientBackdrop: View {
                 .overlay { grain(dark: dark) }
         }
         .ignoresSafeArea()
+        .blur(radius: 60, opaque: true)
         .accessibilityHidden(true)
     }
 

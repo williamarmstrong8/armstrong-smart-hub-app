@@ -97,7 +97,7 @@ private struct AutomationCard: View {
                 Spacer(minLength: 0)
             }
             .padding(12)
-            .background(BrickLook.card, in: .rect(cornerRadius: 22))
+            .glassGlare(.regular.interactive(), in: .rect(cornerRadius: 22))
             .contentShape(.rect(cornerRadius: 16))
         }
         .buttonStyle(CardPressStyle())

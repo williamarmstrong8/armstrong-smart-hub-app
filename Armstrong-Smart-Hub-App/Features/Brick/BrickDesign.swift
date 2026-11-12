@@ -51,7 +51,7 @@ struct BrickCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) { content }
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(BrickLook.card, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
+            .glassGlare(.regular, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
     }
 }
 
@@ -88,8 +88,7 @@ struct BrickPlus: View {
         Image(systemName: "plus").font(.system(size: 26, weight: .light))
             .foregroundStyle(BrickLook.ink)
             .frame(width: 66, height: 66)
-            .background(BrickLook.pill, in: Circle())
-            .shadow(color: .black.opacity(0.14), radius: 8, y: 5)
+            .glassGlare(.regular, in: Circle())
     }
 }
 
