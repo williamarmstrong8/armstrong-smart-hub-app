@@ -160,6 +160,13 @@ final class BrickStore: NSObject {
 
     func update(_ schedule: BrickSchedule) {
         guard let i = schedules.firstIndex(where: { $0.id == schedule.id }) else { return }
+        // While its mode is on, only the name can change; a new end time would end the session early.
+        if let on = schedules[i].profileID, isOn(on) {
+            var kept = schedules[i]
+            if kept.name != schedule.name { kept.name = schedule.name; schedules[i] = kept; save(schedules, "brick.schedules") }
+            else { message = "That schedule's mode is on. Change it once it's off." }
+            return
+        }
         // Renaming (each keystroke) doesn't need iOS to re-register anything.
         var old = schedules[i], new = schedule
         old.name = ""; new.name = ""; old.lastFired = nil; new.lastFired = nil
@@ -213,7 +220,9 @@ final class BrickStore: NSObject {
                 return "That tag is already registered as \(known.name)."
             }
             self.tags.append(BrickTag(id: id, name: self.tags.isEmpty ? "My Brick" : "Tag \(self.tags.count + 1)",
-                                      profileID: self.profiles.first { !$0.lockdown }?.id))
+                                      profileID: self.profiles.first { p in
+                                          !p.lockdown && !self.isOn(p.id) && !self.tags.contains { $0.profileID == p.id }
+                                      }?.id))
             self.save(self.tags, "brick.tags")
             added(id)
             return nil
@@ -226,6 +235,10 @@ final class BrickStore: NSObject {
         if let new = tag.profileID, new != tags[i].profileID {
             // Pointing a tag at a mode that's on would make it a key mid-session.
             guard !isOn(new) else { message = "That mode is on. Pick it once it's off."; return }
+            if let other = tags.first(where: { $0.profileID == new && $0.id != tag.id }) {
+                message = "\(other.name) already has that mode. One tag per mode."
+                return
+            }
             if let other = pairedTag(new), other.id != tag.id {
                 message = "That lockdown is paired with \(other.name). Only one tag can end it."
                 return
