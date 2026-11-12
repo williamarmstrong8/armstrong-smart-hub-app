@@ -343,20 +343,30 @@ func brickDuration(_ seconds: TimeInterval) -> String {
 extension BrickStore {
     private var cal: Calendar { .current }
 
-    /// Sessions that touch this day.
+    /// Sessions that touch this day. A mode that is (or became) a lockdown isn't Brick time, so its sessions don't show.
     func sessions(on day: Date) -> [BrickSession] {
         let start = cal.startOfDay(for: day)
         let end = start.addingTimeInterval(86400)
-        return sessions.filter { $0.start < end && ($0.end ?? now) > start }
+        let lockdownNames = Set(profiles.filter(\.lockdown).map(\.name))
+        return sessions.filter { $0.start < end && ($0.end ?? now) > start && !lockdownNames.contains($0.profileName) }
     }
 
-    /// Bricked time within this day, splitting sessions that cross midnight.
+    /// Bricked time within this day, splitting sessions that cross midnight. Overlapping sessions count once.
     func seconds(on day: Date) -> TimeInterval {
         let start = cal.startOfDay(for: day)
         let end = start.addingTimeInterval(86400)
-        return sessions(on: day).reduce(0) { sum, s in
-            sum + max(0, min(end, s.end ?? now).timeIntervalSince(max(start, s.start)))
+        let spans = sessions(on: day)
+            .map { (max(start, $0.start), min(end, $0.end ?? now)) }
+            .filter { $0.1 > $0.0 }
+            .sorted { $0.0 < $1.0 }
+        var total: TimeInterval = 0
+        var cur: (Date, Date)?
+        for s in spans {
+            if let c = cur, s.0 <= c.1 { cur = (c.0, max(c.1, s.1)) }
+            else { if let c = cur { total += c.1.timeIntervalSince(c.0) }; cur = s }
         }
+        if let c = cur { total += c.1.timeIntervalSince(c.0) }
+        return total
     }
 
     /// The seven days of a week, `offset` weeks back from this one.
