@@ -158,15 +158,15 @@ final class BrickStore: NSObject {
         return s.id
     }
 
+    /// A schedule whose mode is on can't be opened or changed, so its time can't be moved to end the session.
+    func isLocked(_ schedule: BrickSchedule) -> Bool {
+        schedule.profileID.map { isOn($0) } ?? false
+    }
+
     func update(_ schedule: BrickSchedule) {
         guard let i = schedules.firstIndex(where: { $0.id == schedule.id }) else { return }
-        // While its mode is on, only the name can change; a new end time would end the session early.
-        if let on = schedules[i].profileID, isOn(on) {
-            var kept = schedules[i]
-            if kept.name != schedule.name { kept.name = schedule.name; schedules[i] = kept; save(schedules, "brick.schedules") }
-            else { message = "That schedule's mode is on. Change it once it's off." }
-            return
-        }
+        // While its mode is on nothing changes; a new end time would end the session early.
+        if isLocked(schedules[i]) { message = "That schedule's mode is on. Change it once it's off."; return }
         // Renaming (each keystroke) doesn't need iOS to re-register anything.
         var old = schedules[i], new = schedule
         old.name = ""; new.name = ""; old.lastFired = nil; new.lastFired = nil

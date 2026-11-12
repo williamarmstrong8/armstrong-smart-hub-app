@@ -196,7 +196,10 @@ struct BrickSchedulePage: View {
 
     var body: some View {
         BrickPage(title: "Schedule") {
-            if let s = schedule {
+            if let s = schedule, store.isLocked(s) {
+                Text("This schedule's mode is on. It can't be changed until it ends.")
+                    .font(.body).foregroundStyle(BrickLook.soft)
+            } else if let s = schedule {
                 BrickCard(padding: 0) {
                     VStack(spacing: 0) {
                         TextField("Name", text: bind(s, \.name)).font(.system(size: 18)).padding(.vertical, 20)

@@ -111,8 +111,12 @@ struct BrickSchedulesPage: View {
     var body: some View {
         BrickPage(title: "Schedules") {
             ForEach(store.schedules) { s in
-                NavigationLink(value: BrickRoute.schedule(s.id)) { BrickScheduleCard(store: store, schedule: s) }
-                    .buttonStyle(.plain)
+                if store.isLocked(s) {
+                    BrickScheduleCard(store: store, schedule: s)
+                } else {
+                    NavigationLink(value: BrickRoute.schedule(s.id)) { BrickScheduleCard(store: store, schedule: s) }
+                        .buttonStyle(.plain)
+                }
             }
             Button { path.append(.schedule(store.addSchedule())) } label: {
                 VStack(spacing: 16) {
@@ -332,7 +336,7 @@ struct BrickScheduleCard: View {
                     Text(schedule.name).font(.headline)
                     Group {
                         Text(schedule.summary)
-                        Text("Mode: \(mode)")
+                        Text(store.isLocked(schedule) ? "On now. Locked until it ends." : "Mode: \(mode)")
                     }
                     .font(.subheadline).foregroundStyle(BrickLook.soft)
                 }
@@ -340,6 +344,7 @@ struct BrickScheduleCard: View {
                 Toggle("", isOn: Binding(get: { schedule.enabled },
                                          set: { var s = schedule; s.enabled = $0; store.update(s) }))
                     .labelsHidden().tint(BrickLook.bar)
+                    .disabled(store.isLocked(schedule))
             }
         }
     }
