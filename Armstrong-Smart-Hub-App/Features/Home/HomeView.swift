@@ -165,7 +165,7 @@ struct HomeView: View {
     private var hero: some View {
         let hour = Calendar.current.component(.hour, from: .now)
         let greeting = hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
-        let lights = store.entities.filter { $0.control == .light }
+        let lights = store.entities.filter { $0.control == .light && !$0.isTV && !$0.name.localizedCaseInsensitiveContains("remote") }
         let on = lights.filter(\.isOn).count
         let unlocked = store.entities.filter { $0.control == .lock && $0.isOn }
         let summary: String = {
@@ -185,16 +185,16 @@ struct HomeView: View {
             Spacer(minLength: 0)
             if !lights.isEmpty {
                 ScrollView(.horizontal) {
-                    HStack(spacing: 14) {
-                        ForEach(lights.prefix(8)) { light in
+                    HStack(spacing: 22) {
+                        ForEach(lights.prefix(6)) { light in
                             Button { toggle(light) } label: {
-                                VStack(spacing: 6) {
+                                VStack(spacing: 8) {
                                     Image(systemName: light.isOn ? "lightbulb.max.fill" : "lightbulb")
-                                        .font(.title3)
-                                        .frame(width: 56, height: 56)
+                                        .font(.title)
+                                        .frame(width: 84, height: 84)
                                         .glassGlare(.regular.interactive(), in: .circle)
-                                    Text(light.name).font(.caption2).lineLimit(1)
-                                        .foregroundStyle(BrickLook.soft).frame(width: 64)
+                                    Text(light.name).font(.caption).lineLimit(1)
+                                        .foregroundStyle(BrickLook.soft).frame(width: 92)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -202,6 +202,7 @@ struct HomeView: View {
                         }
                     }
                     .padding(.horizontal, 4)
+                    .containerRelativeFrame(.horizontal, alignment: .center)
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
