@@ -19,9 +19,6 @@ struct BrickView: View {
             ScrollView(.vertical) {
                 VStack(spacing: HubLayout.sectionGap) {
                     BrickSheet(store: store, path: $path)
-                    // Keep the hosted report mounted instead of recreating it on scroll.
-                    // The hosted Screen Time report can't run in the Simulator; the film leaves it out.
-                    if !Demo.isOn { BrickScreenTimeSection(store: store, path: $path) }
                     LazyVStack(spacing: HubLayout.sectionGap) {
                         BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()))
                         settings
