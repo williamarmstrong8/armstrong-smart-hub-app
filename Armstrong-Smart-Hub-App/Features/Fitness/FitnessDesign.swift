@@ -325,19 +325,19 @@ struct OverviewRow<Chart: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(Fit.label).foregroundStyle(Fit.muted)
+                Text(title).font(.subheadline.weight(.medium)).foregroundStyle(.primary.opacity(0.75))
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(value).font(.system(size: 26, weight: .light).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.6)
-                    if let unit { Text(unit).font(Fit.label).foregroundStyle(Fit.muted) }
+                    Text(value).font(.system(size: 32, weight: .medium).monospacedDigit()).foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.6)
+                    if let unit { Text(unit).font(.subheadline.weight(.medium)).foregroundStyle(.primary.opacity(0.7)) }
                 }
-                if let caption { Text(caption).font(.caption).foregroundStyle(tint).lineLimit(1) }
-                if let detail { Text(detail).font(.caption).foregroundStyle(Fit.muted).lineLimit(1).minimumScaleFactor(0.85) }
+                if let caption { Text(caption).font(.footnote.weight(.semibold)).foregroundStyle(tint).lineLimit(1) }
+                if let detail { Text(detail).font(.footnote).foregroundStyle(.primary.opacity(0.7)).lineLimit(1).minimumScaleFactor(0.85) }
             }
             Spacer(minLength: 8)
-            chart.frame(width: 96, height: 34)
+            chart.frame(width: 112, height: 48)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Fit.faint)
         }
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
         .contentShape(.rect)
     }
 }
@@ -357,27 +357,34 @@ struct MiniTrend: View {
             GeometryReader { geo in
                 let step = geo.size.width / CGFloat(max(values.count - 1, 1))
                 if bars {
-                    let width = geo.size.width / CGFloat(values.count) * 0.55
+                    let width = geo.size.width / CGFloat(values.count) * 0.62
                     HStack(alignment: .bottom, spacing: 0) {
                         ForEach(Array(values.enumerated()), id: \.offset) { index, value in
                             Capsule()
-                                .fill(tint.opacity(index == values.count - 1 ? 1 : 0.45))
+                                .fill(tint.opacity(index == values.count - 1 ? 1 : 0.55))
                                 .frame(width: width, height: max(2, geo.size.height * CGFloat(value / max(high, 1))))
                                 .frame(maxWidth: .infinity)
                         }
                     }
                     .frame(height: geo.size.height, alignment: .bottom)
                 } else {
-                    Path { path in
-                        for (index, value) in values.enumerated() {
-                            let point = CGPoint(x: CGFloat(index) * step, y: geo.size.height * (1 - CGFloat((value - low) / span)) * 0.9 + 2)
-                            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
-                        }
+                    let pts = values.enumerated().map { index, value in
+                        CGPoint(x: CGFloat(index) * step, y: geo.size.height * (1 - CGFloat((value - low) / span)) * 0.84 + 5)
                     }
-                    .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                    Circle().fill(tint).frame(width: 5, height: 5)
-                        .position(x: CGFloat(values.count - 1) * step,
-                                  y: geo.size.height * (1 - CGFloat(((values.last ?? 0) - low) / span)) * 0.9 + 2)
+                    let line = Path { path in
+                        for (i, pt) in pts.enumerated() { i == 0 ? path.move(to: pt) : path.addLine(to: pt) }
+                    }
+                    Path { path in
+                        path.addPath(line)
+                        path.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
+                        path.addLine(to: CGPoint(x: 0, y: geo.size.height))
+                        path.closeSubpath()
+                    }
+                    .fill(LinearGradient(colors: [tint.opacity(0.3), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
+                    line.stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    if let end = pts.last {
+                        Circle().fill(tint).frame(width: 8, height: 8).shadow(color: tint.opacity(0.7), radius: 4).position(end)
+                    }
                 }
             }
         }
