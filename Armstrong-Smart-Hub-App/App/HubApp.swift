@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct HubApp: App {
+    @UIApplicationDelegateAdaptor(HubAppDelegate.self) private var appDelegate
     @State private var session = AppSession()
     /// One Bluetooth link to the watch for the app's lifetime.
     @State private var watch = WatchLink()
@@ -39,6 +40,8 @@ struct HubApp: App {
                     watch.api = signedIn ? session.api : nil
                     CheckinReminders.shared.api = signedIn ? session.api : nil
                     TVActivityController.shared.api = signedIn ? session.api : nil
+                    // Jarvis's build updates come in as notifications.
+                    PushRegistration.shared.api = signedIn ? session.api : nil
                     // The 8 am and 6 pm check-ins, from the last page the phone has.
                     if signedIn { Task { await CheckinReminders.shared.schedule(CheckinStore.shared) } }
                 }

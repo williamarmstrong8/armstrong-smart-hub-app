@@ -107,9 +107,10 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
         await answer(day: day, sick: action == Self.sick)
     }
 
-    /// Check-ins show over the open app too; anything else (the rest timer) stays as it was: not shown.
+    /// Check-ins and Jarvis's build updates show over the open app too; anything else (the rest timer) stays as it was: not shown.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        notification.request.content.categoryIdentifier == Self.category ? [.banner, .sound] : []
+        let category = notification.request.content.categoryIdentifier
+        return category == Self.category || category == "jarvis" ? [.banner, .sound] : []
     }
 
     private func answer(day: String, sick: Bool) async {
