@@ -383,7 +383,7 @@ struct MiniTrend: View {
                     .fill(LinearGradient(colors: [tint.opacity(0.3), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
                     line.stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                     if let end = pts.last {
-                        Circle().fill(tint).frame(width: 8, height: 8).shadow(color: tint.opacity(0.7), radius: 4).position(end)
+                        Circle().fill(tint).frame(width: 8, height: 8).position(end)
                     }
                 }
             }
