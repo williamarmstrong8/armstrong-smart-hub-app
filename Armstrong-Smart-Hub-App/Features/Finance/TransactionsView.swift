@@ -62,7 +62,7 @@ struct TransactionsView: View {
         .demoScroll()
         .hubPageStyle()
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(HubDesign.page, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(item: $retagging) { t in
             CategoryPicker(transaction: t, options: store.categoryOptions) { c in
                 Task { await store.retag(t, to: c, api: session.api, toast: toast) }
