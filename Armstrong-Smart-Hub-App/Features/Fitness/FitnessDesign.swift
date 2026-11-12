@@ -405,13 +405,6 @@ struct MiniTrend: View {
                     let line = Path { path in
                         for (i, pt) in pts.enumerated() { i == 0 ? path.move(to: pt) : path.addLine(to: pt) }
                     }
-                    Path { path in
-                        path.addPath(line)
-                        path.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
-                        path.addLine(to: CGPoint(x: 0, y: geo.size.height))
-                        path.closeSubpath()
-                    }
-                    .fill(LinearGradient(colors: [tint.opacity(0.3), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
                     line.stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                     if let end = pts.last {
                         Circle().fill(tint).frame(width: 8, height: 8).position(end)
