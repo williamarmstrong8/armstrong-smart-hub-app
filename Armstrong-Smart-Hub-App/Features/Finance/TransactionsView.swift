@@ -15,7 +15,7 @@ struct TransactionsView: View {
         let all = store.dashboard?.transactions ?? []
         let filtered = all.filter { t in
             (category == nil || t.category == category)
-                && (search.isEmpty || t.payee.localizedCaseInsensitiveContains(search) || t.accountName.localizedCaseInsensitiveContains(search))
+                && (search.isEmpty || t.payee.localizedCaseInsensitiveContains(search) || MerchantInfo.resolve(t).name.localizedCaseInsensitiveContains(search) || t.description.localizedCaseInsensitiveContains(search) || t.accountName.localizedCaseInsensitiveContains(search))
         }
         let byDay = Dictionary(grouping: filtered) { Calendar.current.startOfDay(for: $0.date) }
             .sorted { $0.key > $1.key }
@@ -64,7 +64,7 @@ struct TransactionsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(item: $retagging) { t in
-            CategoryPicker(transaction: t, options: store.categoryOptions) { c in
+            CategoryPicker(transaction: t, options: store.categoryOptions, history: store.dashboard?.transactions ?? []) { c in
                 Task { await store.retag(t, to: c, api: session.api, toast: toast) }
             }
         }

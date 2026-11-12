@@ -100,4 +100,41 @@ struct MonthDots: View {
         return HubDesign.ink.opacity(d > today ? 0.08 : 0.2)
     }
 }
+/// A half-circle gauge: a track, an arc filled to `fraction` with a bright knob at its end, `0` and
+/// `goal` under the two feet, and `center` (the big figure) sitting inside.
+struct ArcGauge<Center: View>: View {
+    var fraction: Double
+    var tint: Color
+    var goalLabel: String
+    @ViewBuilder var center: Center
+
+    var body: some View {
+        GeometryReader { geo in
+            let lw: CGFloat = 12
+            let r = min(geo.size.width / 2 - lw, geo.size.height - lw * 2)
+            let f = max(0, min(fraction, 1))
+            let angle = Angle.degrees(180 + 180 * f)
+            ZStack {
+                Circle().trim(from: 0, to: 0.5)
+                    .stroke(HubDesign.ink.opacity(0.14), style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                    .frame(width: r * 2, height: r * 2).rotationEffect(.degrees(180))
+                    .position(x: geo.size.width / 2, y: r + lw)
+                Circle().trim(from: 0, to: 0.5 * f)
+                    .stroke(tint, style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                    .frame(width: r * 2, height: r * 2).rotationEffect(.degrees(180))
+                    .position(x: geo.size.width / 2, y: r + lw)
+                Circle().fill(.white).frame(width: lw + 6, height: lw + 6)
+                    .shadow(color: tint, radius: 6)
+                    .position(x: geo.size.width / 2 + CGFloat(cos(angle.radians)) * r,
+                              y: r + lw + CGFloat(sin(angle.radians)) * r)
+                center.position(x: geo.size.width / 2, y: r * 0.72 + lw)
+                Text("0").font(.caption).foregroundStyle(HubDesign.secondary)
+                    .position(x: geo.size.width / 2 - r, y: r + lw * 2 + 10)
+                Text(goalLabel).font(.caption).foregroundStyle(HubDesign.secondary)
+                    .position(x: geo.size.width / 2 + r, y: r + lw * 2 + 10)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+    }
+}
 #endif

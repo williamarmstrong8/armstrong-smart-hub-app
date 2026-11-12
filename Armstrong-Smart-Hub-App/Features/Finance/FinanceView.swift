@@ -22,7 +22,7 @@ struct FinanceView: View {
             .task { if !store.fetched { await store.load(api: session.api) } }
             .refreshable { await store.load(api: session.api) }
             .sheet(item: $retagging) { t in
-                CategoryPicker(transaction: t, options: store.categoryOptions) { category in
+                CategoryPicker(transaction: t, options: store.categoryOptions, history: store.dashboard?.transactions ?? []) { category in
                     Task { await store.retag(t, to: category, api: session.api, toast: toast) }
                 }
             }
@@ -383,13 +383,11 @@ struct TransactionRow: View {
 
     var body: some View {
         let t = transaction
-        HStack(spacing: 12) {
-            Image(systemName: CategoryStyle.symbol(t.category))
-                .font(.body)
-                .frame(width: 24)
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(t.payee).font(.subheadline.weight(.medium)).lineLimit(1)
+        let info = MerchantInfo.resolve(t)
+        HStack(spacing: 14) {
+            MerchantLogo(info: info, category: t.category, size: 42)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(info.name).font(.body.weight(.medium)).lineLimit(1)
                 HStack(spacing: 4) {
                     Button { onTag?() } label: {
                         Text(t.category).underline(onTag != nil, pattern: .dot)
@@ -400,11 +398,11 @@ struct TransactionRow: View {
                     Text(Fmt.shortDate(t.date))
                     if t.pending { Text("· Pending") }
                 }
-                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             Text(Fmt.signed(t.netEffect, t.currency))
-                .font(.subheadline.weight(.medium)).monospacedDigit()
+                .font(.body.weight(.medium)).monospacedDigit()
                 .foregroundStyle(t.netEffect > 0 ? Color.positive : .primary)
         }
         .opacity(t.hold ? 0.5 : 1)
@@ -415,6 +413,7 @@ struct TransactionRow: View {
 struct CategoryPicker: View {
     let transaction: Transaction
     let options: [String]
+    var history: [Transaction] = []
     let onPick: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -426,6 +425,8 @@ struct CategoryPicker: View {
                 Section {
                     TransactionRow(transaction: transaction)
                 }
+                .listRowBackground(BrickLook.card)
+                details
                 .listRowBackground(BrickLook.card)
                 Section("Tag") {
                     ForEach(options, id: \.self) { c in
@@ -451,11 +452,48 @@ struct CategoryPicker: View {
                 .listRowBackground(BrickLook.card)
             }
             .brickList()
-            .navigationTitle("Category")
+            .navigationTitle("Transaction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    /// Everything we can tell about the charge: what it likely is, how it was
+    /// paid, where, the bank's own wording and how often it shows up.
+    private var details: some View {
+        let t = transaction
+        let info = MerchantInfo.resolve(t)
+        let raw = t.description.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let others = history.filter { $0.id != t.id && !$0.hold && MerchantInfo.resolve($0).name == info.name }
+        let total = (others + [t]).reduce(0) { $0 + $1.netEffect }
+        return Section("What is this?") {
+            if let note = info.note {
+                Text(note).font(.body)
+            }
+            if let processor = info.processor {
+                LabeledContent("Paid through", value: processor)
+            }
+            if let location = info.location {
+                LabeledContent("Where", value: location)
+            }
+            LabeledContent("Card / account", value: t.accountName)
+            LabeledContent("Date", value: t.date.formatted(.dateTime.weekday(.wide).month().day().hour().minute()))
+            if !others.isEmpty {
+                LabeledContent("Seen here", value: "\(others.count + 1) times · \(Fmt.signed(total, t.currency))")
+            }
+            if let domain = info.domain {
+                LabeledContent("Website", value: domain)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Bank statement says").font(.subheadline).foregroundStyle(.secondary)
+                Text(raw).font(.callout.monospaced()).textSelection(.enabled)
+                if let memo = t.memo, !memo.isEmpty {
+                    Text(memo).font(.callout.monospaced()).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .font(.body)
     }
 
     private func addCustom() {

@@ -74,28 +74,56 @@ struct ReflectionView: View {
 
     // MARK: Hero
 
+    /// A message about the sitting streak over a gauge of this week's time against a weekly goal.
     private var hero: some View {
         let cal = Calendar.current
-        let month = Date.now.formatted(.dateTime.month(.wide))
-        var perDay: [Int: Int] = [:]
-        for ses in store.sessions where cal.isDate(ses.date, equalTo: .now, toGranularity: .month) {
-            perDay[cal.component(.day, from: ses.date), default: 0] += ses.minutes
+        let today = cal.startOfDay(for: .now)
+        let weekStart = cal.date(byAdding: .day, value: -6, to: today) ?? today
+        let weekMinutes = store.sessions.filter { $0.date >= weekStart }.reduce(0) { $0 + $1.minutes }
+        let goal = 60
+        let pct = Int((Double(weekMinutes) / Double(goal) * 100).rounded())
+        let sitDays = Set(store.sessions.map { cal.startOfDay(for: $0.date) })
+        let satToday = sitDays.contains(today)
+        var cursor = satToday ? today : (cal.date(byAdding: .day, value: -1, to: today) ?? today)
+        var streak = 0
+        while sitDays.contains(cursor) {
+            streak += 1
+            cursor = cal.date(byAdding: .day, value: -1, to: cursor) ?? .distantPast
         }
-        let peak = Double(max(perDay.values.max() ?? 0, 1))
-        let minutes = perDay.values.reduce(0, +)
+        let message: String
+        if store.sessions.isEmpty { message = "A few quiet minutes is all it takes." }
+        else if satToday { message = streak > 1 ? "\(streak) days in a row. Well kept." : "You sat today. Nicely done." }
+        else if streak > 0 { message = "\(streak)-day streak. Sit today to keep it." }
+        else { message = "A quiet minute is waiting." }
+        let h = weekMinutes / 60, m = weekMinutes % 60
         return VStack(spacing: 0) {
             BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())).foregroundStyle(BrickLook.soft)
                 .padding(.top, 14)
-            Text("\(minutes)")
-                .font(.system(size: 64, weight: .light).monospacedDigit())
-                .padding(.top, 8)
+            Text(message)
+                .font(.system(size: 34, weight: .light))
+                .multilineTextAlignment(.center)
+                .lineLimit(3).minimumScaleFactor(0.7)
+                .padding(.horizontal, 16).padding(.top, 12)
                 .accessibilityAddTraits(.isHeader)
-            Text("mindful min in \(month) · \(perDay.count) \(perDay.count == 1 ? "day" : "days")")
+            ArcGauge(fraction: Double(weekMinutes) / Double(goal), tint: .teal, goalLabel: "\(goal)") {
+                VStack(spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        if h > 0 {
+                            Text("\(h)").font(.system(size: 56, weight: .light))
+                            Text("h").font(.title3).foregroundStyle(HubDesign.secondary).padding(.trailing, 6)
+                        }
+                        Text("\(m)").font(.system(size: 56, weight: .light))
+                        Text("m").font(.title3).foregroundStyle(HubDesign.secondary)
+                    }
+                    .monospacedDigit()
+                    Text("Meditation this week").font(.caption).foregroundStyle(HubDesign.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.top, 16)
+            Text("\(pct)% of your \(goal) min goal")
                 .font(.subheadline).foregroundStyle(BrickLook.soft)
-            MonthDots(levels: perDay.mapValues { Double($0) / peak }, tint: .teal,
-                      label: "\(perDay.count) days with a sitting this month")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 24)
+                .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight, alignment: .top)
