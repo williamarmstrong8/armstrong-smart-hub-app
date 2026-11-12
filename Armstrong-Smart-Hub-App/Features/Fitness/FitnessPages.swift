@@ -120,7 +120,7 @@ struct TodayScores: View {
         NavigationLink(value: page) {
             VStack(spacing: 8) {
                 ScoreRing(value: score.map(String.init) ?? "–", fraction: Double(score ?? 0) / 100, tint: tint, size: 100,
-                          track: tint.opacity(0.16), weight: 0.09)
+                          weight: 0.09, glass: true)
                 Text(label).font(.subheadline.weight(.medium))
             }
             .frame(maxWidth: .infinity)

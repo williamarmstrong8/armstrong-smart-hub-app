@@ -159,16 +159,27 @@ struct ScoreRing: View {
     var track: Color = Fit.track
     /// The stroke as a share of the ring's size.
     var weight: CGFloat = 0.035
+    /// Draws the progress arc as uncoloured Liquid Glass instead of a tinted stroke.
+    var glass = false
 
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                Circle().stroke(track, lineWidth: max(3, size * weight))
-                Circle().trim(from: 0, to: max(0.002, min(1, fraction)))
-                    .stroke(tint, style: StrokeStyle(lineWidth: max(3, size * weight), lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .opacity(fraction > 0 ? 1 : 0)
-                    .hubAnimation(value: fraction)
+                if glass {
+                    let line = max(3, size * weight)
+                    Circle().stroke(Fit.track, lineWidth: line)
+                    Color.clear
+                        .glassEffect(.regular, in: RingArc(fraction: max(0.002, min(1, fraction)), lineWidth: line))
+                        .opacity(fraction > 0 ? 1 : 0)
+                        .hubAnimation(value: fraction)
+                } else {
+                    Circle().stroke(track, lineWidth: max(3, size * weight))
+                    Circle().trim(from: 0, to: max(0.002, min(1, fraction)))
+                        .stroke(tint, style: StrokeStyle(lineWidth: max(3, size * weight), lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .opacity(fraction > 0 ? 1 : 0)
+                        .hubAnimation(value: fraction)
+                }
                 Text(value)
                     .font(Fit.number(size * 0.34))
                     .minimumScaleFactor(0.5)
@@ -179,6 +190,27 @@ struct ScoreRing: View {
             .frame(width: size, height: size)
             if let label { Text(label).font(Fit.label).foregroundStyle(Fit.muted) }
         }
+    }
+}
+
+/// A round-capped arc from 12 o'clock, as a filled outline so Liquid Glass can take its shape.
+private struct RingArc: Shape {
+    var fraction: Double
+    var lineWidth: CGFloat
+
+    var animatableData: Double {
+        get { fraction }
+        set { fraction = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let inset = rect.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
+        return Path(ellipseIn: inset)
+            .trimmedPath(from: 0, to: fraction)
+            .strokedPath(StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            .applying(CGAffineTransform(translationX: -rect.midX, y: -rect.midY)
+                .concatenating(CGAffineTransform(rotationAngle: -.pi / 2))
+                .concatenating(CGAffineTransform(translationX: rect.midX, y: rect.midY)))
     }
 }
 
@@ -194,7 +226,7 @@ struct ScoreHeader: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            ScoreRing(value: display ?? score.map(String.init) ?? "–", fraction: fraction ?? Double(score ?? 0) / 100, tint: tint, size: 176)
+            ScoreRing(value: display ?? score.map(String.init) ?? "–", fraction: fraction ?? Double(score ?? 0) / 100, tint: tint, size: 176, weight: 0.07, glass: true)
             VStack(spacing: 4) {
                 Text(status ?? Status.word(score)).font(.title3.weight(.semibold))
                 if let subtitle { Text(subtitle).font(Fit.label).foregroundStyle(Fit.muted) }
