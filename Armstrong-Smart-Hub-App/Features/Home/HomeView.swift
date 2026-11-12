@@ -151,43 +151,35 @@ struct HomeView: View {
         }
     }
 
-    /// A line about today's habits, large, over the month as squares: green for each day every habit was done.
+    /// How many habits are done today, large, over the month as dots: a row per habit, a dot per day.
     private var hero: some View {
         let cal = Calendar.current
-        let hour = cal.component(.hour, from: .now)
-        let greeting = hour < 5 ? "Late night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
         let total = habits.habits.count
         let doneToday = habits.doneToday
-        let left = total - doneToday
-        let message: String
-        if total == 0 { message = greeting }
-        else if left == 0 { message = "Every habit done today." }
-        else if doneToday == 0 { message = "\(total) \(total == 1 ? "habit" : "habits") waiting today." }
-        else { message = "\(doneToday) of \(total) done. \(left) to go." }
-
         let first = cal.date(from: cal.dateComponents([.year, .month], from: .now)) ?? .now
         let today = cal.component(.day, from: .now)
-        let full: Set<Int> = total == 0 ? [] : Set((1...today).filter { d in
-            guard let date = cal.date(byAdding: .day, value: d - 1, to: first) else { return false }
-            let key = localDay(date)
-            return habits.habits.allSatisfy { habits.isDone($0.id, key) }
-        })
-        let month = Date.now.formatted(.dateTime.month(.wide))
+        let shown = Array(habits.habits.prefix(8))
+        let rows = shown.map { h in
+            HabitDots.Row(id: h.id, color: Color(hex: h.color), done: Set((1...today).filter { d in
+                guard let date = cal.date(byAdding: .day, value: d - 1, to: first) else { return false }
+                return habits.isDone(h.id, localDay(date))
+            }))
+        }
         return VStack(spacing: 0) {
             BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())).foregroundStyle(BrickLook.soft)
                 .padding(.top, 14)
-            Text(message)
-                .font(.system(size: 44, weight: .light))
-                .multilineTextAlignment(.center)
-                .lineLimit(4).minimumScaleFactor(0.6)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 8)
-                .accessibilityAddTraits(.isHeader)
             if total > 0 {
-                Text("\(full.count) \(full.count == 1 ? "day" : "days") in \(month) with every habit done")
+                Text("\(doneToday)/\(total)")
+                    .font(.system(size: 64, weight: .light).monospacedDigit())
+                    .padding(.top, 8)
+                    .accessibilityAddTraits(.isHeader)
+                Text(doneToday == total ? "Every habit done today" : "habits done today")
                     .font(.subheadline).foregroundStyle(BrickLook.soft)
-                    .padding(.bottom, 16)
-                MonthSquares(done: full)
+                HabitDots(rows: rows)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.vertical, 24)
+            } else {
+                Spacer(minLength: 0)
             }
         }
         .frame(maxWidth: .infinity)

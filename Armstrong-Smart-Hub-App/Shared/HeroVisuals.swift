@@ -15,46 +15,41 @@ private struct HeroFade: ViewModifier {
     }
 }
 
-/// The month as bare squares, weeks as rows: filled for each day in `done`, empty otherwise.
-/// Today gets a brighter outline while it is still to be done.
-struct MonthSquares: View {
+/// The month as a field of dots: one row per habit, one dot per day. A done day is lit in that
+/// habit's colour, a missed or upcoming one is a dim grey dot, and today gets a ring.
+struct HabitDots: View {
+    struct Row: Identifiable {
+        let id: String
+        let color: Color
+        /// Days of the month (1...31) this habit was done.
+        let done: Set<Int>
+    }
+    var rows: [Row]
     var date: Date = .now
-    /// Days of the month (1...31) that count as done.
-    var done: Set<Int>
-    var side: CGFloat = 28
-    var gap: CGFloat = 8
 
     var body: some View {
         let cal = Calendar.current
         let days = cal.range(of: .day, in: .month, for: date)?.count ?? 30
         let today = cal.component(.day, from: date)
-        let first = cal.date(from: cal.dateComponents([.year, .month], from: date)) ?? date
-        let lead = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
-        let rows = (lead + days + 6) / 7
-        VStack(spacing: gap) {
-            ForEach(0..<rows, id: \.self) { row in
-                HStack(spacing: gap) {
-                    ForEach(0..<7, id: \.self) { col in
-                        square(row * 7 + col - lead + 1, today: today, days: days)
+        GeometryReader { geo in
+            let gap: CGFloat = 4
+            let dot = max(4, min(14, (geo.size.width - gap * CGFloat(days - 1)) / CGFloat(days)))
+            VStack(spacing: gap + 2) {
+                ForEach(rows) { row in
+                    HStack(spacing: gap) {
+                        ForEach(1...days, id: \.self) { d in
+                            Circle()
+                                .fill(row.done.contains(d) ? row.color : (d > today ? HubDesign.ink.opacity(0.08) : HubDesign.ink.opacity(0.2)))
+                                .overlay { if d == today { Circle().strokeBorder(HubDesign.ink.opacity(0.8), lineWidth: 1.5).padding(-2) } }
+                                .frame(width: dot, height: dot)
+                        }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(done.count) of \(today) days done this month")
-    }
-
-    @ViewBuilder
-    private func square(_ day: Int, today: Int, days: Int) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-        if day < 1 || day > days {
-            Color.clear.frame(width: side, height: side)
-        } else if done.contains(day) {
-            shape.fill(Color.green).frame(width: side, height: side)
-        } else {
-            shape.strokeBorder(HubDesign.ink.opacity(day == today ? 0.8 : 0.22), lineWidth: day == today ? 2 : 1.5)
-                .frame(width: side, height: side)
-        }
+        .accessibilityLabel("Habit calendar for the month")
     }
 }
 #endif
