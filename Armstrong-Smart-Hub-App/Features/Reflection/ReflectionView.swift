@@ -75,15 +75,30 @@ struct ReflectionView: View {
     // MARK: Hero
 
     private var hero: some View {
-        BrickHero(
-            caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
-            title: "Reflection",
-            subtitle: "\(store.sessions.count) \(store.sessions.count == 1 ? "session" : "sessions") · \(store.quotes.count) \(store.quotes.count == 1 ? "quote" : "quotes") kept"
-        ) {
-            EmptyView()
-        } stats: {
-            EmptyView()
+        let cal = Calendar.current
+        let month = Date.now.formatted(.dateTime.month(.wide))
+        var perDay: [Int: Int] = [:]
+        for ses in store.sessions where cal.isDate(ses.date, equalTo: .now, toGranularity: .month) {
+            perDay[cal.component(.day, from: ses.date), default: 0] += ses.minutes
         }
+        let peak = Double(max(perDay.values.max() ?? 0, 1))
+        let minutes = perDay.values.reduce(0, +)
+        return VStack(spacing: 0) {
+            BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())).foregroundStyle(BrickLook.soft)
+                .padding(.top, 14)
+            Text("\(minutes)")
+                .font(.system(size: 64, weight: .light).monospacedDigit())
+                .padding(.top, 8)
+                .accessibilityAddTraits(.isHeader)
+            Text("mindful min in \(month) · \(perDay.count) \(perDay.count == 1 ? "day" : "days")")
+                .font(.subheadline).foregroundStyle(BrickLook.soft)
+            MonthDots(levels: perDay.mapValues { Double($0) / peak }, tint: .teal,
+                      label: "\(perDay.count) days with a sitting this month")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.vertical, 24)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: HubLayout.heroHeight, alignment: .top)
     }
 
     private func heading(_ title: String) -> some View {

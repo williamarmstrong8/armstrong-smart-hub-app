@@ -13,7 +13,7 @@ struct FinanceView: View {
     var body: some View {
         NavigationStack {
             HubTabPage(topBar: { topBar }, hero: {
-                EmptyView()
+                if let r = store.response, r.configured, r.hasData == true, let d = r.dashboard { hero(d) }
             }, content: {
                 content
             }, mountains: true)
@@ -82,6 +82,36 @@ struct FinanceView: View {
         } else {
             ProgressView().frame(maxWidth: .infinity, minHeight: 300)
         }
+    }
+
+    /// What this month cost, large, over a calendar of dots that glow brighter on the days money went out.
+    /// Rent is a fixed cost, so it stays out.
+    private func hero(_ d: Dashboard) -> some View {
+        let cal = Calendar.current
+        let month = Date.now.formatted(.dateTime.month(.wide))
+        var perDay: [Int: Double] = [:]
+        for t in d.transactions where t.netEffect < 0 && !t.hold && t.category != "Rent"
+            && cal.isDate(t.date, equalTo: .now, toGranularity: .month) {
+            perDay[cal.component(.day, from: t.date), default: 0] += abs(t.netEffect)
+        }
+        let spent = perDay.values.reduce(0, +)
+        let peak = max(perDay.values.max() ?? 0, 1)
+        return VStack(spacing: 0) {
+            BrickCaps(text: "Spent in \(month)").foregroundStyle(BrickLook.soft)
+                .padding(.top, 14)
+            Text(Fmt.compact(spent, d.currency))
+                .font(.system(size: 64, weight: .light).monospacedDigit())
+                .padding(.top, 8)
+                .accessibilityAddTraits(.isHeader)
+            Text("\(perDay.count) \(perDay.count == 1 ? "day" : "days") with spending")
+                .font(.subheadline).foregroundStyle(BrickLook.soft)
+            MonthDots(levels: perDay.mapValues { $0 / peak }, tint: .orange,
+                      label: "Spending by day this month")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.vertical, 24)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: HubLayout.heroHeight, alignment: .top)
     }
 
     @ViewBuilder

@@ -52,4 +52,52 @@ struct HabitDots: View {
         .accessibilityLabel("Habit calendar for the month")
     }
 }
+/// The month as a calendar of dots, weeks as rows. A day with something in it is lit in `tint`,
+/// brighter the more it holds (`level` is 0...1); an empty past day is a dim dot, a coming day fainter.
+/// Today gets a ring.
+struct MonthDots: View {
+    var date: Date = .now
+    /// Intensity 0...1 for each day of the month (1...31) that has something.
+    var levels: [Int: Double]
+    var tint: Color
+    var label: String
+
+    var body: some View {
+        let cal = Calendar.current
+        let days = cal.range(of: .day, in: .month, for: date)?.count ?? 30
+        let today = cal.component(.day, from: date)
+        let first = cal.date(from: cal.dateComponents([.year, .month], from: date)) ?? date
+        let lead = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
+        let rows = (lead + days + 6) / 7
+        GeometryReader { geo in
+            let gap: CGFloat = 12
+            let dot = max(8, min(26, (geo.size.width - gap * 6) / 7))
+            VStack(spacing: gap) {
+                ForEach(0..<rows, id: \.self) { row in
+                    HStack(spacing: gap) {
+                        ForEach(0..<7, id: \.self) { col in
+                            let d = row * 7 + col - lead + 1
+                            if d < 1 || d > days {
+                                Color.clear.frame(width: dot, height: dot)
+                            } else {
+                                Circle()
+                                    .fill(fill(d, today: today))
+                                    .overlay { if d == today { Circle().strokeBorder(HubDesign.ink.opacity(0.8), lineWidth: 1.5).padding(-3) } }
+                                    .frame(width: dot, height: dot)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+    }
+
+    private func fill(_ d: Int, today: Int) -> Color {
+        if let l = levels[d], l > 0 { return tint.opacity(0.35 + 0.65 * min(l, 1)) }
+        return HubDesign.ink.opacity(d > today ? 0.08 : 0.2)
+    }
+}
 #endif
