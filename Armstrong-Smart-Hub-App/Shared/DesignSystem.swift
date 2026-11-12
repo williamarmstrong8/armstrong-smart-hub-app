@@ -36,7 +36,7 @@ enum HubLayout {
     static let minHitTarget: CGFloat = 44
     /// A page hero below its top bar: Fitness's watch, date, title and three rings, which Home,
     /// Finance and Reflection match so every top sheet is the same height.
-    static let heroHeight: CGFloat = 483
+    static let heroHeight: CGFloat = 484
 }
 
 enum HubMotion {

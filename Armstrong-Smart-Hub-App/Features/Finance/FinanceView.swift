@@ -99,15 +99,18 @@ struct FinanceView: View {
         let spent = d.monthSpending.total - rentNow
         let pace = spent - (d.monthSpending.lastMonthToDate - rentLast)
 
-        let target = (goal ?? .default).target
+        let day = max(cal.component(.day, from: .now), 1)
+        let lastSoFar = d.monthSpending.lastMonthToDate - rentLast
+        let perDay = spent / Double(day)
+        let lastPerDay = lastSoFar / Double(day)
         let kept = d.income30d > 0 ? max(0, min(d.netFlow30d / d.income30d, 1)) : 0
         return BrickHero(caption: "Spent in \(month)", title: money(spent),
                   subtitle: abs(pace) < 1 ? "Same pace as last month" : "\(money(abs(pace))) \(pace > 0 ? "more" : "less") than last month by now",
                   subtitleColor: pace > 0 ? Color.negative : Color.positive) {
-            NetWorthTrend(series: d.netWorthSeries, tint: d.netWorthChange < 0 ? .red : .green)
+            SpendTrend(transactions: d.transactions, tint: .orange)
         } stats: {
-            HeroRing(value: money(d.netWorth), fraction: target > 0 ? max(0, min(d.netWorth / target, 1)) : 0, tint: .green, label: "Net worth")
-            HeroRing(value: money(d.cash), fraction: d.totalAssets > 0 ? max(0, min(d.cash / d.totalAssets, 1)) : 0, tint: .blue, label: "Cash")
+            HeroRing(value: money(spent), fraction: lastSoFar > 0 ? max(0, min(spent / lastSoFar, 1)) : 0, tint: .orange, label: "Spent")
+            HeroRing(value: money(perDay), fraction: lastPerDay > 0 ? max(0, min(perDay / lastPerDay, 1)) : 0, tint: .pink, label: "Per day")
             HeroRing(value: Fmt.currency(d.netFlow30d, d.currency, cents: false), fraction: kept, tint: .mint, label: "Kept, 30 days")
         }
     }

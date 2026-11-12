@@ -176,15 +176,16 @@ struct BrickHero<Visual: View, Stats: View>: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(1).minimumScaleFactor(0.6)
                 .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
-                .padding(.top, subtitle == nil ? 12 : 4)
+                .padding(.top, subtitle == nil ? 12 : 2)
                 .accessibilityAddTraits(.isHeader)
             if let subtitle {
                 Text(subtitle).font(.subheadline).foregroundStyle(subtitleColor)
                     .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.8)
                     .padding(.top, 2)
             }
+            // Title block plus gap is 80pt either way (12 + 44 + 24 on Fitness), so the rings line up.
             HStack(alignment: .top, spacing: 0) { stats }
-                .padding(.top, subtitle == nil ? HubLayout.sectionGap : HubLayout.sectionGap - 8)
+                .padding(.top, subtitle == nil ? HubLayout.sectionGap : 12)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight, alignment: .top)

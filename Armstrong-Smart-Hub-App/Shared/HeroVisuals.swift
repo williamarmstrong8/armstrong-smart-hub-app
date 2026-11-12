@@ -55,56 +55,80 @@ struct HomeDayDial: View {
     }
 }
 
-/// Net worth as a glowing line, oldest at the left.
-struct NetWorthTrend: View {
-    var series: [SeriesPoint]
-    var tint: Color = .green
+/// This month's spending as a glowing running total by day, against last month's faint line.
+/// Rent and transfers are left out, as in the hero's headline.
+struct SpendTrend: View {
+    var transactions: [Transaction]
+    var tint: Color = .orange
+
+    /// Running spend for each day of the month containing `date`, up to `through` (or the whole month).
+    private static func running(_ txs: [Transaction], month date: Date, through: Int?) -> [Double] {
+        let cal = Calendar.current
+        let days = cal.range(of: .day, in: .month, for: date)?.count ?? 30
+        var perDay = [Double](repeating: 0, count: days)
+        for t in txs where t.netEffect < 0 && !t.hold && t.category != "Rent" && t.category != "Transfers"
+            && cal.isDate(t.date, equalTo: date, toGranularity: .month) {
+            perDay[min(cal.component(.day, from: t.date), days) - 1] += abs(t.netEffect)
+        }
+        var total = 0.0
+        let upTo = min(through ?? days, days)
+        return (0..<upTo).map { total += perDay[$0]; return total }
+    }
 
     var body: some View {
-        let points = Array(series.suffix(90))
-        let values = points.map(\.value)
+        let cal = Calendar.current
+        let today = cal.component(.day, from: .now)
+        let prev = cal.date(byAdding: .month, value: -1, to: .now) ?? .now
+        let now = Self.running(transactions, month: .now, through: today)
+        let last = Self.running(transactions, month: prev, through: nil)
+        let daysInMonth = cal.range(of: .day, in: .month, for: .now)?.count ?? 30
         GeometryReader { geo in
-            if let lo = values.min(), let hi = values.max(), values.count > 1 {
-                let span = max(hi - lo, 1)
-                let w = geo.size.width, h = geo.size.height
-                let top = h * 0.16, bottom = h * 0.84
-                let xy: (Int) -> CGPoint = { i in
-                    CGPoint(x: w * Double(i) / Double(values.count - 1),
-                            y: bottom - (bottom - top) * (values[i] - lo) / span)
-                }
-                let line = Path { p in
-                    p.move(to: xy(0))
-                    for i in 1..<values.count { p.addLine(to: xy(i)) }
-                }
-                ZStack {
-                    line
-                        .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                        .shadow(color: tint.opacity(0.6), radius: 8)
+            let w = geo.size.width, h = geo.size.height
+            let top = h * 0.16, bottom = h * 0.84
+            let hi = max(now.max() ?? 0, last.max() ?? 0, 1)
+            let xy: (Int, Double, Int) -> CGPoint = { i, v, count in
+                CGPoint(x: w * Double(i) / Double(max(daysInMonth - 1, 1)), y: bottom - (bottom - top) * v / hi)
+            }
+            let lastLine = Path { p in
+                for (i, v) in last.enumerated() { i == 0 ? p.move(to: xy(i, v, last.count)) : p.addLine(to: xy(i, v, last.count)) }
+            }
+            let line = Path { p in
+                for (i, v) in now.enumerated() { i == 0 ? p.move(to: xy(i, v, now.count)) : p.addLine(to: xy(i, v, now.count)) }
+            }
+            ZStack {
+                lastLine.stroke(HubDesign.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [2, 5]))
+                line
+                    .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    .shadow(color: tint.opacity(0.6), radius: 8)
+                if let end = now.last {
+                    let pt = xy(now.count - 1, end, now.count)
                     Path { p in
                         p.addPath(line)
-                        p.addLine(to: CGPoint(x: w, y: h))
+                        p.addLine(to: CGPoint(x: pt.x, y: h))
                         p.addLine(to: CGPoint(x: 0, y: h))
                         p.closeSubpath()
                     }
                     .fill(LinearGradient(colors: [tint.opacity(0.32), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
-                    Circle().fill(tint).frame(width: 10, height: 10)
-                        .shadow(color: tint, radius: 6)
-                        .position(xy(values.count - 1))
+                    Circle().fill(tint).frame(width: 10, height: 10).shadow(color: tint, radius: 6).position(pt)
                 }
-                .overlay(alignment: .topLeading) {
-                    if let first = points.first?.day, let last = points.last?.day {
-                        Text("Net worth · \(Fmt.shortDate(first)) – \(Fmt.shortDate(last))")
-                            .font(.caption.weight(.medium)).foregroundStyle(HubDesign.secondary)
-                    }
+            }
+            .overlay(alignment: .topLeading) {
+                HStack(spacing: 14) {
+                    Label("This month", systemImage: "circle.fill").foregroundStyle(tint)
+                    Label("Last month", systemImage: "circle").foregroundStyle(HubDesign.secondary)
                 }
-            } else {
-                Text("Net worth history appears after a few days of syncing.")
-                    .font(.footnote).foregroundStyle(HubDesign.secondary).multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .labelStyle(DotLabel())
+                .font(.caption.weight(.medium))
             }
         }
         .modifier(HeroFade())
         .accessibilityHidden(true)
+    }
+
+    private struct DotLabel: LabelStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            HStack(spacing: 5) { configuration.icon.font(.system(size: 6)); configuration.title }
+        }
     }
 }
 
