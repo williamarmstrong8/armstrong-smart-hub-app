@@ -146,7 +146,7 @@ struct MediaSearchView: View {
                     focused = false
                     onPick(r.pick)
                 } label: {
-                    Poster(url: r.posterURL)
+                    Poster(url: r.posterURL, radius: 16)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel([r.title, r.year].compactMap { $0 }.joined(separator: ", "))
@@ -249,7 +249,7 @@ struct RequestList: View {
                                                     known: r.stage == .available ? .available : .requested)) }
                 } label: {
                     HStack(spacing: 12) {
-                        Poster(url: r.posterURL, width: 60)
+                        Poster(url: r.posterURL, width: 60, radius: 12)
                         VStack(alignment: .leading, spacing: 6) {
                             Text(r.title).font(.subheadline.weight(.medium)).lineLimit(1)
                             if let p = r.progress, r.stage == .downloading {

@@ -124,10 +124,14 @@ extension View {
     func toast(_ toast: Toast) -> some View { modifier(ToastOverlay(toast: toast)) }
 }
 
-/// A poster from a remote URL with a film placeholder.
+/// A poster from a remote URL with a film placeholder, set in a Liquid Glass frame: the poster
+/// sits inset in a glass card whose rim catches the light. The outer size is the frame's.
 struct Poster: View {
     let url: String?
     var width: CGFloat?
+    var radius: CGFloat = 18
+
+    private var inset: CGFloat { (width ?? 100) >= 120 ? 5 : 4 }
 
     var body: some View {
         AsyncImage(url: url.flatMap(URL.init(string:))) { phase in
@@ -140,9 +144,11 @@ struct Poster: View {
                 }
             }
         }
-        .frame(width: width, height: width.map { $0 * 1.5 })
+        .frame(width: width.map { $0 - inset * 2 }, height: width.map { $0 * 1.5 - inset * 2 })
         .aspectRatio(2 / 3, contentMode: .fit)
-        .clipShape(.rect(cornerRadius: 8))
+        .clipShape(.rect(cornerRadius: max(radius - inset, 4), style: .continuous))
+        .padding(inset)
+        .glassGlare(.regular, in: .rect(cornerRadius: radius, style: .continuous))
     }
 }
 
