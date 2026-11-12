@@ -151,23 +151,47 @@ struct HomeView: View {
         }
     }
 
-    /// A greeting, and the month as a row of days filled in as they pass.
+    /// A line about today's habits, large, over the month as squares: green for each day every habit was done.
     private var hero: some View {
-        let hour = Calendar.current.component(.hour, from: .now)
-        let greeting = hour < 5 ? "Late night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
         let cal = Calendar.current
-        let day = cal.component(.day, from: .now)
-        let days = cal.range(of: .day, in: .month, for: .now)?.count ?? 30
-        let left = days - day
+        let hour = cal.component(.hour, from: .now)
+        let greeting = hour < 5 ? "Late night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
+        let total = habits.habits.count
+        let doneToday = habits.doneToday
+        let left = total - doneToday
+        let message: String
+        if total == 0 { message = greeting }
+        else if left == 0 { message = "Every habit done today." }
+        else if doneToday == 0 { message = "\(total) \(total == 1 ? "habit" : "habits") waiting today." }
+        else { message = "\(doneToday) of \(total) done. \(left) to go." }
+
+        let first = cal.date(from: cal.dateComponents([.year, .month], from: .now)) ?? .now
+        let today = cal.component(.day, from: .now)
+        let full: Set<Int> = total == 0 ? [] : Set((1...today).filter { d in
+            guard let date = cal.date(byAdding: .day, value: d - 1, to: first) else { return false }
+            let key = localDay(date)
+            return habits.habits.allSatisfy { habits.isDone($0.id, key) }
+        })
         let month = Date.now.formatted(.dateTime.month(.wide))
-        return BrickHero(
-            caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
-            title: greeting,
-            subtitle: left == 0 ? "Last day of \(month)" : "Day \(day) of \(days) · \(left) \(left == 1 ? "day" : "days") left in \(month)"
-        ) {
-            MonthDots()
-                .padding(.horizontal, 12)
+        return VStack(spacing: 0) {
+            BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())).foregroundStyle(BrickLook.soft)
+                .padding(.top, 14)
+            Text(message)
+                .font(.system(size: 44, weight: .light))
+                .multilineTextAlignment(.center)
+                .lineLimit(4).minimumScaleFactor(0.6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 8)
+                .accessibilityAddTraits(.isHeader)
+            if total > 0 {
+                Text("\(full.count) \(full.count == 1 ? "day" : "days") in \(month) with every habit done")
+                    .font(.subheadline).foregroundStyle(BrickLook.soft)
+                    .padding(.bottom, 16)
+                MonthSquares(done: full)
+            }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: HubLayout.heroHeight, alignment: .top)
     }
 
     @ViewBuilder

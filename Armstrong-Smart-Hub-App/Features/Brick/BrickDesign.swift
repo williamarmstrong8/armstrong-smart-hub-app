@@ -192,13 +192,6 @@ struct BrickHero<Visual: View, Stats: View>: View {
     }
 }
 
-extension BrickHero where Stats == EmptyView {
-    init(caption: String, title: String, subtitle: String? = nil, subtitleColor: Color = BrickLook.soft,
-         @ViewBuilder visual: () -> Visual) {
-        self.init(caption: caption, title: title, subtitle: subtitle, subtitleColor: subtitleColor, visual: visual, stats: { EmptyView() })
-    }
-}
-
 /// One of the three rings under a hero title: a fraction, its number inside, a label below.
 struct HeroRing: View {
     var value: String
