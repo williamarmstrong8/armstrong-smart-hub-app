@@ -38,10 +38,9 @@ struct RoutineEditor: View {
             Group {
                 if reordering { reorderList } else { editList }
             }
-            .background(BrickLook.page)
             .navigationTitle(isNew ? "Create Routine" : "Edit Routine")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -75,7 +74,7 @@ struct RoutineEditor: View {
                 }
             }
         }
-        .presentationBackground(BrickLook.page)
+        .presentationBackground { AmbientBackdrop() }
         .foregroundStyle(BrickLook.ink)
         .tint(HubDesign.action)
     }
@@ -94,13 +93,13 @@ struct RoutineEditor: View {
                 .moveDisabled(true)
             ForEach(items) { item in
                 ReorderRow(exerciseId: item.exerciseId, name: item.name, muscle: item.muscle)
-                    .listRowBackground(BrickLook.page)
+                    .listRowBackground(Color.clear)
                     .deleteDisabled(true)
             }
             .onMove { items.move(fromOffsets: $0, toOffset: $1) }
         }
         .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+        .hubListStyle()
         .environment(\.editMode, .constant(.active))
     }
 
@@ -132,12 +131,7 @@ struct RoutineEditor: View {
                 ActiveWorkoutView.hideKeyboard()
                 picking = true
             } label: {
-                Label("Add exercise", systemImage: "plus")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(BrickLook.page)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(BrickLook.bar, in: .rect(cornerRadius: 16, style: .continuous))
+                Label("Add exercise", systemImage: "plus").blueButton()
             }
             .buttonStyle(.borderless)
             .workoutRow(top: 20, bottom: 8)
@@ -155,7 +149,7 @@ struct RoutineEditor: View {
             }
         }
         .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+        .hubListStyle()
         .scrollDismissesKeyboard(.immediately)
     }
 
@@ -404,7 +398,7 @@ private struct RoutineSetRow: View {
                     .font(.body.weight(.semibold)).monospacedDigit()
                     .foregroundStyle(kindColor)
                     .frame(width: WorkoutColumns.set, height: 40)
-                    .background(BrickLook.card, in: .rect(cornerRadius: 8))
+                    .glassFill()
             }
             .buttonStyle(.borderless)
             Text(previous).font(.body).foregroundStyle(BrickLook.soft).lineLimit(1).minimumScaleFactor(0.7)
@@ -435,6 +429,6 @@ private struct RoutineSetRow: View {
             .multilineTextAlignment(.center)
             .font(.body.weight(.medium)).monospacedDigit()
             .frame(width: width, height: 40)
-            .background(BrickLook.card, in: .rect(cornerRadius: 8))
+            .glassFill()
     }
 }

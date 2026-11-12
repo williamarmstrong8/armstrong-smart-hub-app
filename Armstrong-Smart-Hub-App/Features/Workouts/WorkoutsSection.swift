@@ -222,7 +222,7 @@ struct RoutineCard: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 42)
-                    .background(canStart ? Fit.action : Fit.faint, in: .rect(cornerRadius: 10))
+                    .glassGlare(.regular.tint((canStart ? Fit.action : Fit.faint).opacity(0.7)).interactive(canStart), in: .rect(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(!canStart)

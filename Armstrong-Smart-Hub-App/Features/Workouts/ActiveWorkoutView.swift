@@ -40,7 +40,7 @@ struct ActiveWorkoutView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar { toolbar }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: store) }
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: store) }
@@ -65,7 +65,7 @@ struct ActiveWorkoutView: View {
                 if let exercise = picked.first { store.replaceExercise(target.id, with: exercise) }
             }
         }
-        .presentationBackground(BrickLook.page)
+        .presentationBackground { AmbientBackdrop() }
         .foregroundStyle(BrickLook.ink)
         .tint(HubDesign.action)
         .sheet(isPresented: $showingSettings) {
@@ -164,21 +164,22 @@ struct ActiveWorkoutView: View {
                 .moveDisabled(true)
             ForEach(workout.exercises) { exercise in
                 ReorderRow(exerciseId: exercise.exerciseId, name: exercise.name, muscle: store.exercise(exercise.exerciseId)?.muscle)
-                    .listRowBackground(BrickLook.page)
+                    .listRowBackground(Color.clear)
                     .deleteDisabled(true)
             }
             .onMove { store.moveExercises(from: $0, to: $1) }
         }
         .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(BrickLook.page)
+        .hubListStyle()
         .environment(\.editMode, .constant(.active))
     }
 
     private func fullList(_ workout: ActiveWorkout) -> some View {
         List {
-            WorkoutStats(workout: workout, liveBpm: liveBpm, maxHr: maxHr, status: watch.heartRateStatus)
-                .workoutRow(top: 8, bottom: 16)
+            BrickCard {
+                WorkoutStats(workout: workout, liveBpm: liveBpm, maxHr: maxHr, status: watch.heartRateStatus)
+            }
+            .workoutRow(top: 8, bottom: 16)
 
             if workout.exercises.isEmpty {
                 VStack(spacing: 8) {
@@ -195,12 +196,7 @@ struct ActiveWorkoutView: View {
             }
 
             Button { picking = true } label: {
-                Label("Add Exercise", systemImage: "plus")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(BrickLook.page)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(BrickLook.bar, in: .rect(cornerRadius: 16, style: .continuous))
+                Label("Add Exercise", systemImage: "plus").blueButton()
             }
             .buttonStyle(.borderless)
             .workoutRow(top: 20, bottom: 6)
@@ -218,10 +214,9 @@ struct ActiveWorkoutView: View {
             .workoutRow(top: 6, bottom: 24)
         }
         .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(BrickLook.page)
+        .hubListStyle()
         .scrollDismissesKeyboard(.immediately)
-            }
+    }
 
     @ViewBuilder
     private func exerciseBlock(_ exercise: DraftExercise, workout: ActiveWorkout) -> some View {
@@ -457,9 +452,10 @@ private struct RepsProgress: View {
             .monospacedDigit()
         }
         .padding(.horizontal, 16)
-        .padding(.top, 4)
+        .padding(.vertical, 10)
+        .glassGlare(.regular, in: .rect(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 16)
         .padding(.bottom, 8)
-        .background(BrickLook.page)
         .animation(.snappy, value: done)
         .accessibilityElement(children: .combine)
     }
@@ -585,7 +581,7 @@ struct WorkoutPill: View {
         .foregroundStyle(BrickLook.ink)
         .padding(.horizontal, 16)
         .frame(height: 38)
-        .background(BrickLook.card, in: .capsule)
+        .glassEffect(.regular, in: .capsule)
     }
 }
 
@@ -645,7 +641,7 @@ private struct SetRow: View {
                         .font(.body.weight(.semibold)).monospacedDigit()
                         .foregroundStyle(kindColor)
                         .frame(width: WorkoutColumns.set, height: 40)
-                        .background(BrickLook.card.opacity(done ? 0.3 : 1), in: .rect(cornerRadius: 8))
+                        .glassFill(!done)
                 }
                 .buttonStyle(.borderless)
                 Button(action: fillFromPrevious) {
@@ -668,7 +664,8 @@ private struct SetRow: View {
                         .font(.body.weight(.bold))
                         .foregroundStyle(done ? BrickLook.page : BrickLook.soft)
                         .frame(width: WorkoutColumns.check, height: 40)
-                        .background(done ? BrickLook.live : BrickLook.card, in: .rect(cornerRadius: 8))
+                        .background(done ? BrickLook.live : Color.clear, in: .rect(cornerRadius: 8))
+                        .glassFill(!done)
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(done ? "Uncheck set" : "Check off set")
@@ -707,7 +704,7 @@ private struct SetRow: View {
             .multilineTextAlignment(.center)
             .font(.body.weight(done ? .bold : .medium)).monospacedDigit()
             .frame(width: width, height: 40)
-            .background(done ? Color.clear : BrickLook.card, in: .rect(cornerRadius: 8))
+            .glassFill(!done)
     }
 
     /// A timed set: a play button that counts the set down, and the time typed
@@ -745,7 +742,7 @@ private struct SetRow: View {
                 }
             }
             .frame(width: WorkoutColumns.time, height: 40)
-            .background(done ? Color.clear : BrickLook.card, in: .rect(cornerRadius: 8))
+            .glassFill(!done)
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(timing == nil ? Color.clear : BrickLook.bar, lineWidth: 1.5))
         }
         .frame(width: WorkoutColumns.time + 40, alignment: .trailing)
@@ -844,21 +841,27 @@ private struct WorkoutSettingsSheet: View {
             .brickList()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
-        .presentationBackground(BrickLook.page)
+        .presentationBackground { AmbientBackdrop() }
         .presentationDetents([.medium, .large])
     }
 }
 
-/// The grey fill behind a button; on the overview's soft cards it drops darker so it stands out.
+/// The Liquid Glass fill behind a full-width button.
 struct GreyFill: ViewModifier {
-    @Environment(\.fitnessCards) private var cards
     func body(content: Content) -> some View {
-        content.background(cards ? BrickLook.page : BrickLook.card, in: .rect(cornerRadius: 16, style: .continuous))
+        content.glassGlare(.regular, in: .rect(cornerRadius: 16, style: .continuous))
+    }
+}
+
+extension View {
+    /// A small Liquid Glass field behind a set's number, weight, reps or check.
+    @ViewBuilder func glassFill(_ on: Bool = true) -> some View {
+        if on { glassEffect(.regular, in: .rect(cornerRadius: 8)) } else { self }
     }
 }
 
