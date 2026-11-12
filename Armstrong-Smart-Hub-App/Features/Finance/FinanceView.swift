@@ -13,7 +13,7 @@ struct FinanceView: View {
     var body: some View {
         NavigationStack {
             HubTabPage(topBar: { topBar }, hero: {
-                if let r = store.response, r.configured, r.hasData == true, let d = r.dashboard { hero(d, goal: r.goal) }
+                EmptyView()
             }, content: {
                 content
             }, mountains: true)
@@ -81,37 +81,6 @@ struct FinanceView: View {
                         actionTitle: "Try again") { Task { await store.load(api: session.api) } }
         } else {
             ProgressView().frame(maxWidth: .infinity, minHeight: 300)
-        }
-    }
-
-    private func hero(_ d: Dashboard, goal: GoalSettings?) -> some View {
-        let money = { (v: Double) in Fmt.compact(v, d.currency) }
-        let month = Date.now.formatted(.dateTime.month(.wide))
-        // Rent is a fixed cost, so it stays out of "Spent in <month>" and the pace against last month.
-        let cal = Calendar.current
-        let rentNow = d.monthSpending.byCategory.filter { $0.category == "Rent" }.reduce(0) { $0 + $1.amount }
-        let rentLast = d.transactions.filter { t in
-            guard t.category == "Rent", t.netEffect < 0, !t.hold,
-                  let prev = cal.date(byAdding: .month, value: -1, to: .now),
-                  cal.isDate(t.date, equalTo: prev, toGranularity: .month) else { return false }
-            return cal.component(.day, from: t.date) <= cal.component(.day, from: .now)
-        }.reduce(0) { $0 + abs($1.netEffect) }
-        let spent = d.monthSpending.total - rentNow
-        let pace = spent - (d.monthSpending.lastMonthToDate - rentLast)
-
-        let day = max(cal.component(.day, from: .now), 1)
-        let lastSoFar = d.monthSpending.lastMonthToDate - rentLast
-        let perDay = spent / Double(day)
-        let lastPerDay = lastSoFar / Double(day)
-        let kept = d.income30d > 0 ? max(0, min(d.netFlow30d / d.income30d, 1)) : 0
-        return BrickHero(caption: "Spent in \(month)", title: money(spent),
-                  subtitle: abs(pace) < 1 ? "Same pace as last month" : "\(money(abs(pace))) \(pace > 0 ? "more" : "less") than last month by now",
-                  subtitleColor: pace > 0 ? Color.negative : Color.positive) {
-            SpendTrend(transactions: d.transactions, tint: .orange)
-        } stats: {
-            HeroRing(value: money(spent), fraction: lastSoFar > 0 ? max(0, min(spent / lastSoFar, 1)) : 0, tint: .orange, label: "Spent")
-            HeroRing(value: money(perDay), fraction: lastPerDay > 0 ? max(0, min(perDay / lastPerDay, 1)) : 0, tint: .pink, label: "Per day")
-            HeroRing(value: Fmt.currency(d.netFlow30d, d.currency, cents: false), fraction: kept, tint: .mint, label: "Kept, 30 days")
         }
     }
 
@@ -279,26 +248,48 @@ private struct MonthBars: View {
     }
 }
 
-/// Accounts with their bank's logo and balance.
+/// Accounts with their bank's logo and balance, folded away until opened.
 private struct AccountsCard: View {
     let accounts: [Account]
+    @State private var open = false
 
     var body: some View {
-        Card(title: "Accounts") {
-            ForEach(accounts) { a in
-                HStack(spacing: 14) {
-                    BankLogo(institution: a.institution, kind: a.kind)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(a.name).font(.subheadline.weight(.medium)).lineLimit(1)
-                        Text(a.institution).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.smooth) { open.toggle() }
+            } label: {
+                HStack {
+                    Text("Accounts").font(.headline)
                     Spacer()
-                    Text(Fmt.compact(a.isLiability ? -a.magnitude : a.rawBalance, a.currency))
-                        .font(.subheadline.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(a.isLiability ? Color.negative : .primary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                }
+                .frame(minHeight: HubLayout.minHitTarget - 20)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            if open {
+                ForEach(accounts) { a in
+                    HStack(spacing: 14) {
+                        BankLogo(institution: a.institution, kind: a.kind)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(a.name).font(.subheadline.weight(.medium)).lineLimit(1)
+                            Text(a.institution).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Text(Fmt.compact(a.isLiability ? -a.magnitude : a.rawBalance, a.currency))
+                            .font(.subheadline.weight(.semibold)).monospacedDigit()
+                            .foregroundStyle(a.isLiability ? Color.negative : .primary)
+                    }
                 }
             }
         }
+        .padding(HubLayout.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
+        .clipped()
     }
 }
 
