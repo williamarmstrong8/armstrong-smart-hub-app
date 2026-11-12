@@ -137,9 +137,24 @@ final class ReflectionStore {
 
     func addBook(_ r: BookResult) {
         guard !hasBook(r.id) else { return }
-        books.insert(Book(sourceKey: r.id, title: r.title, author: r.author, coverURL: r.coverURL,
-                          year: r.year, pages: r.pages, publisher: r.publisher), at: 0)
+        let book = Book(sourceKey: r.id, title: r.title, author: r.author, coverURL: r.coverURL,
+                        year: r.year, pages: r.pages, publisher: r.publisher)
+        books.insert(book, at: 0)
         persist()
+        Task { await lookUpChapters(book.id) }
+    }
+
+    /// Books whose chapters are being looked up right now.
+    private(set) var lookingUp: Set<UUID> = []
+
+    /// Fills in a book's chapters from free online sources. Leaves them unset if every source was
+    /// unreachable, so a later attempt can retry; sets an empty list when none was found.
+    func lookUpChapters(_ id: UUID) async {
+        guard let current = self.book(id), current.chapters == nil, !lookingUp.contains(id) else { return }
+        lookingUp.insert(id)
+        defer { lookingUp.remove(id) }
+        guard let titles = await BookSearch.chapters(for: current), self.book(id)?.chapters == nil else { return }
+        setChapters(id, titles.map { BookChapter(title: $0) })
     }
 
     func setBookNotes(_ id: UUID, _ notes: String) {

@@ -52,35 +52,119 @@ enum BookSearch {
         return books.filter { $0.coverURL != nil } + books.filter { $0.coverURL == nil }
     }
 
-    /// Chapter titles from the first edition of the work that lists a table of contents.
-    static func chapters(workKey: String) async throws -> [String] {
-        guard let url = URL(string: "https://openlibrary.org\(workKey)/editions.json?limit=50") else { return [] }
+    private static func getJSON(_ urlString: String) async throws -> Any {
+        guard let url = URL(string: urlString) else { return [:] as [String: Any] }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
         request.setValue("ArmstrongHub/1.0", forHTTPHeaderField: "User-Agent")
         let (data, _) = try await URLSession.shared.data(for: request)
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
+    private static func tocTitles(_ toc: [Any]) -> [String] {
+        var titles: [String] = []
+        for item in toc {
+            var title = ""
+            var label = ""
+            if let s = item as? String {
+                title = s
+            } else if let d = item as? [String: Any] {
+                title = (d["title"] as? String) ?? ""
+                label = (d["label"] as? String) ?? ""
+            }
+            title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            label = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let full = label.isEmpty ? title : (title.isEmpty ? label : "\(label). \(title)")
+            if !full.isEmpty, !titles.contains(full) { titles.append(full) }
+        }
+        return titles
+    }
+
+    /// Chapter titles from the first edition of the work that lists a table of contents.
+    private static func openLibraryChapters(workKey: String) async throws -> [String] {
+        guard let root = try await getJSON("https://openlibrary.org\(workKey)/editions.json?limit=50") as? [String: Any],
               let entries = root["entries"] as? [[String: Any]] else { return [] }
         for entry in entries {
             guard let toc = entry["table_of_contents"] as? [Any] else { continue }
-            var titles: [String] = []
-            for item in toc {
-                var title = ""
-                var label = ""
-                if let s = item as? String {
-                    title = s
-                } else if let d = item as? [String: Any] {
-                    title = (d["title"] as? String) ?? ""
-                    label = (d["label"] as? String) ?? ""
-                }
-                title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                label = label.trimmingCharacters(in: .whitespacesAndNewlines)
-                let full = label.isEmpty ? title : (title.isEmpty ? label : "\(label). \(title)")
-                if !full.isEmpty, !titles.contains(full) { titles.append(full) }
-            }
+            let titles = tocTitles(toc)
             if titles.count >= 2 { return Array(titles.prefix(100)) }
         }
         return []
+    }
+
+    /// Other Open Library records of the same title and author often carry the table of contents the work's own editions lack.
+    private static func openLibrarySearchChapters(title: String, author: String) async throws -> [String] {
+        var parts = URLComponents(string: "https://openlibrary.org/search.json")
+        var items = [URLQueryItem(name: "title", value: title),
+                     URLQueryItem(name: "limit", value: "5"),
+                     URLQueryItem(name: "fields", value: "key,edition_key")]
+        if author != "Unknown author" { items.append(URLQueryItem(name: "author", value: author)) }
+        parts?.queryItems = items
+        guard let search = parts?.url?.absoluteString,
+              let root = try await getJSON(search) as? [String: Any],
+              let docs = root["docs"] as? [[String: Any]] else { return [] }
+        var editions: [String] = []
+        for doc in docs {
+            for key in (doc["edition_key"] as? [String] ?? []).prefix(8) where !editions.contains(key) { editions.append(key) }
+        }
+        guard !editions.isEmpty else { return [] }
+        let bibkeys = editions.prefix(25).map { "OLID:\($0)" }.joined(separator: ",")
+        guard let books = try await getJSON("https://openlibrary.org/api/books?bibkeys=\(bibkeys)&jscmd=data&format=json") as? [String: Any]
+        else { return [] }
+        for key in editions where books["OLID:\(key)"] != nil {
+            guard let data = books["OLID:\(key)"] as? [String: Any], let toc = data["table_of_contents"] as? [Any] else { continue }
+            let titles = tocTitles(toc)
+            if titles.count >= 2 { return Array(titles.prefix(100)) }
+        }
+        return []
+    }
+
+    /// Google Books has no table-of-contents field, so this only picks up a chapter list printed in a volume's description.
+    private static func googleBooksChapters(title: String, author: String) async throws -> [String] {
+        var parts = URLComponents(string: "https://www.googleapis.com/books/v1/volumes")
+        var q = "intitle:\(title)"
+        if author != "Unknown author" { q += " inauthor:\(author)" }
+        parts?.queryItems = [URLQueryItem(name: "q", value: q), URLQueryItem(name: "maxResults", value: "5")]
+        guard let url = parts?.url?.absoluteString,
+              let root = try await getJSON(url) as? [String: Any],
+              let volumes = root["items"] as? [[String: Any]] else { return [] }
+        for volume in volumes {
+            guard let info = volume["volumeInfo"] as? [String: Any], let description = info["description"] as? String else { continue }
+            var text = description
+            for tag in ["<br>", "<br/>", "<br />", "</p>", "</li>", "<li>", "<p>"] {
+                text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
+            }
+            text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            var titles: [String] = []
+            for line in text.components(separatedBy: .newlines) {
+                let line = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard line.count < 120,
+                      line.range(of: #"^((chapter|part)\s+(\d+|[ivxlc]+|one|two|three|four|five|six|seven|eight|nine|ten)\b|\d{1,2}[.):]\s+\S)"#,
+                                 options: [.regularExpression, .caseInsensitive]) != nil,
+                      !titles.contains(line) else { continue }
+                titles.append(line)
+            }
+            if titles.count >= 3 { return Array(titles.prefix(100)) }
+        }
+        return []
+    }
+
+    /// Looks the chapters up without AI, trying each free source in turn. Returns nil when no source
+    /// could be reached (so a later attempt is worthwhile) and an empty list when none has chapters.
+    static func chapters(for book: Book) async -> [String]? {
+        var reached = false
+        let sources: [() async throws -> [String]] = [
+            { try await openLibraryChapters(workKey: book.sourceKey) },
+            { try await openLibrarySearchChapters(title: book.title, author: book.author) },
+            { try await googleBooksChapters(title: book.title, author: book.author) },
+        ]
+        for source in sources {
+            if Task.isCancelled { return nil }
+            guard let found = try? await source() else { continue }
+            reached = true
+            if !found.isEmpty { return found }
+        }
+        return reached ? [] : nil
     }
 }
 
@@ -452,8 +536,8 @@ struct BookDetailView: View {
             }
             if chapters.isEmpty {
                 HStack(spacing: 8) {
-                    if book.chapters == nil { ProgressView().controlSize(.small) }
-                    Text(book.chapters == nil ? "Looking up chapters\u{2026}" : "No chapters found. Add them yourself to keep notes by chapter.")
+                    if store.lookingUp.contains(bookID) { ProgressView().controlSize(.small) }
+                    Text(store.lookingUp.contains(bookID) ? "Looking up chapters\u{2026}" : "No chapters found. Add them yourself to keep notes by chapter.")
                         .font(.subheadline).foregroundStyle(HubDesign.secondary)
                 }
                 .padding(.horizontal, 4)
@@ -495,10 +579,7 @@ struct BookDetailView: View {
     }
 
     private func loadChapters() async {
-        guard let book = store.book(bookID), book.chapters == nil else { return }
-        guard let titles = try? await BookSearch.chapters(workKey: book.sourceKey), !Task.isCancelled else { return }
-        guard store.book(bookID)?.chapters == nil else { return }
-        store.setChapters(bookID, titles.map { BookChapter(title: $0) })
+        await store.lookUpChapters(bookID)
     }
 
     private var notesCard: some View {
