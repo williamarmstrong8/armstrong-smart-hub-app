@@ -161,39 +161,49 @@ struct HomeView: View {
         }
     }
 
-    /// How many habits are done today, large, over the month as dots: a row per habit, a dot per day.
+    /// A greeting with one line on the house, the lights and locks at a glance, and the Pi's status.
     private var hero: some View {
-        let cal = Calendar.current
-        let total = habits.habits.count
-        let doneToday = habits.doneToday
-        let first = cal.date(from: cal.dateComponents([.year, .month], from: .now)) ?? .now
-        let today = cal.component(.day, from: .now)
-        let shown = Array(habits.habits.prefix(8))
-        let rows = shown.map { h in
-            HabitDots.Row(id: h.id, color: Color(hex: h.color), done: Set((1...today).filter { d in
-                guard let date = cal.date(byAdding: .day, value: d - 1, to: first) else { return false }
-                return habits.isDone(h.id, localDay(date))
-            }))
-        }
-        return VStack(spacing: 0) {
-            BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())).foregroundStyle(BrickLook.soft)
-                .padding(.top, 14)
-            if total > 0 {
-                Text("\(doneToday)/\(total)")
-                    .font(.system(size: 64, weight: .light).monospacedDigit())
-                    .padding(.top, 8)
-                    .accessibilityAddTraits(.isHeader)
-                Text(doneToday == total ? "Every habit done today" : "habits done today")
-                    .font(.subheadline).foregroundStyle(BrickLook.soft)
-                HabitDots(rows: rows)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.vertical, 24)
-            } else {
-                Spacer(minLength: 0)
+        let hour = Calendar.current.component(.hour, from: .now)
+        let greeting = hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
+        let lights = store.entities.filter { $0.control == .light && $0.isOn }.count
+        let unlocked = store.entities.filter { $0.control == .lock && $0.isOn }
+        let locks = store.entities.filter { $0.control == .lock }
+        let ready = store.ready.count
+        let summary: String = {
+            if let door = unlocked.first { return unlocked.count == 1 ? "\(door.name) is unlocked" : "\(unlocked.count) doors are unlocked" }
+            if lights > 0 { return lights == 1 ? "One light is on" : "\(lights) lights are on" }
+            return "The house is quiet"
+        }()
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(greeting)
+                .font(.system(size: 44, weight: .light))
+                .accessibilityAddTraits(.isHeader)
+                .padding(.top, 28)
+            Text(summary)
+                .font(.title3).foregroundStyle(BrickLook.soft)
+                .padding(.top, 6)
+            Spacer(minLength: 16)
+            HStack(spacing: 10) {
+                heroChip(icon: "lightbulb", text: lights == 0 ? "Lights off" : "\(lights) on")
+                if !locks.isEmpty {
+                    heroChip(icon: unlocked.isEmpty ? "lock" : "lock.open", text: unlocked.isEmpty ? "Locked" : "\(unlocked.count) open")
+                }
+                if ready > 0 { heroChip(icon: "play.rectangle", text: "\(ready) to watch") }
+            }
+            if let status = pi.status, status.available {
+                PiStatusCard(status: status).padding(.top, 14)
             }
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: HubLayout.heroHeight, alignment: .top)
+    }
+
+    private func heroChip(icon: String, text: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.footnote.weight(.medium))
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.thinMaterial, in: Capsule())
     }
 
     @ViewBuilder
@@ -237,7 +247,6 @@ struct HomeView: View {
                 MediaShelf(requests: shelfRequests, hiding: TitleCardPresenter.shared.landingID, onPick: open)
             }
 
-            if let status = pi.status, status.available { PiStatusCard(status: status) }
         }
     }
 
