@@ -232,7 +232,10 @@ struct FitnessView: View {
     // MARK: Today
 
     private var workoutDays: Set<Date> {
-        Set(store.activities.compactMap { $0.start.map { Calendar.current.startOfDay(for: $0) } })
+        // Watch recordings plus routines logged in the app, so a session counts either way.
+        let watch = store.activities.compactMap { $0.start.map { Calendar.current.startOfDay(for: $0) } }
+        let logged = (workouts.home?.workouts ?? []).compactMap { $0.start.map { Calendar.current.startOfDay(for: $0) } }
+        return Set(watch + logged)
     }
 
     /// Consecutive days with a workout, counting back from today (or from
