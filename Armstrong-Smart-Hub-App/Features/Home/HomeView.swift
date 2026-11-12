@@ -161,49 +161,78 @@ struct HomeView: View {
         }
     }
 
-    /// A greeting with one line on the house, the lights and locks at a glance, and the Pi's status.
+    /// A centred greeting and one line on the house, quick buttons for the lights, and a Docker check.
     private var hero: some View {
         let hour = Calendar.current.component(.hour, from: .now)
         let greeting = hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
-        let lights = store.entities.filter { $0.control == .light && $0.isOn }.count
+        let lights = store.entities.filter { $0.control == .light }
+        let on = lights.filter(\.isOn).count
         let unlocked = store.entities.filter { $0.control == .lock && $0.isOn }
-        let locks = store.entities.filter { $0.control == .lock }
-        let ready = store.ready.count
         let summary: String = {
             if let door = unlocked.first { return unlocked.count == 1 ? "\(door.name) is unlocked" : "\(unlocked.count) doors are unlocked" }
-            if lights > 0 { return lights == 1 ? "One light is on" : "\(lights) lights are on" }
+            if on > 0 { return on == 1 ? "One light is on" : "\(on) lights are on" }
             return "The house is quiet"
         }()
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(greeting)
-                .font(.system(size: 44, weight: .light))
-                .accessibilityAddTraits(.isHeader)
-                .padding(.top, 28)
-            Text(summary)
-                .font(.title3).foregroundStyle(BrickLook.soft)
-                .padding(.top, 6)
-            Spacer(minLength: 16)
-            HStack(spacing: 10) {
-                heroChip(icon: "lightbulb", text: lights == 0 ? "Lights off" : "\(lights) on")
-                if !locks.isEmpty {
-                    heroChip(icon: unlocked.isEmpty ? "lock" : "lock.open", text: unlocked.isEmpty ? "Locked" : "\(unlocked.count) open")
-                }
-                if ready > 0 { heroChip(icon: "play.rectangle", text: "\(ready) to watch") }
+        return VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            VStack(spacing: 8) {
+                Text(greeting)
+                    .font(.system(size: 48, weight: .light))
+                    .multilineTextAlignment(.center)
+                    .accessibilityAddTraits(.isHeader)
+                Text(summary).font(.title3).foregroundStyle(BrickLook.soft)
             }
-            if let status = pi.status, status.available {
-                PiStatusCard(status: status).padding(.top, 14)
+            Spacer(minLength: 0)
+            if !lights.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 14) {
+                        ForEach(lights.prefix(8)) { light in
+                            Button { toggle(light) } label: {
+                                VStack(spacing: 6) {
+                                    Image(systemName: light.isOn ? "lightbulb.max.fill" : "lightbulb")
+                                        .font(.title3)
+                                        .frame(width: 56, height: 56)
+                                        .glassGlare(.regular.interactive(), in: .circle)
+                                    Text(light.name).font(.caption2).lineLimit(1)
+                                        .foregroundStyle(BrickLook.soft).frame(width: 64)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(light.name), \(light.isOn ? "on" : "off")")
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .frame(maxWidth: .infinity)
+                .sensoryFeedback(.selection, trigger: on)
+            }
+            if let status = pi.status, status.available, let containers = status.containers, !containers.isEmpty {
+                NavigationLink { PiDetailView(pi: pi) } label: { dockerCheck(status, containers) }
+                    .buttonStyle(.plain)
+                    .padding(.top, 18)
             }
         }
-        .padding(.horizontal, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: HubLayout.heroHeight, alignment: .top)
+        .frame(maxWidth: .infinity)
+        .frame(height: HubLayout.heroHeight)
+        .padding(.bottom, 4)
     }
 
-    private func heroChip(icon: String, text: String) -> some View {
-        Label(text, systemImage: icon)
-            .font(.footnote.weight(.medium))
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(.thinMaterial, in: Capsule())
+    /// Whether the containers are up: a dot per app, and a word if one's down.
+    private func dockerCheck(_ status: PiStatus, _ containers: [PiContainer]) -> some View {
+        let bad = status.troubled
+        return HStack(spacing: 10) {
+            HStack(spacing: 4) {
+                ForEach(containers.prefix(16)) { c in
+                    Circle().fill(c.troubled ? HubDesign.danger : HubDesign.positive).frame(width: 6, height: 6)
+                }
+            }
+            Text(bad.isEmpty ? "Docker · all \(containers.count) up" : bad.count == 1 ? "\(bad[0].name) is down" : "\(bad.count) containers down")
+                .font(.footnote).foregroundStyle(BrickLook.soft)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .glassGlare(.regular, in: .capsule)
     }
 
     @ViewBuilder
@@ -234,6 +263,11 @@ struct HomeView: View {
             }
 
             habitsSection
+
+            if let status = pi.status, status.available {
+                NavigationLink { PiDetailView(pi: pi) } label: { PiStatusCard(status: status) }
+                    .buttonStyle(.plain)
+            }
 
             // Keep the actual control mounted: a fixed-height placeholder jumps at larger text sizes.
             MediaSearchBar { searching = true }
