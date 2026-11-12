@@ -107,11 +107,9 @@ struct BrickScreenTimePage: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(.top, 8)
-        .background(BrickLook.page.ignoresSafeArea())
-        .foregroundStyle(BrickLook.ink)
+        .hubPageStyle()
         .navigationTitle("Screen Time")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BrickLook.page, for: .navigationBar)
     }
 }
 #endif

@@ -103,9 +103,7 @@ struct MediaSearchView: View {
         .padding(.horizontal, HubLayout.gutter)
         .padding(.top, HubLayout.topInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(HubDesign.page.ignoresSafeArea())
-        .foregroundStyle(HubDesign.ink)
-        .tint(HubDesign.action)
+        .hubPageStyle()
         .task {
             withAnimation(HubMotion.animation(reduceMotion: reduceMotion)) { showClose = true }
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }

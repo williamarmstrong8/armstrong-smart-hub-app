@@ -28,7 +28,9 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            HubTabPage(topBar: { topBar }, content: {
+            HubTabPage(topBar: { topBar }, hero: {
+                if store.state != nil, store.state?.configured != false { hero }
+            }, content: {
                 content
             }, mountains: true)
             // The search page's keyboard mustn't resize Home underneath it: that scrolled the page
@@ -90,11 +92,14 @@ struct HomeView: View {
                             AutomationsSection(payload: payload, store: store, toast: toast).padding(16)
                         }
                     }
+                    .hubPageStyle()
+                    .toolbarBackground(.hidden, for: .navigationBar)
                     .navigationTitle("Automations")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showAutomations = false } } }
                 }
                 .presentationDetents([.medium, .large])
+                .presentationBackground { AmbientBackdrop() }
                 .toast(toast)
             }
             .sheet(isPresented: $showBackground) { BackgroundSettingsView() }
@@ -158,7 +163,9 @@ struct HomeView: View {
         return BrickHero(
             caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
             title: greeting,
-            subtitle: nil
+            subtitle: nil,
+            symbol: hour < 5 || hour >= 20 ? "moon.stars" : hour < 17 ? "sun.max" : "sunset",
+            symbolTint: hour < 5 || hour >= 20 ? .indigo : .orange
         ) {
             if habits.loaded, !habits.habits.isEmpty {
                 BrickPill(text: "\(habits.doneToday)/\(habits.habits.count)", icon: "checkmark.circle")
@@ -193,8 +200,6 @@ struct HomeView: View {
                     Task { await store.refresh(api: session.api) }
                 }
             }
-
-            if store.state != nil { hero }
 
             if store.state == nil {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)

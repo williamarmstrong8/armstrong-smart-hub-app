@@ -339,10 +339,8 @@ struct BrickActivityPage: View {
             }
             .padding(.bottom, 48)
         }
-        .background(BrickLook.page.ignoresSafeArea())
-        .foregroundStyle(BrickLook.ink)
+        .hubPageStyle()
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BrickLook.page, for: .navigationBar)
     }
 
     private func weekLabel(_ week: [DayValue]) -> String {

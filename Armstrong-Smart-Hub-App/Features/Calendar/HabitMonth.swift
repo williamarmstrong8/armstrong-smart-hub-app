@@ -194,9 +194,8 @@ struct HabitDaySheet: View {
                 .containerRelativeFrame(.horizontal, alignment: .leading)
             }
             .scrollBounceBehavior(.basedOnSize)
-            .background(HubDesign.page.ignoresSafeArea())
-            .foregroundStyle(HubDesign.ink)
-            .tint(HubDesign.action)
+            .hubPageStyle()
+            .toolbarBackground(.hidden, for: .navigationBar)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -205,6 +204,7 @@ struct HabitDaySheet: View {
             .toast(toast)
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground { AmbientBackdrop() }
     }
 
     private var title: String {

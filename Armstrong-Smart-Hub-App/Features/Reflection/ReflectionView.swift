@@ -42,8 +42,9 @@ struct ReflectionView: View {
 
     var body: some View {
         NavigationStack {
-            HubTabPage(topBar: { BrickTopBar { EmptyView() } }, content: {
+            HubTabPage(topBar: { BrickTopBar { EmptyView() } }, hero: {
                 hero
+            }, content: {
                 meditateSection
                 quotesSection
                 journalSection
@@ -83,7 +84,9 @@ struct ReflectionView: View {
         BrickHero(
             caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
             title: "Reflection",
-            subtitle: "Breathe, keep what moves you, write it down."
+            subtitle: "Breathe, keep what moves you, write it down.",
+            symbol: "leaf",
+            symbolTint: .teal
         ) {
             BrickPill(text: "\(store.sessions.count) \(store.sessions.count == 1 ? "session" : "sessions")", icon: "wind")
             BrickPill(text: "\(store.totalMinutes) min", icon: "clock")

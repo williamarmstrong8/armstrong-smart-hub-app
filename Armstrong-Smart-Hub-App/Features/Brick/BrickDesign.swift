@@ -158,11 +158,17 @@ struct BrickHero<Pills: View>: View {
     var title: String
     var subtitle: String?
     var subtitleColor: Color = BrickLook.soft
+    /// A glowing glass medallion above the caption.
+    var symbol: String?
+    var symbolTint: Color = HubDesign.action
     @ViewBuilder var pills: Pills
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 44
 
     var body: some View {
         VStack(spacing: 12) {
+            if let symbol {
+                HubHeroBadge(symbol: symbol, tint: symbolTint).padding(.bottom, 4)
+            }
             BrickCaps(text: caption).foregroundStyle(BrickLook.soft)
             Text(title)
                 .font(.system(size: titleSize, weight: .light).monospacedDigit())

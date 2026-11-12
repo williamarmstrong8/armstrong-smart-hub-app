@@ -12,7 +12,9 @@ struct FinanceView: View {
 
     var body: some View {
         NavigationStack {
-            HubTabPage(topBar: { topBar }, content: {
+            HubTabPage(topBar: { topBar }, hero: {
+                if let r = store.response, r.configured, r.hasData == true, let d = r.dashboard { hero(d) }
+            }, content: {
                 content
             }, mountains: true)
             .toolbarBackground(HubDesign.page, for: .navigationBar)
@@ -82,8 +84,7 @@ struct FinanceView: View {
         }
     }
 
-    @ViewBuilder
-    private func overview(_ r: FinanceResponse, _ d: Dashboard) -> some View {
+    private func hero(_ d: Dashboard) -> some View {
         let money = { (v: Double) in Fmt.compact(v, d.currency) }
         let month = Date.now.formatted(.dateTime.month(.wide))
         // Rent is a fixed cost, so it stays out of "Spent in <month>" and the pace against last month.
@@ -98,15 +99,19 @@ struct FinanceView: View {
         let spent = d.monthSpending.total - rentNow
         let pace = spent - (d.monthSpending.lastMonthToDate - rentLast)
 
-        if let failure = r.sync?.failureReason {
-            ErrorBanner(message: "Last sync failed: \(failure)")
-        }
-
-        BrickHero(caption: "Spent in \(month)", title: money(spent),
+        return BrickHero(caption: "Spent in \(month)", title: money(spent),
                   subtitle: abs(pace) < 1 ? "Same pace as last month" : "\(money(abs(pace))) \(pace > 0 ? "more" : "less") than last month by now",
-                  subtitleColor: pace > 0 ? Color.negative : Color.positive) {
+                  subtitleColor: pace > 0 ? Color.negative : Color.positive,
+                  symbol: "chart.pie", symbolTint: .green) {
             BrickPill(text: money(d.cash), icon: "banknote")
             BrickPill(text: money(d.netWorth), icon: "chart.line.uptrend.xyaxis")
+        }
+    }
+
+    @ViewBuilder
+    private func overview(_ r: FinanceResponse, _ d: Dashboard) -> some View {
+        if let failure = r.sync?.failureReason {
+            ErrorBanner(message: "Last sync failed: \(failure)")
         }
 
         if let next = store.tagQueue.first {

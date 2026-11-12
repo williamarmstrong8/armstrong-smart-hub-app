@@ -74,13 +74,11 @@ struct ExercisePicker: View {
                 .contentMargins(.bottom, picked.isEmpty ? 0 : 90, for: .scrollContent)
             }
             .overlay(alignment: .bottom) { addButton }
-            .background(BrickLook.page.ignoresSafeArea())
-            .presentationBackground(BrickLook.page)
-            .foregroundStyle(BrickLook.ink)
-            .tint(HubDesign.action)
+            .hubPageStyle()
+            .presentationBackground { AmbientBackdrop() }
             .navigationTitle(replacing ? "Replace Exercise" : "Add Exercise")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button("Create") { creating = true } }
@@ -243,7 +241,7 @@ private struct NewExerciseSheet: View {
             .brickList()
             .navigationTitle("New exercise")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(BrickLook.page, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -252,7 +250,7 @@ private struct NewExerciseSheet: View {
                 }
             }
         }
-        .presentationBackground(BrickLook.page)
+        .presentationBackground { AmbientBackdrop() }
     }
 
     private func save() async {

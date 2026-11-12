@@ -99,24 +99,60 @@ struct HubToolbarButtonStyle: ButtonStyle {
     }
 }
 
-/// A stable header and one vertical scroll owner. Lazy sections avoid constructing
+/// A glass medallion with a soft coloured glow, the focal picture of a page's hero.
+struct HubHeroBadge: View {
+    var symbol: String
+    var tint: Color = HubDesign.action
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 34, weight: .light))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(HubDesign.ink)
+            .frame(width: 84, height: 84)
+            .background {
+                Circle()
+                    .fill(RadialGradient(colors: [tint.opacity(0.6), tint.opacity(0)], center: .center, startRadius: 0, endRadius: 96))
+                    .frame(width: 192, height: 192)
+            }
+            .glassGlare(.regular.tint(tint.opacity(0.35)), in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
+/// A stable header and one vertical scroll owner. The top bar and hero sit together on a glass
+/// sheet over the backdrop, as on Fitness and Brick. Lazy sections avoid constructing
 /// offscreen charts and images; identity belongs to the feature's data, not its index.
-struct HubTabPage<TopBar: View, Content: View>: View {
+struct HubTabPage<TopBar: View, Hero: View, Content: View>: View {
     @ViewBuilder var topBar: TopBar
+    @ViewBuilder var hero: Hero
     @ViewBuilder var content: Content
     /// An ambient gradient behind the page, for screens built from Liquid Glass.
     var mountains = false
 
     var body: some View {
         ScrollView(.vertical) {
-            VStack(spacing: 8) {
-                topBar
+            VStack(spacing: HubLayout.sectionGap) {
+                VStack(spacing: 8) {
+                    topBar
+                    hero
+                }
+                .padding(.horizontal, HubLayout.gutter)
+                .padding(.top, HubLayout.topInset)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity)
+                .background {
+                    if mountains {
+                        Color.clear
+                            .glassGlare(.regular, in: UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous))
+                            .padding(.top, -600)
+                    }
+                }
                 LazyVStack(alignment: .leading, spacing: HubLayout.sectionGap) {
                     content
                 }
+                .padding(.horizontal, HubLayout.gutter)
             }
-            .padding(.horizontal, HubLayout.gutter)
-            .padding(.top, HubLayout.topInset)
             .padding(.bottom, HubLayout.bottomInset)
             .containerRelativeFrame(.horizontal, alignment: .leading)
         }
