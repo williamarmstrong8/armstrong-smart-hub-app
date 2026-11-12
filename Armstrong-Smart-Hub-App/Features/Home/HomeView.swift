@@ -15,7 +15,6 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var store = HomeStore()
     @State private var habits = HabitsStore()
-    @State private var fitness = FitnessStore()
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
@@ -62,8 +61,7 @@ struct HomeView: View {
             .refreshable {
                 async let a: Void = store.refresh(api: session.api)
                 async let b: Void = habits.load(api: session.api)
-                async let f: Void = fitness.load(api: session.api)
-                _ = await (a, b, f)
+                _ = await (a, b)
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
@@ -71,7 +69,6 @@ struct HomeView: View {
                 await store.poll(api: session.api)
             }
             .task { if !habits.fetched { await habits.load(api: session.api) } }
-            .task { await fitness.load(api: session.api) }
             .sheet(item: $light) { e in
                 LightSheet(entityID: e.id, store: store, toast: toast)
                     .presentationDetents([.medium, .large])
@@ -154,38 +151,22 @@ struct HomeView: View {
         }
     }
 
-    /// Today at a glance: the date, then habits, steps and the lights.
+    /// A greeting, and the month as a row of days filled in as they pass.
     private var hero: some View {
-        let lamps = store.shownEntities.filter { $0.control == .light && !$0.isUnavailable }
-        let lit = lamps.filter(\.isOn)
         let hour = Calendar.current.component(.hour, from: .now)
         let greeting = hour < 5 ? "Late night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
-        let total = habits.habits.count
-        let steps = fitness.today?.steps
-        let stepGoal = Double(fitness.today?.stepGoal ?? 10_000)
-        let habitFraction = total > 0 ? Double(habits.doneToday) / Double(total) : 0
-        let stepFraction = steps.map { min(Double($0) / max(stepGoal, 1), 1) } ?? 0
+        let cal = Calendar.current
+        let day = cal.component(.day, from: .now)
+        let days = cal.range(of: .day, in: .month, for: .now)?.count ?? 30
+        let left = days - day
+        let month = Date.now.formatted(.dateTime.month(.wide))
         return BrickHero(
             caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
             title: greeting,
-            subtitle: nil
+            subtitle: left == 0 ? "Last day of \(month)" : "Day \(day) of \(days) · \(left) \(left == 1 ? "day" : "days") left in \(month)"
         ) {
-            HomeDayDial(habits: habitFraction, steps: stepFraction,
-                        center: total > 0 ? "\(habits.doneToday)/\(total)" : "–", caption: "habits today")
-        } stats: {
-            HeroRing(value: total > 0 ? "\(habits.doneToday)" : "–", fraction: habitFraction, tint: .green, label: "Habits")
-            HeroRing(value: steps.map { $0 >= 10_000 ? String(format: "%.1fk", Double($0) / 1000) : $0.formatted() } ?? "–",
-                     fraction: stepFraction, tint: .orange, label: "Steps")
-            Button {
-                for lamp in lit { Task { await store.toggle(lamp, api: session.api, toast: toast) } }
-            } label: {
-                HeroRing(value: lamps.isEmpty ? "–" : "\(lit.count)",
-                         fraction: lamps.isEmpty ? 0 : Double(lit.count) / Double(lamps.count),
-                         tint: .yellow, label: lit.isEmpty ? "Lights off" : "Lights · all off")
-            }
-            .buttonStyle(.plain)
-            .allowsHitTesting(!lit.isEmpty)
-            .sensoryFeedback(.impact(weight: .medium), trigger: lit.count)
+            MonthDots()
+                .padding(.horizontal, 12)
         }
     }
 

@@ -15,43 +15,43 @@ private struct HeroFade: ViewModifier {
     }
 }
 
-/// Two concentric rings for the day: habits done outside, steps inside.
-struct HomeDayDial: View {
-    var habits: Double
-    var steps: Double
-    var center: String
-    var caption: String
+/// The month as bare rectangles, one per day, weeks as rows: filled once the day has come, empty after.
+struct MonthDots: View {
+    var date: Date = .now
 
     var body: some View {
-        GeometryReader { geo in
-            let size = min(geo.size.height - 8, 210)
-            ZStack {
-                Circle()
-                    .fill(RadialGradient(colors: [Color.green.opacity(0.3), .clear], center: .center, startRadius: 0, endRadius: size * 0.7))
-                    .frame(width: size * 1.4, height: size * 1.4)
-                ring(habits, .green, width: size, line: size * 0.085)
-                ring(steps, .orange, width: size * 0.72, line: size * 0.085)
-                VStack(spacing: 0) {
-                    Text(center).font(.system(size: size * 0.2, weight: .light).monospacedDigit())
-                    Text(caption).font(.caption.weight(.medium)).tracking(1).textCase(.uppercase).foregroundStyle(HubDesign.secondary)
+        let cal = Calendar.current
+        let days = cal.range(of: .day, in: .month, for: date)?.count ?? 30
+        let today = cal.component(.day, from: date)
+        let first = cal.date(from: cal.dateComponents([.year, .month], from: date)) ?? date
+        let lead = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
+        let cells = lead + days
+        let rows = (cells + 6) / 7
+        VStack(spacing: 10) {
+            ForEach(0..<rows, id: \.self) { row in
+                HStack(spacing: 10) {
+                    ForEach(0..<7, id: \.self) { col in
+                        let day = row * 7 + col - lead + 1
+                        dot(day, today: today, days: days)
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .modifier(HeroFade())
-        .accessibilityHidden(true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Day \(today) of \(days)")
     }
 
-    private func ring(_ fraction: Double, _ tint: Color, width: CGFloat, line: CGFloat) -> some View {
-        ZStack {
-            Circle().stroke(tint.opacity(0.16), lineWidth: line)
-            Circle().trim(from: 0, to: max(0.004, min(1, fraction)))
-                .stroke(tint, style: StrokeStyle(lineWidth: line, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .opacity(fraction > 0 ? 1 : 0)
-                .hubAnimation(value: fraction)
+    @ViewBuilder
+    private func dot(_ day: Int, today: Int, days: Int) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
+        if day < 1 || day > days {
+            Color.clear.frame(maxWidth: .infinity).frame(height: 22)
+        } else if day <= today {
+            shape.fill(day == today ? Color.green : HubDesign.ink.opacity(0.85)).frame(maxWidth: .infinity).frame(height: 22)
+        } else {
+            shape.strokeBorder(HubDesign.ink.opacity(0.3), lineWidth: 1.5).frame(maxWidth: .infinity).frame(height: 22)
         }
-        .frame(width: width, height: width)
     }
 }
 
