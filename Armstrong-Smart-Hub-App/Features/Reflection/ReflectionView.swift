@@ -9,10 +9,41 @@ private let floodColors: [(name: String, hex: String)] = [
     ("Ember", "#C2512D"),
 ]
 
+private struct BreathPattern: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let inhale: Double
+    let holdIn: Double
+    let exhale: Double
+    let holdOut: Double
+
+    var length: Double { inhale + holdIn + exhale + holdOut }
+
+    var timing: String {
+        func n(_ v: Double) -> String { String(Int(v)) }
+        if holdIn == 0 && holdOut == 0 { return "\(n(inhale))-\(n(exhale))" }
+        if holdOut == 0 { return "\(n(inhale))-\(n(holdIn))-\(n(exhale))" }
+        return "\(n(inhale))-\(n(holdIn))-\(n(exhale))-\(n(holdOut))"
+    }
+
+    var title: String { "\(name) \(timing)" }
+
+    static let all: [BreathPattern] = [
+        BreathPattern(id: "box", name: "Box", inhale: 4, holdIn: 4, exhale: 4, holdOut: 4),
+        BreathPattern(id: "478", name: "Relaxing", inhale: 4, holdIn: 7, exhale: 8, holdOut: 0),
+        BreathPattern(id: "46", name: "Relaxed", inhale: 4, holdIn: 0, exhale: 6, holdOut: 0),
+        BreathPattern(id: "resonance", name: "Resonance", inhale: 5, holdIn: 0, exhale: 5, holdOut: 0),
+        BreathPattern(id: "66", name: "Slow coherent", inhale: 6, holdIn: 0, exhale: 6, holdOut: 0),
+    ]
+
+    static func find(_ id: String) -> BreathPattern { all.first { $0.id == id } ?? all[0] }
+}
+
 private struct MeditationRun: Identifiable {
     let id = UUID()
     let minutes: Int
     let hex: String
+    let pattern: BreathPattern
 }
 
 private enum JournalTarget: Identifiable {
@@ -33,6 +64,7 @@ struct ReflectionView: View {
     @AppStorage("reflection.minutes") private var minutes = 3
     @AppStorage("reflection.goal") private var goal = 60
     @AppStorage("reflection.colorHex") private var colorHex = floodColors[0].hex
+    @AppStorage("reflection.pattern") private var patternID = "box"
     @State private var showSettings = false
     @State private var run: MeditationRun?
     @State private var addingQuote = false
@@ -85,7 +117,7 @@ struct ReflectionView: View {
                     .presentationBackground(.clear)
             }
             .fullScreenCover(item: $run) { r in
-                MeditationFlood(color: Color(hexForWhiteText: r.hex), minutes: r.minutes) { done in
+                MeditationFlood(color: Color(hexForWhiteText: r.hex), minutes: r.minutes, pattern: r.pattern) { done in
                     store.finishedMeditation(minutes: done)
                 } onClose: {
                     run = nil
@@ -208,7 +240,27 @@ struct ReflectionView: View {
                         }
                     }
 
-                    Button { run = MeditationRun(minutes: minutes, hex: colorHex) } label: {
+                    BrickCaps(text: "Breathing").foregroundStyle(HubDesign.secondary)
+                    Menu {
+                        Picker("Breathing pattern", selection: $patternID) {
+                            ForEach(BreathPattern.all) { Text($0.title).tag($0.id) }
+                        }
+                    } label: {
+                        HStack {
+                            Text(BreathPattern.find(patternID).title).monospacedDigit()
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.up.chevron.down").font(.footnote)
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 16)
+                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                        .glassGlare(.regular, in: .capsule)
+                        .contentShape(.capsule)
+                    }
+                    .accessibilityLabel("Breathing pattern, \(BreathPattern.find(patternID).title)")
+
+                    Button { run = MeditationRun(minutes: minutes, hex: colorHex, pattern: BreathPattern.find(patternID)) } label: {
                         Label("Begin \(minutes) min", systemImage: "wind")
                             .font(.headline)
                             .foregroundStyle(HubDesign.ink)
@@ -467,21 +519,22 @@ private struct JournalEditor: View {
 // MARK: Meditation
 
 private enum BreathPhase: CaseIterable {
-    case inhale, hold, exhale
+    case inhale, holdIn, exhale, holdOut
 
     var label: String {
         switch self {
         case .inhale: "Breathe in"
-        case .hold: "Hold"
+        case .holdIn, .holdOut: "Hold"
         case .exhale: "Breathe out"
         }
     }
 
-    var seconds: Double {
+    func seconds(_ p: BreathPattern) -> Double {
         switch self {
-        case .inhale: 4
-        case .hold: 4
-        case .exhale: 6
+        case .inhale: p.inhale
+        case .holdIn: p.holdIn
+        case .exhale: p.exhale
+        case .holdOut: p.holdOut
         }
     }
 }
@@ -490,18 +543,19 @@ private enum BreathPhase: CaseIterable {
 private struct MeditationFlood: View {
     let color: Color
     let minutes: Int
+    let pattern: BreathPattern
     let onFinish: (Int) -> Void
     let onClose: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var level: CGFloat = 0
     @State private var phase: BreathPhase?
+    @State private var phaseEnd: Date?
     @State private var cycle = 1
     @State private var finished = false
 
     private var cycles: Int {
-        let length = BreathPhase.allCases.reduce(0) { $0 + $1.seconds }
-        return max(1, Int((Double(minutes) * 60 / length).rounded()))
+        max(1, Int((Double(minutes) * 60 / pattern.length).rounded()))
     }
 
     var body: some View {
@@ -520,7 +574,30 @@ private struct MeditationFlood: View {
             .ignoresSafeArea()
             .accessibilityHidden(true)
 
-            VStack(spacing: 12) {
+            GeometryReader { geo in
+                let d = min(geo.size.width - HubLayout.gutter * 2, 320)
+                Group {
+                    if finished {
+                        VStack(spacing: 12) {
+                            Text("Well done").font(.largeTitle.weight(.light))
+                            Text("\(minutes) minutes of calm").font(.body).opacity(0.85)
+                            Button("Done", action: onClose)
+                                .font(.headline)
+                                .padding(.horizontal, 32)
+                                .frame(minHeight: 52)
+                                .glassGlare(.regular, in: .capsule)
+                                .buttonStyle(.plain)
+                                .padding(.top, 16)
+                        }
+                    } else {
+                        breathingCircle(diameter: d)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .foregroundStyle(.white)
+
+            VStack {
                 HStack {
                     Spacer()
                     Button(action: onClose) {
@@ -534,32 +611,50 @@ private struct MeditationFlood: View {
                     .accessibilityLabel("End session")
                 }
                 Spacer()
-                if finished {
-                    Text("Well done").font(.largeTitle.weight(.light))
-                    Text("\(minutes) minutes of calm").font(.body).opacity(0.85)
-                    Button("Done", action: onClose)
-                        .font(.headline)
-                        .padding(.horizontal, 32)
-                        .frame(minHeight: 52)
-                        .glassGlare(.regular, in: .capsule)
-                        .buttonStyle(.plain)
-                        .padding(.top, 16)
-                } else {
-                    Text(phase?.label ?? "Get ready").font(.largeTitle.weight(.light))
-                        .accessibilityAddTraits(.updatesFrequently)
-                    Text("Breath \(cycle) of \(cycles)").font(.subheadline).monospacedDigit().opacity(0.85)
+                if !finished {
+                    VStack(spacing: 4) {
+                        Text("Breath \(cycle) of \(cycles)").font(.subheadline).monospacedDigit()
+                        Text(pattern.title).font(.footnote).monospacedDigit().opacity(0.85)
+                    }
+                    .padding(.bottom, 24)
                 }
-                Spacer()
             }
             .foregroundStyle(.white)
             .padding(HubLayout.gutter)
         }
         .environment(\.colorScheme, .dark)
         .statusBarHidden()
-        .sensoryFeedback(.impact(weight: .light), trigger: phase) { _, now in now != nil }
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         .task { await run() }
+    }
+
+    /// The circle swells and shrinks with the flood; the phase text and countdown stay fixed at its centre.
+    private func breathingCircle(diameter d: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(.white.opacity(0.14))
+                .overlay { Circle().stroke(.white.opacity(0.6), lineWidth: 2) }
+                .frame(width: d, height: d)
+                .scaleEffect(reduceMotion ? 0.8 : 0.62 + 0.38 * level)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 6) {
+                Text(phase?.label ?? "Get ready")
+                    .font(.title2.weight(.light))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .accessibilityAddTraits(.updatesFrequently)
+                TimelineView(.periodic(from: .now, by: 0.2)) { ctx in
+                    let left = phaseEnd.map { max(1, Int(ceil($0.timeIntervalSince(ctx.date)))) }
+                    Text(left.map { String($0) } ?? " ")
+                        .font(.system(size: 64, weight: .ultraLight))
+                        .monospacedDigit()
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(width: d * 0.5)
+        }
+        .frame(width: d, height: d)
     }
 
     private func run() async {
@@ -567,20 +662,44 @@ private struct MeditationFlood: View {
         for n in 1...cycles {
             cycle = n
             for p in BreathPhase.allCases {
+                let seconds = p.seconds(pattern)
+                if seconds <= 0 { continue }
                 if Task.isCancelled { return }
                 phase = p
+                phaseEnd = Date().addingTimeInterval(seconds)
                 switch p {
-                case .inhale: withAnimation(.easeInOut(duration: p.seconds)) { level = 1 }
-                case .hold: break
-                case .exhale: withAnimation(.easeInOut(duration: p.seconds)) { level = 0 }
+                case .inhale: withAnimation(.easeInOut(duration: seconds)) { level = 1 }
+                case .exhale: withAnimation(.easeInOut(duration: seconds)) { level = 0 }
+                case .holdIn, .holdOut: break
                 }
-                try? await Task.sleep(for: .seconds(p.seconds))
+                if p == .inhale || p == .exhale {
+                    await pulse(seconds: seconds, speedingUp: p == .inhale)
+                } else {
+                    try? await Task.sleep(for: .seconds(seconds))
+                }
             }
         }
         if Task.isCancelled { return }
         phase = nil
+        phaseEnd = nil
         finished = true
         onFinish(minutes)
+    }
+
+    /// Paced haptic taps across a breath: slow and soft to quick and firm on the way in, mirrored on the way out. Lasts the full `seconds`.
+    private func pulse(seconds: Double, speedingUp: Bool) async {
+        let generator = UIImpactFeedbackGenerator(style: .soft)
+        generator.prepare()
+        let clock = ContinuousClock()
+        let start = clock.now
+        var t = 0.0
+        while t < seconds {
+            if Task.isCancelled { return }
+            let f = speedingUp ? t / seconds : 1 - t / seconds
+            generator.impactOccurred(intensity: 0.45 + 0.55 * f)
+            t += 0.7 - 0.55 * f
+            try? await Task.sleep(until: start.advanced(by: .seconds(min(t, seconds))), clock: clock)
+        }
     }
 }
 
