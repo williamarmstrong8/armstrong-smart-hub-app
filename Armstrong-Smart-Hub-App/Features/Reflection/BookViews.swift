@@ -51,6 +51,37 @@ enum BookSearch {
         // Covers first: the gallery is mostly artwork.
         return books.filter { $0.coverURL != nil } + books.filter { $0.coverURL == nil }
     }
+
+    /// Chapter titles from the first edition of the work that lists a table of contents.
+    static func chapters(workKey: String) async throws -> [String] {
+        guard let url = URL(string: "https://openlibrary.org\(workKey)/editions.json?limit=50") else { return [] }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        request.setValue("ArmstrongHub/1.0", forHTTPHeaderField: "User-Agent")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entries = root["entries"] as? [[String: Any]] else { return [] }
+        for entry in entries {
+            guard let toc = entry["table_of_contents"] as? [Any] else { continue }
+            var titles: [String] = []
+            for item in toc {
+                var title = ""
+                var label = ""
+                if let s = item as? String {
+                    title = s
+                } else if let d = item as? [String: Any] {
+                    title = (d["title"] as? String) ?? ""
+                    label = (d["label"] as? String) ?? ""
+                }
+                title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                label = label.trimmingCharacters(in: .whitespacesAndNewlines)
+                let full = label.isEmpty ? title : (title.isEmpty ? label : "\(label). \(title)")
+                if !full.isEmpty, !titles.contains(full) { titles.append(full) }
+            }
+            if titles.count >= 2 { return Array(titles.prefix(100)) }
+        }
+        return []
+    }
 }
 
 // MARK: Catalog
@@ -230,6 +261,10 @@ struct BookDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var notes: String
+    @State private var showsGeneralNotes: Bool
+    @State private var openChapterID: UUID?
+    @State private var addingChapter = false
+    @State private var chapterTitle = ""
     @State private var askingPage = false
     @State private var pageText = ""
     @State private var confirmRemove = false
@@ -241,6 +276,7 @@ struct BookDetailView: View {
         self.store = store
         self.bookID = bookID
         _notes = State(initialValue: store.book(bookID)?.notes ?? "")
+        _showsGeneralNotes = State(initialValue: !(store.book(bookID)?.notes ?? "").isEmpty)
     }
 
     var body: some View {
@@ -249,7 +285,8 @@ struct BookDetailView: View {
                 VStack(spacing: HubLayout.sectionGap) {
                     header(book)
                     bookmarkCard(book)
-                    notesCard
+                    chaptersSection(book)
+                    if showsGeneralNotes { notesCard }
                     quotesSection(book)
                     Button("Remove book", role: .destructive) { confirmRemove = true }
                         .font(.subheadline.weight(.medium))
@@ -273,6 +310,15 @@ struct BookDetailView: View {
             }
         }
         .onChange(of: notes) { _, value in store.setBookNotes(bookID, value) }
+        .navigationDestination(item: $openChapterID) { id in
+            ChapterNotesView(store: store, bookID: bookID, chapterID: id)
+        }
+        .task(id: bookID) { await loadChapters() }
+        .alert("New chapter", isPresented: $addingChapter) {
+            TextField("Chapter title", text: $chapterTitle)
+            Button("Add") { store.addChapter(bookID, title: chapterTitle) }
+            Button("Cancel", role: .cancel) {}
+        }
         .alert("Bookmark", isPresented: $askingPage) {
             TextField("Page", text: $pageText).keyboardType(.numberPad)
             Button("Save") { saveBookmark() }
@@ -383,9 +429,81 @@ struct BookDetailView: View {
         }
     }
 
+    private func chaptersSection(_ book: Book) -> some View {
+        let chapters = book.chapters ?? []
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Chapters").font(.title2.weight(.regular)).accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button {
+                    chapterTitle = ""
+                    addingChapter = true
+                } label: {
+                    Label("Add", systemImage: "plus")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: HubLayout.minHitTarget)
+                        .glassGlare(.regular, in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add a chapter")
+            }
+            if chapters.isEmpty {
+                HStack(spacing: 8) {
+                    if book.chapters == nil { ProgressView().controlSize(.small) }
+                    Text(book.chapters == nil ? "Looking up chapters\u{2026}" : "No chapters found. Add them yourself to keep notes by chapter.")
+                        .font(.subheadline).foregroundStyle(HubDesign.secondary)
+                }
+                .padding(.horizontal, 4)
+            } else {
+                BrickCard {
+                    VStack(spacing: 0) {
+                        ForEach(Array(chapters.enumerated()), id: \.element.id) { i, chapter in
+                            if i > 0 { Divider().overlay(HubDesign.separator) }
+                            Button { openChapterID = chapter.id } label: {
+                                HStack(spacing: 12) {
+                                    Text(chapter.title)
+                                        .font(.body)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    if !chapter.notes.isEmpty {
+                                        Image(systemName: "note.text").foregroundStyle(HubDesign.action)
+                                            .accessibilityLabel("Has notes")
+                                    }
+                                    Image(systemName: "chevron.right").font(.footnote).foregroundStyle(HubDesign.secondary)
+                                }
+                                .foregroundStyle(HubDesign.ink)
+                                .padding(.vertical, 10)
+                                .frame(minHeight: HubLayout.minHitTarget)
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens notes for this chapter")
+                            .contextMenu {
+                                Button("Delete chapter", systemImage: "trash", role: .destructive) {
+                                    store.deleteChapter(bookID, chapter: chapter.id)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func loadChapters() async {
+        guard let book = store.book(bookID), book.chapters == nil else { return }
+        guard let titles = try? await BookSearch.chapters(workKey: book.sourceKey), !Task.isCancelled else { return }
+        guard store.book(bookID)?.chapters == nil else { return }
+        store.setChapters(bookID, titles.map { BookChapter(title: $0) })
+    }
+
     private var notesCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Notes").font(.title2.weight(.regular)).accessibilityAddTraits(.isHeader)
+            Text("General notes").font(.title2.weight(.regular)).accessibilityAddTraits(.isHeader)
             BrickCard {
                 TextEditor(text: $notes)
                     .scrollContentBackground(.hidden)
@@ -456,6 +574,67 @@ struct BookDetailView: View {
         guard var page = Int(pageText.trimmingCharacters(in: .whitespacesAndNewlines)), page > 0 else { return }
         if let pages = store.book(bookID)?.pages, pages > 0 { page = min(page, pages) }
         store.setBookmark(bookID, page: page)
+    }
+}
+
+/// One chapter's page: a place to write notes for it.
+private struct ChapterNotesView: View {
+    let store: ReflectionStore
+    let bookID: UUID
+    let chapterID: UUID
+
+    @State private var notes: String
+    @FocusState private var focused: Bool
+
+    init(store: ReflectionStore, bookID: UUID, chapterID: UUID) {
+        self.store = store
+        self.bookID = bookID
+        self.chapterID = chapterID
+        let chapter = store.book(bookID)?.chapters?.first { $0.id == chapterID }
+        _notes = State(initialValue: chapter?.notes ?? "")
+    }
+
+    private var chapter: BookChapter? { store.book(bookID)?.chapters?.first { $0.id == chapterID } }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(chapter?.title ?? "Chapter")
+                    .font(.largeTitle.weight(.light))
+                    .accessibilityAddTraits(.isHeader)
+                if let title = store.book(bookID)?.title {
+                    Text(title).font(.subheadline).foregroundStyle(HubDesign.secondary)
+                }
+                BrickCard {
+                    TextEditor(text: $notes)
+                        .scrollContentBackground(.hidden)
+                        .focused($focused)
+                        .frame(minHeight: 280)
+                        .overlay(alignment: .topLeading) {
+                            if notes.isEmpty {
+                                Text("Notes for this chapter")
+                                    .foregroundStyle(HubDesign.secondary)
+                                    .padding(.horizontal, 5).padding(.vertical, 8)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                }
+            }
+            .padding(.horizontal, HubLayout.gutter)
+            .padding(.vertical, 12)
+        }
+        .navigationTitle("Chapter notes")
+        .navigationBarTitleDisplayMode(.inline)
+        .scrollDismissesKeyboard(.interactively)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .hubPageStyle()
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focused = false }
+            }
+        }
+        .onChange(of: notes) { _, value in store.setChapterNotes(bookID, chapter: chapterID, value) }
     }
 }
 

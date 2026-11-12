@@ -35,15 +35,13 @@ struct ReflectionView: View {
     @AppStorage("reflection.colorHex") private var colorHex = floodColors[0].hex
     @State private var showSettings = false
     @State private var run: MeditationRun?
-    @State private var quoteText = ""
-    @State private var quoteAuthor = ""
+    @State private var addingQuote = false
     @State private var quoteToDelete: ReflectionQuote?
     @State private var confirmQuoteDelete = false
     @State private var journal: JournalTarget?
     @State private var searchingBooks = false
     @State private var openBookID: UUID?
     @State private var scanning = false
-    @FocusState private var quoteFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -63,7 +61,7 @@ struct ReflectionView: View {
             .scrollDismissesKeyboard(.interactively)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .bottom) {
-                if !quoteFocused && !searchingBooks { scanButton }
+                if !searchingBooks { scanButton }
             }
             // The book search page's keyboard mustn't resize the page underneath it.
             .ignoresSafeArea(searchingBooks ? .keyboard : [])
@@ -81,11 +79,10 @@ struct ReflectionView: View {
             .navigationDestination(item: $openBookID) { id in
                 BookDetailView(store: store, bookID: id)
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { quoteFocused = false }
-                }
+            .sheet(isPresented: $addingQuote) {
+                NewQuoteCard { text, author in store.addQuote(text: text, author: author) }
+                    .presentationDetents([.medium])
+                    .presentationBackground(.clear)
             }
             .fullScreenCover(item: $run) { r in
                 MeditationFlood(color: Color(hexForWhiteText: r.hex), minutes: r.minutes) { done in
@@ -156,10 +153,29 @@ struct ReflectionView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.vertical, 24)
+            .padding(.top, 16)
+            HStack(spacing: 0) {
+                heroStat(value: "\(streak)", label: "Day streak")
+                heroStat(value: "\(store.sessions.count)", label: "Sessions")
+                heroStat(value: totalTime(store.totalMinutes), label: "All time")
+            }
+            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight, alignment: .top)
+    }
+
+    private func heroStat(value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.title3.weight(.regular)).monospacedDigit()
+            Text(label).font(.footnote).foregroundStyle(HubDesign.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func totalTime(_ minutes: Int) -> String {
+        minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
     }
 
     private func heading(_ title: String) -> some View {
@@ -250,34 +266,6 @@ struct ReflectionView: View {
     private var quotesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             heading("Quotes")
-            BrickCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("A quote you like", text: $quoteText, axis: .vertical)
-                        .lineLimit(1...5)
-                        .focused($quoteFocused)
-                        .modifier(FieldBackground())
-                    TextField("Who said it (optional)", text: $quoteAuthor)
-                        .focused($quoteFocused)
-                        .modifier(FieldBackground())
-                    Button {
-                        store.addQuote(text: quoteText, author: quoteAuthor)
-                        quoteText = ""
-                        quoteAuthor = ""
-                        quoteFocused = false
-                    } label: {
-                        Label("Save quote", systemImage: "quote.opening")
-                            .font(.headline)
-                            .foregroundStyle(HubDesign.ink)
-                            .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
-                            .glassGlare(.regular, in: .capsule)
-                            .contentShape(.capsule)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(quoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(quoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
-                }
-            }
-
             if looseQuotes.isEmpty {
                 Text("Quotes you save show up here. Ones scanned from a book live on its page.")
                     .font(.subheadline).foregroundStyle(HubDesign.secondary)
@@ -285,29 +273,40 @@ struct ReflectionView: View {
             } else {
                 ForEach(looseQuotes) { q in
                     BrickCard {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("\u{201C}\(q.text)\u{201D}").font(.body)
-                                if !q.author.isEmpty {
-                                    Text("\u{2014} \(q.author)").font(.subheadline).foregroundStyle(HubDesign.secondary)
-                                }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("\u{201C}\(q.text)\u{201D}").font(.body)
+                            if !q.author.isEmpty {
+                                Text("\u{2014} \(q.author)").font(.subheadline).foregroundStyle(HubDesign.secondary)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            Menu {
-                                Button("Delete", systemImage: "trash", role: .destructive) {
-                                    quoteToDelete = q
-                                    confirmQuoteDelete = true
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
-                                    .contentShape(Rectangle())
-                            }
-                            .accessibilityLabel("Quote options")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
+                    .contextMenu {
+                        Button("Copy", systemImage: "doc.on.doc") {
+                            UIPasteboard.general.string = q.author.isEmpty ? q.text : "\(q.text) \u{2014} \(q.author)"
+                        }
+                        Button("Delete", systemImage: "trash", role: .destructive) {
+                            quoteToDelete = q
+                            confirmQuoteDelete = true
                         }
                     }
+                    .accessibilityHint("Touch and hold for options")
                 }
             }
+
+            Button { addingQuote = true } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(HubDesign.ink)
+                    .frame(width: 56, height: 56)
+                    .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)), in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+            .accessibilityLabel("Add a quote")
         }
     }
 
@@ -352,6 +351,49 @@ struct ReflectionView: View {
                 }
             }
         }
+    }
+}
+
+/// A glass card for typing in a new quote and who said it.
+private struct NewQuoteCard: View {
+    let onSave: (String, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var author = ""
+    @FocusState private var focused: Bool
+
+    private var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New quote").font(.headline).accessibilityAddTraits(.isHeader)
+            TextField("A quote you like", text: $text, axis: .vertical)
+                .lineLimit(1...5)
+                .focused($focused)
+                .modifier(FieldBackground())
+            TextField("Who said it (optional)", text: $author)
+                .modifier(FieldBackground())
+            Button {
+                onSave(text, author)
+                dismiss()
+            } label: {
+                Label("Save quote", systemImage: "quote.opening")
+                    .font(.headline)
+                    .foregroundStyle(HubDesign.ink)
+                    .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                    .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)), in: .capsule)
+                    .contentShape(.capsule)
+            }
+            .buttonStyle(.plain)
+            .disabled(empty)
+            .opacity(empty ? 0.5 : 1)
+        }
+        .padding(HubLayout.cardPadding)
+        .glassEffect(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
+        .padding(HubLayout.gutter)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .onAppear { focused = true }
     }
 }
 

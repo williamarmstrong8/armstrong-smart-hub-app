@@ -27,6 +27,12 @@ struct ReflectionQuote: Codable, Identifiable, Hashable {
     }
 }
 
+struct BookChapter: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var title: String
+    var notes = ""
+}
+
 struct Book: Codable, Identifiable, Hashable {
     var id = UUID()
     /// The Open Library work key, so a book isn't added twice.
@@ -42,6 +48,8 @@ struct Book: Codable, Identifiable, Hashable {
     var bookmarkPage: Int?
     var bookmarkedAt: Date?
     var added = Date()
+    /// nil until the chapter list has been looked up; empty when none was found.
+    var chapters: [BookChapter]?
 }
 
 struct JournalEntry: Codable, Identifiable, Hashable {
@@ -137,6 +145,33 @@ final class ReflectionStore {
     func setBookNotes(_ id: UUID, _ notes: String) {
         guard let i = books.firstIndex(where: { $0.id == id }), books[i].notes != notes else { return }
         books[i].notes = notes
+        persist()
+    }
+
+    func setChapters(_ id: UUID, _ chapters: [BookChapter]) {
+        guard let i = books.firstIndex(where: { $0.id == id }) else { return }
+        books[i].chapters = chapters
+        persist()
+    }
+
+    func addChapter(_ id: UUID, title: String) {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, let i = books.firstIndex(where: { $0.id == id }) else { return }
+        books[i].chapters = (books[i].chapters ?? []) + [BookChapter(title: title)]
+        persist()
+    }
+
+    func setChapterNotes(_ bookID: UUID, chapter: UUID, _ notes: String) {
+        guard let i = books.firstIndex(where: { $0.id == bookID }),
+              let j = books[i].chapters?.firstIndex(where: { $0.id == chapter }),
+              books[i].chapters?[j].notes != notes else { return }
+        books[i].chapters?[j].notes = notes
+        persist()
+    }
+
+    func deleteChapter(_ bookID: UUID, chapter: UUID) {
+        guard let i = books.firstIndex(where: { $0.id == bookID }) else { return }
+        books[i].chapters?.removeAll { $0.id == chapter }
         persist()
     }
 
