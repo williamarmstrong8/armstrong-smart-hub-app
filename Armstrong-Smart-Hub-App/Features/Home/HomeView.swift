@@ -24,6 +24,7 @@ struct HomeView: View {
     @State private var display = false
     @State private var showAutomations = false
     @State private var searching = false
+    @State private var showBackground = false
 
     var body: some View {
         NavigationStack {
@@ -96,6 +97,7 @@ struct HomeView: View {
                 .presentationDetents([.medium, .large])
                 .toast(toast)
             }
+            .sheet(isPresented: $showBackground) { BackgroundSettingsView() }
             .fullScreenCover(isPresented: $display) {
                 DisplayModeView(store: store)
             }
@@ -141,6 +143,7 @@ struct HomeView: View {
                 Button("Automations", systemImage: "bolt") { showAutomations = true }
                     .disabled(store.state?.automations == nil || store.state?.errors.automations != nil)
                 Button("Add habit", systemImage: "plus.circle") { editingHabit = .new }
+                Button("Background", systemImage: "photo") { showBackground = true }
             }
             .labelStyle(.iconOnly)
         }

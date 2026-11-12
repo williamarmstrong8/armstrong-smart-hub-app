@@ -20,6 +20,8 @@
 	</array>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>Rings your wake-up alarm, even when the app is closed or the iPad is on silent.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Reads the video part of a Live Photo you pick so it can play as the app's background.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
