@@ -34,6 +34,9 @@ enum HubLayout {
     static let cardRadius: CGFloat = 24
     static let controlRadius: CGFloat = 12
     static let minHitTarget: CGFloat = 44
+    /// A page hero below its top bar: Fitness's watch, date, title and three rings, which Home,
+    /// Finance and Reflection match so every top sheet is the same height.
+    static let heroHeight: CGFloat = 483
 }
 
 enum HubMotion {
@@ -99,27 +102,6 @@ struct HubToolbarButtonStyle: ButtonStyle {
     }
 }
 
-/// A glass medallion with a soft coloured glow, the focal picture of a page's hero.
-struct HubHeroBadge: View {
-    var symbol: String
-    var tint: Color = HubDesign.action
-
-    var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: 34, weight: .light))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(HubDesign.ink)
-            .frame(width: 84, height: 84)
-            .background {
-                Circle()
-                    .fill(RadialGradient(colors: [tint.opacity(0.6), tint.opacity(0)], center: .center, startRadius: 0, endRadius: 96))
-                    .frame(width: 192, height: 192)
-            }
-            .glassGlare(.regular.tint(tint.opacity(0.35)), in: Circle())
-            .accessibilityHidden(true)
-    }
-}
-
 /// A stable header and one vertical scroll owner. The top bar and hero sit together on a glass
 /// sheet over the backdrop, as on Fitness and Brick. Lazy sections avoid constructing
 /// offscreen charts and images; identity belongs to the feature's data, not its index.
@@ -139,7 +121,7 @@ struct HubTabPage<TopBar: View, Hero: View, Content: View>: View {
                 }
                 .padding(.horizontal, HubLayout.gutter)
                 .padding(.top, HubLayout.topInset)
-                .padding(.bottom, 8)
+                .padding(.bottom, HubLayout.sectionGap)
                 .frame(maxWidth: .infinity)
                 .background {
                     if mountains {

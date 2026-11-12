@@ -153,39 +153,60 @@ struct BrickPill: View {
 
 /// The opening of every tab, so moving between them feels like one app: a caps line, a big light
 /// title, a line under it, and pills. Sizes and spacing live here and nowhere else.
-struct BrickHero<Pills: View>: View {
+struct BrickHero<Visual: View, Stats: View>: View {
     var caption: String
     var title: String
     var subtitle: String?
     var subtitleColor: Color = BrickLook.soft
-    /// A glowing glass medallion above the caption.
-    var symbol: String?
-    var symbolTint: Color = HubDesign.action
-    @ViewBuilder var pills: Pills
-    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 44
+    /// The page's picture of its own data, where Fitness has the watch. It takes the spare height.
+    @ViewBuilder var visual: Visual
+    /// Three `HeroRing`s, as under Fitness's title.
+    @ViewBuilder var stats: Stats
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 34
 
     var body: some View {
-        VStack(spacing: 12) {
-            if let symbol {
-                HubHeroBadge(symbol: symbol, tint: symbolTint).padding(.bottom, 4)
-            }
-            BrickCaps(text: caption).foregroundStyle(BrickLook.soft)
+        VStack(spacing: 0) {
+            visual
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minHeight: 150)
+                .padding(.top, 4)
+            BrickCaps(text: caption).foregroundStyle(BrickLook.soft).padding(.top, 14)
             Text(title)
                 .font(.system(size: titleSize, weight: .light).monospacedDigit())
                 .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                .padding(.top, subtitle == nil ? 12 : 4)
                 .accessibilityAddTraits(.isHeader)
             if let subtitle {
-                Text(subtitle).font(.body).foregroundStyle(subtitleColor).multilineTextAlignment(.center)
+                Text(subtitle).font(.subheadline).foregroundStyle(subtitleColor)
+                    .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.8)
+                    .padding(.top, 2)
             }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { pills }
-                VStack(spacing: 8) { pills }
-            }
-            .padding(.top, 8)
+            HStack(alignment: .top, spacing: 0) { stats }
+                .padding(.top, subtitle == nil ? HubLayout.sectionGap : HubLayout.sectionGap - 8)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, HubLayout.sectionGap)
+        .frame(height: HubLayout.heroHeight, alignment: .top)
+    }
+}
+
+/// One of the three rings under a hero title: a fraction, its number inside, a label below.
+struct HeroRing: View {
+    var value: String
+    var fraction: Double
+    var tint: Color
+    var label: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ScoreRing(value: value, fraction: fraction, tint: tint, size: 100, track: tint.opacity(0.16), weight: 0.09)
+            Text(label).font(.subheadline.weight(.medium))
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
     }
 }
 

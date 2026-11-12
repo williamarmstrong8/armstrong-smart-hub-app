@@ -13,7 +13,7 @@ struct FinanceView: View {
     var body: some View {
         NavigationStack {
             HubTabPage(topBar: { topBar }, hero: {
-                if let r = store.response, r.configured, r.hasData == true, let d = r.dashboard { hero(d) }
+                if let r = store.response, r.configured, r.hasData == true, let d = r.dashboard { hero(d, goal: r.goal) }
             }, content: {
                 content
             }, mountains: true)
@@ -84,7 +84,7 @@ struct FinanceView: View {
         }
     }
 
-    private func hero(_ d: Dashboard) -> some View {
+    private func hero(_ d: Dashboard, goal: GoalSettings?) -> some View {
         let money = { (v: Double) in Fmt.compact(v, d.currency) }
         let month = Date.now.formatted(.dateTime.month(.wide))
         // Rent is a fixed cost, so it stays out of "Spent in <month>" and the pace against last month.
@@ -99,12 +99,16 @@ struct FinanceView: View {
         let spent = d.monthSpending.total - rentNow
         let pace = spent - (d.monthSpending.lastMonthToDate - rentLast)
 
+        let target = (goal ?? .default).target
+        let kept = d.income30d > 0 ? max(0, min(d.netFlow30d / d.income30d, 1)) : 0
         return BrickHero(caption: "Spent in \(month)", title: money(spent),
                   subtitle: abs(pace) < 1 ? "Same pace as last month" : "\(money(abs(pace))) \(pace > 0 ? "more" : "less") than last month by now",
-                  subtitleColor: pace > 0 ? Color.negative : Color.positive,
-                  symbol: "chart.pie", symbolTint: .green) {
-            BrickPill(text: money(d.cash), icon: "banknote")
-            BrickPill(text: money(d.netWorth), icon: "chart.line.uptrend.xyaxis")
+                  subtitleColor: pace > 0 ? Color.negative : Color.positive) {
+            NetWorthTrend(series: d.netWorthSeries, tint: d.netWorthChange < 0 ? .red : .green)
+        } stats: {
+            HeroRing(value: money(d.netWorth), fraction: target > 0 ? max(0, min(d.netWorth / target, 1)) : 0, tint: .green, label: "Net worth")
+            HeroRing(value: money(d.cash), fraction: d.totalAssets > 0 ? max(0, min(d.cash / d.totalAssets, 1)) : 0, tint: .blue, label: "Cash")
+            HeroRing(value: Fmt.currency(d.netFlow30d, d.currency, cents: false), fraction: kept, tint: .mint, label: "Kept, 30 days")
         }
     }
 

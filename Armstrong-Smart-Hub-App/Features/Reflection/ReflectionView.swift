@@ -81,16 +81,32 @@ struct ReflectionView: View {
     // MARK: Hero
 
     private var hero: some View {
-        BrickHero(
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        let days = (0..<7).compactMap { cal.date(byAdding: .day, value: $0 - 6, to: today) }
+        let week = days.map { day in
+            store.sessions.filter { cal.isDate($0.date, inSameDayAs: day) }.reduce(0) { $0 + $1.minutes }
+        }
+        let sat = week.filter { $0 > 0 }.count
+        let journaled = days.filter { day in store.entries.contains { cal.isDate($0.created, inSameDayAs: day) } }.count
+        // Days in a row with a sitting, counting back from today (or yesterday while today's is still to come).
+        let sitDays = Set(store.sessions.map { cal.startOfDay(for: $0.date) })
+        var cursor = sitDays.contains(today) ? today : (cal.date(byAdding: .day, value: -1, to: today) ?? today)
+        var streak = 0
+        while sitDays.contains(cursor) {
+            streak += 1
+            cursor = cal.date(byAdding: .day, value: -1, to: cursor) ?? .distantPast
+        }
+        return BrickHero(
             caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
             title: "Reflection",
-            subtitle: "Breathe, keep what moves you, write it down.",
-            symbol: "leaf",
-            symbolTint: .teal
+            subtitle: "\(store.sessions.count) \(store.sessions.count == 1 ? "session" : "sessions") · \(store.quotes.count) \(store.quotes.count == 1 ? "quote" : "quotes") kept"
         ) {
-            BrickPill(text: "\(store.sessions.count) \(store.sessions.count == 1 ? "session" : "sessions")", icon: "wind")
-            BrickPill(text: "\(store.totalMinutes) min", icon: "clock")
-            BrickPill(text: "\(store.entries.count) \(store.entries.count == 1 ? "entry" : "entries")", icon: "book.closed")
+            ReflectionOrb(minutes: store.totalMinutes, week: week)
+        } stats: {
+            HeroRing(value: "\(sat)", fraction: Double(sat) / 7, tint: .teal, label: "Sat this week")
+            HeroRing(value: "\(journaled)", fraction: Double(journaled) / 7, tint: .indigo, label: "Journaled")
+            HeroRing(value: "\(streak)", fraction: min(Double(streak) / 7, 1), tint: .orange, label: "Day streak")
         }
     }
 

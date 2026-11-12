@@ -160,29 +160,32 @@ struct HomeView: View {
         let lit = lamps.filter(\.isOn)
         let hour = Calendar.current.component(.hour, from: .now)
         let greeting = hour < 5 ? "Late night" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
+        let total = habits.habits.count
+        let steps = fitness.today?.steps
+        let stepGoal = Double(fitness.today?.stepGoal ?? 10_000)
+        let habitFraction = total > 0 ? Double(habits.doneToday) / Double(total) : 0
+        let stepFraction = steps.map { min(Double($0) / max(stepGoal, 1), 1) } ?? 0
         return BrickHero(
             caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
             title: greeting,
-            subtitle: nil,
-            symbol: hour < 5 || hour >= 20 ? "moon.stars" : hour < 17 ? "sun.max" : "sunset",
-            symbolTint: hour < 5 || hour >= 20 ? .indigo : .orange
+            subtitle: nil
         ) {
-            if habits.loaded, !habits.habits.isEmpty {
-                BrickPill(text: "\(habits.doneToday)/\(habits.habits.count)", icon: "checkmark.circle")
+            HomeDayDial(habits: habitFraction, steps: stepFraction,
+                        center: total > 0 ? "\(habits.doneToday)/\(total)" : "–", caption: "habits today")
+        } stats: {
+            HeroRing(value: total > 0 ? "\(habits.doneToday)" : "–", fraction: habitFraction, tint: .green, label: "Habits")
+            HeroRing(value: steps.map { $0 >= 10_000 ? String(format: "%.1fk", Double($0) / 1000) : $0.formatted() } ?? "–",
+                     fraction: stepFraction, tint: .orange, label: "Steps")
+            Button {
+                for lamp in lit { Task { await store.toggle(lamp, api: session.api, toast: toast) } }
+            } label: {
+                HeroRing(value: lamps.isEmpty ? "–" : "\(lit.count)",
+                         fraction: lamps.isEmpty ? 0 : Double(lit.count) / Double(lamps.count),
+                         tint: .yellow, label: lit.isEmpty ? "Lights off" : "Lights · all off")
             }
-            if let steps = fitness.today?.steps {
-                BrickPill(text: steps.formatted(), icon: "figure.walk")
-            }
-            if !lamps.isEmpty {
-                Button {
-                    for lamp in lit { Task { await store.toggle(lamp, api: session.api, toast: toast) } }
-                } label: {
-                    BrickPill(text: lit.isEmpty ? "Lights off" : "\(lit.count) on · all off", icon: lit.isEmpty ? "lightbulb.slash" : "lightbulb.fill")
-                }
-                .buttonStyle(.plain)
-                .disabled(lit.isEmpty)
-                .sensoryFeedback(.impact(weight: .medium), trigger: lit.count)
-            }
+            .buttonStyle(.plain)
+            .allowsHitTesting(!lit.isEmpty)
+            .sensoryFeedback(.impact(weight: .medium), trigger: lit.count)
         }
     }
 
