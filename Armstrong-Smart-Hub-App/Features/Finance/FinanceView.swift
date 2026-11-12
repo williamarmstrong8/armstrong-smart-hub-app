@@ -251,29 +251,23 @@ private struct MonthBars: View {
                     let fill: Double = row.kind == .income || (row.budget == nil && (row.category == "Rent" || row.category == "Bills & Utilities"))
                         ? 1 : row.budget.map { row.amount / $0 } ?? row.amount / Self.income
                     let color: Color = row.kind == .income ? .positive : over ? .negative : .accentColor
-                    HStack(spacing: 14) {
-                        Image(systemName: row.kind == .invest ? "chart.line.uptrend.xyaxis" : CategoryStyle.symbol(row.category))
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24)
-                        VStack(spacing: 7) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(row.category).font(.subheadline.weight(.medium)).lineLimit(1)
-                                Spacer()
-                                Text((row.kind == .income ? "+" : "") + Fmt.compact(row.amount, currency))
-                                    .font(.subheadline.weight(.semibold)).monospacedDigit()
-                                if let budget = row.budget {
-                                    Text("/ \(Fmt.compact(budget, currency))").font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
-                                }
+                    VStack(spacing: 9) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(row.category).font(.body.weight(.medium)).lineLimit(1)
+                            Spacer()
+                            Text((row.kind == .income ? "+" : "") + Fmt.compact(row.amount, currency))
+                                .font(.body.weight(.semibold)).monospacedDigit()
+                            if let budget = row.budget {
+                                Text("/ \(Fmt.compact(budget, currency))").font(.body).foregroundStyle(.secondary).monospacedDigit()
                             }
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(HubDesign.track)
-                                    Capsule().fill(color).frame(width: geo.size.width * min(max(fill, 0.02), 1))
-                                }
-                            }
-                            .frame(height: 4)
                         }
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(HubDesign.track)
+                                Capsule().fill(color).frame(width: geo.size.width * min(max(fill, 0.02), 1))
+                            }
+                        }
+                        .frame(height: 7)
                     }
                 }
             }
