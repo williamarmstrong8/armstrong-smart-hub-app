@@ -81,7 +81,6 @@ struct ReflectionView: View {
         let weekStart = cal.date(byAdding: .day, value: -6, to: today) ?? today
         let weekMinutes = store.sessions.filter { $0.date >= weekStart }.reduce(0) { $0 + $1.minutes }
         let goal = 60
-        let pct = Int((Double(weekMinutes) / Double(goal) * 100).rounded())
         let sitDays = Set(store.sessions.map { cal.startOfDay(for: $0.date) })
         let satToday = sitDays.contains(today)
         var cursor = satToday ? today : (cal.date(byAdding: .day, value: -1, to: today) ?? today)
@@ -97,13 +96,11 @@ struct ReflectionView: View {
         else { message = "A quiet minute is waiting." }
         let h = weekMinutes / 60, m = weekMinutes % 60
         return VStack(spacing: 0) {
-            BrickCaps(text: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())).foregroundStyle(BrickLook.soft)
-                .padding(.top, 14)
             Text(message)
                 .font(.system(size: 34, weight: .light))
                 .multilineTextAlignment(.center)
                 .lineLimit(3).minimumScaleFactor(0.7)
-                .padding(.horizontal, 16).padding(.top, 12)
+                .padding(.horizontal, 16).padding(.top, 24)
                 .accessibilityAddTraits(.isHeader)
             ArcGauge(fraction: Double(weekMinutes) / Double(goal), tint: .teal, goalLabel: "\(goal)") {
                 VStack(spacing: 4) {
@@ -120,10 +117,7 @@ struct ReflectionView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.top, 16)
-            Text("\(pct)% of your \(goal) min goal")
-                .font(.subheadline).foregroundStyle(BrickLook.soft)
-                .padding(.bottom, 20)
+            .padding(.vertical, 24)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight, alignment: .top)
