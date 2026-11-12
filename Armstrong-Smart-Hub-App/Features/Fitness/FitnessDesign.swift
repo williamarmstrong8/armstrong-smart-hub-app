@@ -159,7 +159,7 @@ struct ScoreRing: View {
     var track: Color = Fit.track
     /// The stroke as a share of the ring's size.
     var weight: CGFloat = 0.035
-    /// Draws the progress arc as uncoloured Liquid Glass instead of a tinted stroke.
+    /// Draws the progress arc as tinted Liquid Glass with no track behind it.
     var glass = false
 
     var body: some View {
@@ -167,9 +167,8 @@ struct ScoreRing: View {
             ZStack {
                 if glass {
                     let line = max(3, size * weight)
-                    Circle().stroke(Fit.track, lineWidth: line)
                     Color.clear
-                        .glassEffect(.regular, in: RingArc(fraction: max(0.002, min(1, fraction)), lineWidth: line))
+                        .glassEffect(.regular.tint(tint), in: RingArc(fraction: max(0.002, min(1, fraction)), lineWidth: line))
                         .opacity(fraction > 0 ? 1 : 0)
                         .hubAnimation(value: fraction)
                 } else {
