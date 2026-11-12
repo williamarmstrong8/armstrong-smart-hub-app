@@ -4,13 +4,14 @@ import UIKit
 
 /// The closed search bar on Home: a Liquid Glass capsule that opens the search page.
 struct MediaSearchBar: View {
+    var prompt = "Search movies and shows"
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                Text("Search movies and shows")
+                Text(prompt)
                 Spacer()
             }
             .foregroundStyle(HubDesign.secondary)

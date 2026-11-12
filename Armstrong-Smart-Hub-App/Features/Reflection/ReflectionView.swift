@@ -40,6 +40,9 @@ struct ReflectionView: View {
     @State private var quoteToDelete: ReflectionQuote?
     @State private var confirmQuoteDelete = false
     @State private var journal: JournalTarget?
+    @State private var searchingBooks = false
+    @State private var openBookID: UUID?
+    @State private var scanning = false
     @FocusState private var quoteFocused: Bool
 
     var body: some View {
@@ -53,11 +56,31 @@ struct ReflectionView: View {
                 hero
             }, content: {
                 meditateSection
+                booksSection
                 quotesSection
                 journalSection
             }, mountains: true)
             .scrollDismissesKeyboard(.interactively)
             .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .bottom) {
+                if !quoteFocused && !searchingBooks { scanButton }
+            }
+            // The book search page's keyboard mustn't resize the page underneath it.
+            .ignoresSafeArea(searchingBooks ? .keyboard : [])
+            .allowsHitTesting(!searchingBooks)
+            .accessibilityHidden(searchingBooks)
+            .overlay {
+                ZStack {
+                    if searchingBooks {
+                        BookSearchView(store: store) { searchingBooks = false }
+                            .transition(.opacity)
+                    }
+                }
+                .hubAnimation(value: searchingBooks)
+            }
+            .navigationDestination(item: $openBookID) { id in
+                BookDetailView(store: store, bookID: id)
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -183,7 +206,46 @@ struct ReflectionView: View {
         }
     }
 
+    // MARK: Books
+
+    /// The movie catalog's look: a search bar, then a shelf of covers.
+    private var booksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            heading("Books")
+            MediaSearchBar(prompt: "Search books") { searchingBooks = true }
+                .opacity(searchingBooks ? 0 : 1)
+                .accessibilityHidden(searchingBooks)
+            if store.books.isEmpty {
+                Text("Books you add show up here.")
+                    .font(.subheadline).foregroundStyle(HubDesign.secondary)
+                    .padding(.horizontal, 4)
+            } else {
+                BookShelf(books: store.books) { openBookID = $0.id }
+            }
+        }
+    }
+
+    private var scanButton: some View {
+        Button { scanning = true } label: {
+            Label("Scan a quote", systemImage: "text.viewfinder")
+                .font(.headline)
+                .foregroundStyle(HubDesign.ink)
+                .padding(.horizontal, 24)
+                .frame(minHeight: 52)
+                .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)), in: .capsule)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 8)
+        .fullScreenCover(isPresented: $scanning) {
+            QuoteScanFlow(store: store, bookID: nil) { scanning = false }
+        }
+    }
+
     // MARK: Quotes
+
+    private var looseQuotes: [ReflectionQuote] { store.quotes.filter { $0.bookID == nil } }
 
     private var quotesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -216,12 +278,12 @@ struct ReflectionView: View {
                 }
             }
 
-            if store.quotes.isEmpty {
-                Text("Quotes you save show up here.")
+            if looseQuotes.isEmpty {
+                Text("Quotes you save show up here. Ones scanned from a book live on its page.")
                     .font(.subheadline).foregroundStyle(HubDesign.secondary)
                     .padding(.horizontal, 4)
             } else {
-                ForEach(store.quotes) { q in
+                ForEach(looseQuotes) { q in
                     BrickCard {
                         HStack(alignment: .top, spacing: 12) {
                             VStack(alignment: .leading, spacing: 8) {

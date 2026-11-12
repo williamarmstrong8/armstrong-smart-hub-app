@@ -6,6 +6,42 @@ struct ReflectionQuote: Codable, Identifiable, Hashable {
     var text: String
     var author: String
     var added = Date()
+    /// The book this quote was saved from; nil for a quote typed in on its own.
+    var bookID: UUID?
+    var note = ""
+
+    init(text: String, author: String, bookID: UUID? = nil) {
+        self.text = text
+        self.author = author
+        self.bookID = bookID
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        text = try c.decode(String.self, forKey: .text)
+        author = try c.decode(String.self, forKey: .author)
+        added = try c.decode(Date.self, forKey: .added)
+        bookID = try c.decodeIfPresent(UUID.self, forKey: .bookID)
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
+}
+
+struct Book: Codable, Identifiable, Hashable {
+    var id = UUID()
+    /// The Open Library work key, so a book isn't added twice.
+    var sourceKey: String
+    var title: String
+    var author: String
+    var coverURL: String?
+    var year: String?
+    var pages: Int?
+    var publisher: String?
+    var notes = ""
+    /// The page the reader has reached, set after a reading session.
+    var bookmarkPage: Int?
+    var bookmarkedAt: Date?
+    var added = Date()
 }
 
 struct JournalEntry: Codable, Identifiable, Hashable {
@@ -28,11 +64,28 @@ final class ReflectionStore {
     private(set) var quotes: [ReflectionQuote] = []
     private(set) var entries: [JournalEntry] = []
     private(set) var sessions: [MeditationRecord] = []
+    private(set) var books: [Book] = []
 
     private struct Saved: Codable {
         var quotes: [ReflectionQuote]
         var entries: [JournalEntry]
         var sessions: [MeditationRecord]
+        var books: [Book]
+
+        init(quotes: [ReflectionQuote], entries: [JournalEntry], sessions: [MeditationRecord], books: [Book]) {
+            self.quotes = quotes
+            self.entries = entries
+            self.sessions = sessions
+            self.books = books
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            quotes = try c.decode([ReflectionQuote].self, forKey: .quotes)
+            entries = try c.decode([JournalEntry].self, forKey: .entries)
+            sessions = try c.decode([MeditationRecord].self, forKey: .sessions)
+            books = try c.decodeIfPresent([Book].self, forKey: .books) ?? []
+        }
     }
 
     private static let file = URL.applicationSupportDirectory.appending(path: "Reflection.json")
@@ -43,10 +96,11 @@ final class ReflectionStore {
         quotes = saved.quotes
         entries = saved.entries
         sessions = saved.sessions
+        books = saved.books
     }
 
     private func persist() {
-        let saved = Saved(quotes: quotes, entries: entries, sessions: sessions)
+        let saved = Saved(quotes: quotes, entries: entries, sessions: sessions, books: books)
         guard let data = try? JSONEncoder().encode(saved) else { return }
         try? FileManager.default.createDirectory(at: Self.file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: Self.file, options: .atomic)
@@ -54,10 +108,49 @@ final class ReflectionStore {
 
     var totalMinutes: Int { sessions.reduce(0) { $0 + $1.minutes } }
 
-    func addQuote(text: String, author: String) {
+    func addQuote(text: String, author: String, bookID: UUID? = nil) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        quotes.insert(ReflectionQuote(text: text, author: author.trimmingCharacters(in: .whitespacesAndNewlines)), at: 0)
+        quotes.insert(ReflectionQuote(text: text, author: author.trimmingCharacters(in: .whitespacesAndNewlines), bookID: bookID), at: 0)
+        persist()
+    }
+
+    func setQuoteNote(_ id: UUID, _ note: String) {
+        guard let i = quotes.firstIndex(where: { $0.id == id }), quotes[i].note != note else { return }
+        quotes[i].note = note
+        persist()
+    }
+
+    func book(_ id: UUID) -> Book? { books.first { $0.id == id } }
+
+    func quotes(in bookID: UUID) -> [ReflectionQuote] { quotes.filter { $0.bookID == bookID } }
+
+    func hasBook(_ sourceKey: String) -> Bool { books.contains { $0.sourceKey == sourceKey } }
+
+    func addBook(_ r: BookResult) {
+        guard !hasBook(r.id) else { return }
+        books.insert(Book(sourceKey: r.id, title: r.title, author: r.author, coverURL: r.coverURL,
+                          year: r.year, pages: r.pages, publisher: r.publisher), at: 0)
+        persist()
+    }
+
+    func setBookNotes(_ id: UUID, _ notes: String) {
+        guard let i = books.firstIndex(where: { $0.id == id }), books[i].notes != notes else { return }
+        books[i].notes = notes
+        persist()
+    }
+
+    func setBookmark(_ id: UUID, page: Int?) {
+        guard let i = books.firstIndex(where: { $0.id == id }) else { return }
+        books[i].bookmarkPage = page
+        books[i].bookmarkedAt = page == nil ? nil : Date()
+        persist()
+    }
+
+    /// Removes the book and the quotes saved from it.
+    func deleteBook(_ id: UUID) {
+        books.removeAll { $0.id == id }
+        quotes.removeAll { $0.bookID == id }
         persist()
     }
 

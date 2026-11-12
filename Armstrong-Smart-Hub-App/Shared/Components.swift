@@ -130,6 +130,7 @@ struct Poster: View {
     let url: String?
     var width: CGFloat?
     var radius: CGFloat = 18
+    var symbol = "film"
 
     private var inset: CGFloat { (width ?? 100) >= 120 ? 5 : 4 }
 
@@ -140,7 +141,7 @@ struct Poster: View {
             } else {
                 ZStack {
                     Color(.tertiarySystemFill)
-                    Image(systemName: "film").foregroundStyle(.secondary)
+                    Image(systemName: symbol).foregroundStyle(.secondary)
                 }
             }
         }
