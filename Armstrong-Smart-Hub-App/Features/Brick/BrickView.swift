@@ -33,7 +33,7 @@ struct BrickView: View {
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             .demoScroll()
-            .hubPageStyle()
+            .hubPageStyle(backdrop: true)
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { store.check() }
             #if DEBUG
@@ -187,8 +187,7 @@ private struct BrickSheet: View {
         .frame(maxWidth: .infinity)
         .background {
             UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
-                .fill(BrickLook.sheet)
-                // Reaches up under the status bar and past the top when pulled down.
+                .fill(.ultraThinMaterial)
                 .padding(.top, -600)
         }
     }
@@ -279,9 +278,8 @@ private struct BrickSheet: View {
                     .padding(.horizontal, HubLayout.cardPadding)
                     .padding(.vertical, HubLayout.topInset)
                     .frame(maxWidth: .infinity, minHeight: Self.buttonHeight)
-                    .background(BrickLook.pill, in: Capsule())
+                    .glassGlare(.regular.interactive(), in: .capsule)
                     .contentShape(.capsule)
-                    .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
             }
             .buttonStyle(.plain)
             if !store.authorized {

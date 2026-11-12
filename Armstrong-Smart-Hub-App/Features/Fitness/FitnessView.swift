@@ -53,7 +53,7 @@ struct FitnessView: View {
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             .demoScroll()
-            .hubPageStyle()
+            .hubPageStyle(backdrop: true)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
@@ -309,8 +309,7 @@ struct FitnessView: View {
         .frame(maxWidth: .infinity)
         .background {
             UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
-                .fill(BrickLook.sheet)
-                // Reaches up under the status bar and past the top when pulled down.
+                .fill(.ultraThinMaterial)
                 .padding(.top, -600)
         }
     }

@@ -14,7 +14,7 @@ struct FinanceView: View {
         NavigationStack {
             HubTabPage(topBar: { topBar }, content: {
                 content
-            })
+            }, mountains: true)
             .toolbarBackground(HubDesign.page, for: .navigationBar)
             .toolbar(.hidden, for: .navigationBar)
             .task { if !store.fetched { await store.load(api: session.api) } }
@@ -173,7 +173,7 @@ private struct TagCard: View {
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(HubDesign.raised, in: .rect(cornerRadius: HubLayout.controlRadius))
+                        .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.controlRadius))
                     }
                     .buttonStyle(CardPressStyle())
                 }

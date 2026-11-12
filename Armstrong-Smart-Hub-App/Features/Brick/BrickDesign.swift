@@ -149,7 +149,7 @@ struct BrickPill: View {
         .font(.subheadline).monospacedDigit()
         .foregroundStyle(BrickLook.soft)
         .padding(.horizontal, 16).padding(.vertical, 11)
-        .background(BrickLook.pill, in: .capsule)
+        .glassGlare(.regular, in: .capsule)
     }
 }
 
