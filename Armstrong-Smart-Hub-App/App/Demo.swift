@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Demo mode for the launch film: launch with `-DemoMode YES` (Debug builds only).
 /// Every hub request is answered in-process from `DemoData.swift`, the watch and
