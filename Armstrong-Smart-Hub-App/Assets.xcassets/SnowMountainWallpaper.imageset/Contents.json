@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "snow-mountain.jpeg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
