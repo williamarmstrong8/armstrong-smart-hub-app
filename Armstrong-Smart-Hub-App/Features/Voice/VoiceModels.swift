@@ -249,8 +249,9 @@ enum VoiceView: Decodable, Sendable {
     case pi(PiStatus, changed: String?, action: String?)
     case alarm(AlarmCardData)
     case todos([TodoItem], changed: [String])
+    case appChange(AppChangeCardData)
 
-    enum Kind: String, Decodable, Sendable { case lights, movie, finance, calendar, habits, weather, fitness, pi, alarm, todos }
+    enum Kind: String, Decodable, Sendable { case lights, movie, finance, calendar, habits, weather, fitness, pi, alarm, todos, appChange }
 
     var kind: Kind {
         switch self {
@@ -264,10 +265,11 @@ enum VoiceView: Decodable, Sendable {
         case .pi: .pi
         case .alarm: .alarm
         case .todos: .todos
+        case .appChange: .appChange
         }
     }
 
-    private enum Keys: String, CodingKey { case kind, lights, changed, movie, stage, weather, fitness, pi, action, items }
+    private enum Keys: String, CodingKey { case kind, lights, changed, movie, stage, weather, fitness, pi, action, items, appChange }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -294,8 +296,31 @@ enum VoiceView: Decodable, Sendable {
             throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "Alarm cards are made on the iPad")
         case .todos:
             self = .todos(try c.decode([TodoItem].self, forKey: .items), changed: (try? c.decode([String].self, forKey: .changed)) ?? [])
+        case .appChange:
+            self = .appChange(try c.decode(AppChangeCardData.self, forKey: .appChange))
         }
     }
+}
+
+/// An app change Jarvis handed to Claude Code on the Mac (lib/dev-jobs.ts on the hub).
+struct AppChangeCardData: Decodable, Equatable, Sendable {
+    struct App: Decodable, Equatable, Sendable {
+        let key: String
+        let name: String
+        /// A `data:image/png;base64,…` URL, so it loads without the hub's auth.
+        let icon: String?
+    }
+
+    let app: App
+    /// "change" or "undo".
+    let kind: String
+    let request: String
+    /// queued, running, done, failed or cancelled.
+    let status: String
+    let stage: String?
+    let summary: String?
+    let error: String?
+    let macOnline: Bool
 }
 
 // MARK: Wire types (/api/mobile/voice/*)

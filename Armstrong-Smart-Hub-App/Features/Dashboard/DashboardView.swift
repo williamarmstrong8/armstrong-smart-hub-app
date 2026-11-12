@@ -86,7 +86,7 @@ struct DashboardTab: View {
                     case .habits: Task { await habits.load(api: session.api) }
                     case .calendar: Task { await refreshSlow() }
                     case .pi: Task { await pi.load(api: session.api) }
-                    case .finance, .weather, .fitness, .alarm, .todos: break
+                    case .finance, .weather, .fitness, .alarm, .todos, .appChange: break
                     }
                 }
                 // "Wake me at 6:30": the alarm is this iPad's, so Jarvis sets it here.
