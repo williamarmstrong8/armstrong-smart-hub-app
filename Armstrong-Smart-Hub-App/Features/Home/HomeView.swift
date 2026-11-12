@@ -237,7 +237,7 @@ struct HomeView: View {
                 MediaShelf(requests: shelfRequests, hiding: TitleCardPresenter.shared.landingID, onPick: open)
             }
 
-            if let status = pi.status, status.available { PiCard(status: status) }
+            if let status = pi.status, status.available { PiStatusCard(status: status) }
         }
     }
 

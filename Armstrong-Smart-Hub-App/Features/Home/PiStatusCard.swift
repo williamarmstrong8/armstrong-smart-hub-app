@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The Pi at a glance on Home: whether Uptime Kuma's services are up, then temperature, CPU,
 /// memory and disk as thin bars. Hidden when the hub can't see the Pi (it runs on Vercel).
-struct PiCard: View {
+struct PiStatusCard: View {
     let status: PiStatus
 
     var body: some View {

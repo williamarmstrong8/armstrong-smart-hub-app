@@ -2,7 +2,12 @@ import SwiftUI
 
 private let durations = [1, 3, 5, 10]
 
-private let floodHex = "#2F5BD3"
+private let floodColors: [(name: String, hex: String)] = [
+    ("Ocean", "#2F5BD3"),
+    ("Forest", "#1F7A5A"),
+    ("Dusk", "#6B46C1"),
+    ("Ember", "#C2512D"),
+]
 
 private struct MeditationRun: Identifiable {
     let id = UUID()
@@ -25,7 +30,10 @@ private enum JournalTarget: Identifiable {
 /// Reflection: guided breathing that floods the screen with colour, quotes worth keeping, and a journal.
 struct ReflectionView: View {
     @State private var store = ReflectionStore()
-    @State private var minutes = 3
+    @AppStorage("reflection.minutes") private var minutes = 3
+    @AppStorage("reflection.goal") private var goal = 60
+    @AppStorage("reflection.colorHex") private var colorHex = floodColors[0].hex
+    @State private var showSettings = false
     @State private var run: MeditationRun?
     @State private var quoteText = ""
     @State private var quoteAuthor = ""
@@ -36,7 +44,12 @@ struct ReflectionView: View {
 
     var body: some View {
         NavigationStack {
-            HubTabPage(topBar: { BrickTopBar { EmptyView() } }, hero: {
+            HubTabPage(topBar: {
+                BrickTopBar {
+                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Reflection settings")
+                }
+            }, hero: {
                 hero
             }, content: {
                 meditateSection
@@ -57,6 +70,10 @@ struct ReflectionView: View {
                 } onClose: {
                     run = nil
                 }
+            }
+            .sheet(isPresented: $showSettings) {
+                ReflectionSettings(goal: $goal, minutes: $minutes, colorHex: $colorHex)
+                    .presentationDetents([.medium, .large])
             }
             .sheet(item: $journal) { target in
                 switch target {
@@ -80,7 +97,6 @@ struct ReflectionView: View {
         let today = cal.startOfDay(for: .now)
         let weekStart = cal.date(byAdding: .day, value: -6, to: today) ?? today
         let weekMinutes = store.sessions.filter { $0.date >= weekStart }.reduce(0) { $0 + $1.minutes }
-        let goal = 60
         let sitDays = Set(store.sessions.map { cal.startOfDay(for: $0.date) })
         let satToday = sitDays.contains(today)
         var cursor = satToday ? today : (cal.date(byAdding: .day, value: -1, to: today) ?? today)
@@ -102,7 +118,7 @@ struct ReflectionView: View {
                 .lineLimit(3).minimumScaleFactor(0.7)
                 .padding(.horizontal, 16).padding(.top, 24)
                 .accessibilityAddTraits(.isHeader)
-            ArcGauge(fraction: Double(weekMinutes) / Double(goal), tint: .teal, goalLabel: "\(goal)") {
+            ArcGauge(fraction: Double(weekMinutes) / Double(goal), tint: .teal) {
                 VStack(spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         if h > 0 {
@@ -113,7 +129,7 @@ struct ReflectionView: View {
                         Text("m").font(.title3).foregroundStyle(HubDesign.secondary)
                     }
                     .monospacedDigit()
-                    Text("Meditation this week").font(.caption).foregroundStyle(HubDesign.secondary)
+                    Text("of \(goal) min goal").font(.callout).foregroundStyle(HubDesign.secondary)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -153,7 +169,7 @@ struct ReflectionView: View {
                         }
                     }
 
-                    Button { run = MeditationRun(minutes: minutes, hex: floodHex) } label: {
+                    Button { run = MeditationRun(minutes: minutes, hex: colorHex) } label: {
                         Label("Begin \(minutes) min", systemImage: "wind")
                             .font(.headline)
                             .foregroundStyle(HubDesign.ink)
@@ -461,5 +477,49 @@ private struct MeditationFlood: View {
         phase = nil
         finished = true
         onFinish(minutes)
+    }
+}
+
+/// Reflection's settings: the colour that floods the screen, the weekly goal, and the default sitting length.
+private struct ReflectionSettings: View {
+    @Binding var goal: Int
+    @Binding var minutes: Int
+    @Binding var colorHex: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Meditation background") {
+                    HStack(spacing: 16) {
+                        ForEach(floodColors, id: \.hex) { c in
+                            Button { colorHex = c.hex } label: {
+                                Circle().fill(Color(hexForWhiteText: c.hex))
+                                    .overlay { if c.hex == colorHex { Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(.white) } }
+                                    .frame(width: 36, height: 36)
+                                    .frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(c.name)
+                            .accessibilityAddTraits(c.hex == colorHex ? .isSelected : [])
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                Section("Weekly goal") {
+                    Stepper("\(goal) min a week", value: $goal, in: 15...600, step: 15)
+                }
+                Section("Default length") {
+                    Picker("Length", selection: $minutes) {
+                        ForEach(durations, id: \.self) { Text("\($0) min").tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("Reflection")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
     }
 }

@@ -84,18 +84,15 @@ struct FinanceView: View {
         }
     }
 
-    /// What this month cost, large, over a calendar of dots that glow brighter on the days money went out.
-    /// Rent is a fixed cost, so it stays out.
+    /// What this month cost, large, over the wallet: the credit cards stacked in liquid glass.
+    /// Rent is a fixed cost, so it stays out of the total.
     private func hero(_ d: Dashboard) -> some View {
-        let cal = Calendar.current
         let month = Date.now.formatted(.dateTime.month(.wide))
-        var perDay: [Int: Double] = [:]
-        for t in d.transactions where t.netEffect < 0 && !t.hold && t.category != "Rent"
-            && cal.isDate(t.date, equalTo: .now, toGranularity: .month) {
-            perDay[cal.component(.day, from: t.date), default: 0] += abs(t.netEffect)
-        }
-        let spent = perDay.values.reduce(0, +)
-        let peak = max(perDay.values.max() ?? 0, 1)
+        let spent = d.transactions
+            .filter { $0.netEffect < 0 && !$0.hold && $0.category != "Rent"
+                && Calendar.current.isDate($0.date, equalTo: .now, toGranularity: .month) }
+            .reduce(0) { $0 + abs($1.netEffect) }
+        let owed = d.accounts.filter(\.isLiability).reduce(0) { $0 + $1.magnitude }
         return VStack(spacing: 0) {
             BrickCaps(text: "Spent in \(month)").foregroundStyle(BrickLook.soft)
                 .padding(.top, 14)
@@ -103,12 +100,15 @@ struct FinanceView: View {
                 .font(.system(size: 64, weight: .light).monospacedDigit())
                 .padding(.top, 8)
                 .accessibilityAddTraits(.isHeader)
-            Text("\(perDay.count) \(perDay.count == 1 ? "day" : "days") with spending")
-                .font(.subheadline).foregroundStyle(BrickLook.soft)
-            MonthDots(levels: perDay.mapValues { $0 / peak }, tint: .orange,
-                      label: "Spending by day this month")
+            if owed > 0 {
+                Text("\(Fmt.compact(owed, d.currency)) on cards")
+                    .font(.footnote.weight(.medium)).foregroundStyle(BrickLook.soft)
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .glassEffect(.regular, in: .capsule)
+            }
+            CardStack(accounts: d.accounts)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 24)
+                .padding(.top, 20).padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight, alignment: .top)
