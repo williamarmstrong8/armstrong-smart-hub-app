@@ -57,48 +57,4 @@ struct MonthSquares: View {
         }
     }
 }
-
-/// A slowly breathing orb of rings, with the total mindful minutes at its heart.
-struct ReflectionOrb: View {
-    var minutes: Int
-    /// Mindful minutes for each of the last seven days, oldest first; the ring glows brighter for longer days.
-    var week: [Int]
-    var tint: Color = .teal
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var inhaled = false
-
-    var body: some View {
-        GeometryReader { geo in
-            let size = min(geo.size.height - 8, 210)
-            let peak = Double(max(week.max() ?? 0, 1))
-            ZStack {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .strokeBorder(tint.opacity(0.5 - Double(i) * 0.14), lineWidth: 1.5)
-                        .background(Circle().fill(tint.opacity(0.07)))
-                        .frame(width: size * (0.62 + Double(i) * 0.19), height: size * (0.62 + Double(i) * 0.19))
-                        .scaleEffect(inhaled ? 1.06 : 0.94)
-                        .animation(reduceMotion ? nil : .easeInOut(duration: 4).repeatForever(autoreverses: true).delay(Double(i) * 0.25), value: inhaled)
-                }
-                // One bead per day around the orb, brighter the longer that day's sitting.
-                ForEach(Array(week.enumerated()), id: \.offset) { i, m in
-                    let angle = Double(i) / 7 * 2 * .pi - .pi / 2
-                    Circle()
-                        .fill(m > 0 ? tint.opacity(0.45 + 0.55 * Double(m) / peak) : tint.opacity(0.18))
-                        .frame(width: m > 0 ? 12 : 8, height: m > 0 ? 12 : 8)
-                        .shadow(color: m > 0 ? tint.opacity(0.8) : .clear, radius: 5)
-                        .offset(x: cos(angle) * size * 0.5, y: sin(angle) * size * 0.5)
-                }
-                VStack(spacing: 0) {
-                    Text("\(minutes)").font(.system(size: size * 0.24, weight: .light).monospacedDigit())
-                    Text("mindful min").font(.caption.weight(.medium)).tracking(1).textCase(.uppercase).foregroundStyle(HubDesign.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .modifier(HeroFade())
-        .onAppear { inhaled = true }
-        .accessibilityHidden(true)
-    }
-}
 #endif

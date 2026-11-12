@@ -2,12 +2,7 @@ import SwiftUI
 
 private let durations = [1, 3, 5, 10]
 
-private let floodColors: [(name: String, hex: String)] = [
-    ("Ocean", "#2F5BD3"),
-    ("Forest", "#1F7A5A"),
-    ("Dusk", "#6B46C1"),
-    ("Ember", "#C2512D"),
-]
+private let floodHex = "#2F5BD3"
 
 private struct MeditationRun: Identifiable {
     let id = UUID()
@@ -31,7 +26,6 @@ private enum JournalTarget: Identifiable {
 struct ReflectionView: View {
     @State private var store = ReflectionStore()
     @State private var minutes = 3
-    @State private var colorHex = floodColors[0].hex
     @State private var run: MeditationRun?
     @State private var quoteText = ""
     @State private var quoteAuthor = ""
@@ -81,32 +75,14 @@ struct ReflectionView: View {
     // MARK: Hero
 
     private var hero: some View {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: .now)
-        let days = (0..<7).compactMap { cal.date(byAdding: .day, value: $0 - 6, to: today) }
-        let week = days.map { day in
-            store.sessions.filter { cal.isDate($0.date, inSameDayAs: day) }.reduce(0) { $0 + $1.minutes }
-        }
-        let sat = week.filter { $0 > 0 }.count
-        let journaled = days.filter { day in store.entries.contains { cal.isDate($0.created, inSameDayAs: day) } }.count
-        // Days in a row with a sitting, counting back from today (or yesterday while today's is still to come).
-        let sitDays = Set(store.sessions.map { cal.startOfDay(for: $0.date) })
-        var cursor = sitDays.contains(today) ? today : (cal.date(byAdding: .day, value: -1, to: today) ?? today)
-        var streak = 0
-        while sitDays.contains(cursor) {
-            streak += 1
-            cursor = cal.date(byAdding: .day, value: -1, to: cursor) ?? .distantPast
-        }
-        return BrickHero(
+        BrickHero(
             caption: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
             title: "Reflection",
             subtitle: "\(store.sessions.count) \(store.sessions.count == 1 ? "session" : "sessions") · \(store.quotes.count) \(store.quotes.count == 1 ? "quote" : "quotes") kept"
         ) {
-            ReflectionOrb(minutes: store.totalMinutes, week: week)
+            EmptyView()
         } stats: {
-            HeroRing(value: "\(sat)", fraction: Double(sat) / 7, tint: .teal, label: "Sat this week")
-            HeroRing(value: "\(journaled)", fraction: Double(journaled) / 7, tint: .indigo, label: "Journaled")
-            HeroRing(value: "\(streak)", fraction: min(Double(streak) / 7, 1), tint: .orange, label: "Day streak")
+            EmptyView()
         }
     }
 
@@ -118,12 +94,8 @@ struct ReflectionView: View {
 
     private var meditateSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            heading("Meditate")
             BrickCard {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Colour floods the screen as you breathe in, holds while you hold, and drains as you breathe out.")
-                        .font(.subheadline).foregroundStyle(HubDesign.secondary)
-
                     BrickCaps(text: "Length").foregroundStyle(HubDesign.secondary)
                     HStack(spacing: 8) {
                         ForEach(durations, id: \.self) { m in
@@ -144,24 +116,7 @@ struct ReflectionView: View {
                         }
                     }
 
-                    BrickCaps(text: "Colour").foregroundStyle(HubDesign.secondary)
-                    HStack(spacing: 16) {
-                        ForEach(floodColors, id: \.hex) { c in
-                            Button { colorHex = c.hex } label: {
-                                Circle().fill(Color(hexForWhiteText: c.hex))
-                                    .overlay { if c.hex == colorHex { Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(.white) } }
-                                    .frame(width: 36, height: 36)
-                                    .frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(c.name)
-                            .accessibilityAddTraits(c.hex == colorHex ? .isSelected : [])
-                        }
-                        Spacer(minLength: 0)
-                    }
-
-                    Button { run = MeditationRun(minutes: minutes, hex: colorHex) } label: {
+                    Button { run = MeditationRun(minutes: minutes, hex: floodHex) } label: {
                         Label("Begin \(minutes) min", systemImage: "wind")
                             .font(.headline)
                             .foregroundStyle(HubDesign.ink)
