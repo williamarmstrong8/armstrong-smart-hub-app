@@ -7,20 +7,21 @@ struct CardStack: View {
         let id: String
         let issuer: String
         let name: String
-        let network: String
+        /// The issuer's card art, in the asset catalog.
+        let art: String
         let tint: Color
         /// Lowercased words that pick this card's account out of SimpleFIN's names.
         let match: [String]
     }
 
     static let wallet: [Card] = [
-        Card(id: "venturex", issuer: "Capital One", name: "Venture X", network: "VISA",
+        Card(id: "venturex", issuer: "Capital One", name: "Venture X", art: "CardVentureX",
              tint: Color(red: 0.16, green: 0.20, blue: 0.27), match: ["venture"]),
-        Card(id: "csr", issuer: "Chase", name: "Sapphire Reserve", network: "VISA",
+        Card(id: "csr", issuer: "Chase", name: "Sapphire Reserve", art: "CardSapphireReserve",
              tint: Color(red: 0.07, green: 0.20, blue: 0.45), match: ["sapphire", "reserve"]),
-        Card(id: "discover", issuer: "Discover", name: "Discover it", network: "DISCOVER",
+        Card(id: "discover", issuer: "Discover", name: "Discover it", art: "CardDiscoverIt",
              tint: Color(red: 0.95, green: 0.48, blue: 0.10), match: ["discover"]),
-        Card(id: "bcp", issuer: "American Express", name: "Blue Cash Preferred", network: "AMEX",
+        Card(id: "bcp", issuer: "American Express", name: "Blue Cash Preferred", art: "CardBlueCashPreferred",
              tint: Color(red: 0.18, green: 0.47, blue: 0.82), match: ["blue cash", "amex", "american express"]),
     ]
 
@@ -83,36 +84,28 @@ private struct CardFace: View {
     let card: CardStack.Card
     let balance: Double?
 
-    private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(card.issuer).font(.caption.weight(.semibold)).opacity(0.85)
-                Spacer()
-                if let balance {
-                    Text(Fmt.compact(balance, "USD"))
-                        .font(.subheadline.weight(.semibold).monospacedDigit())
+        GeometryReader { geo in
+            let shape = RoundedRectangle(cornerRadius: geo.size.width * 0.048, style: .continuous)
+            Image(card.art)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipShape(shape)
+                // Liquid-glass rim and sheen over the real card.
+                .glassGlare(.regular.tint(card.tint.opacity(0.25)), in: shape)
+                .overlay(alignment: .bottomTrailing) {
+                    if let balance {
+                        Text(Fmt.compact(balance, "USD"))
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .glassEffect(.regular.tint(.black.opacity(0.25)), in: .capsule)
+                            .padding(12)
+                    }
                 }
-            }
-            Spacer(minLength: 0)
-            HStack(alignment: .lastTextBaseline) {
-                Text(card.name).font(.headline)
-                Spacer()
-                Text(card.network)
-                    .font(.system(size: card.network == "VISA" ? 20 : 13, weight: .heavy).italic())
-                    .tracking(card.network == "VISA" ? 0 : 1)
-                    .opacity(0.9)
-            }
+                .shadow(color: .black.opacity(0.3), radius: 14, y: 8)
         }
-        .foregroundStyle(.white)
-        .padding(18)
-        .background {
-            // A wash of the card's colour under the glass so each reads as itself.
-            shape.fill(LinearGradient(colors: [card.tint.opacity(0.85), card.tint.opacity(0.45)],
-                                      startPoint: .topLeading, endPoint: .bottomTrailing))
-        }
-        .glassGlare(.regular.tint(card.tint.opacity(0.35)), in: shape)
-        .shadow(color: .black.opacity(0.25), radius: 14, y: 8)
     }
 }
