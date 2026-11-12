@@ -33,9 +33,9 @@ struct WorkoutDetailPage: View {
         // shrink to its content, showing the background as a strip that then grows.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .hubPageStyle()
+        .environment(\.fitnessCards, true)
         .navigationTitle(detail?.name ?? "Workout")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BrickLook.page, for: .navigationBar)
         .toolbar {
             if let detail {
                 ToolbarItem(placement: .topBarTrailing) {

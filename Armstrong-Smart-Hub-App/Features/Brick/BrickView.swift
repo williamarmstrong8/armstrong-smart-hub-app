@@ -186,8 +186,8 @@ private struct BrickSheet: View {
         .padding(.bottom, HubLayout.sectionGap)
         .frame(maxWidth: .infinity)
         .background {
-            UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
+            Color.clear
+                .glassGlare(.regular, in: UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous))
                 .padding(.top, -600)
         }
     }

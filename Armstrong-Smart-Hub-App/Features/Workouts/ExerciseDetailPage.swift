@@ -70,7 +70,6 @@ struct ExerciseDetailPage: View {
         .hubPageStyle()
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BrickLook.page, for: .navigationBar)
         .task { await load() }
         .task { details = await ExerciseMedia.details(route.id) }
     }

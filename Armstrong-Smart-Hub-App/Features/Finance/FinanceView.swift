@@ -122,14 +122,14 @@ struct FinanceView: View {
         AccountsCard(accounts: d.accounts)
 
         Button { showingAll = true } label: {
-            VStack(spacing: 16) {
-                Divider()
-                HStack {
-                    Text("All transactions").font(.subheadline.weight(.medium))
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-                }
+            HStack {
+                Text("All transactions").font(.subheadline.weight(.medium))
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
             }
+            .padding(.horizontal, HubLayout.cardPadding)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.cardRadius))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -188,7 +188,8 @@ private struct TagCard: View {
             .buttonStyle(.plain)
         }
         .padding(HubLayout.cardPadding)
-        .background(HubDesign.surface, in: .rect(cornerRadius: HubLayout.cardRadius))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
         .sensoryFeedback(.selection, trigger: transaction.id)
     }
 
@@ -231,7 +232,8 @@ private struct MonthBars: View {
         let sheet = [Row(category: "Income", amount: Self.income, kind: .income)] + rows
             + [Row(category: "Invest", amount: max(Self.income - spent, 0), kind: .invest)]
 
-        return VStack(alignment: .leading, spacing: 18) {
+        return Card {
+          VStack(alignment: .leading, spacing: 18) {
             if items.isEmpty {
                 Text("No spending yet this month.").font(.subheadline).foregroundStyle(.secondary)
             } else {
@@ -266,6 +268,7 @@ private struct MonthBars: View {
                     }
                 }
             }
+          }
         }
     }
 }
@@ -275,9 +278,7 @@ private struct AccountsCard: View {
     let accounts: [Account]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Divider()
-            Text("Accounts").font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 2)
+        Card(title: "Accounts") {
             ForEach(accounts) { a in
                 HStack(spacing: 14) {
                     BankLogo(institution: a.institution, kind: a.kind)

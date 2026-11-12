@@ -110,7 +110,6 @@ struct BrickPage<Content: View>: View {
         .hubPageStyle()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BrickLook.page, for: .navigationBar)
     }
 }
 

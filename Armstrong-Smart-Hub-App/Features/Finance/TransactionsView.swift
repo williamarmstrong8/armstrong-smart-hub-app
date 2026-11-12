@@ -24,14 +24,17 @@ struct TransactionsView: View {
             LazyVStack(alignment: .leading, spacing: 24) {
                 header
                 if let flow = store.dashboard?.cashFlow, flow.count > 1, category == nil, search.isEmpty {
-                    Chart(flow) { m in
-                        BarMark(x: .value("Month", m.month), y: .value("In", m.income)).foregroundStyle(Color.positive).position(by: .value("Kind", "In"))
-                        BarMark(x: .value("Month", m.month), y: .value("Out", m.spending)).foregroundStyle(Color.negative.opacity(0.7)).position(by: .value("Kind", "Out"))
+                    Card {
+                        Chart(flow) { m in
+                            BarMark(x: .value("Month", m.month), y: .value("In", m.income)).foregroundStyle(Color.positive).position(by: .value("Kind", "In"))
+                            BarMark(x: .value("Month", m.month), y: .value("Out", m.spending)).foregroundStyle(Color.negative.opacity(0.7)).position(by: .value("Kind", "Out"))
+                        }
+                        .chartYAxis { AxisMarks { v in AxisValueLabel { if let d = v.as(Double.self) { Text(Fmt.axis(d)) } } } }
+                        .frame(height: 150)
                     }
-                    .chartYAxis { AxisMarks { v in AxisValueLabel { if let d = v.as(Double.self) { Text(Fmt.axis(d)) } } } }
-                    .frame(height: 150)
                 }
                 ForEach(byDay, id: \.key) { day, items in
+                    Card {
                     VStack(alignment: .leading, spacing: 16) {
                         HStack {
                             Text(day.formatted(.dateTime.weekday(.wide).month().day()))
@@ -44,6 +47,7 @@ struct TransactionsView: View {
                                 .contentShape(.rect)
                                 .onTapGesture { retagging = t }
                         }
+                    }
                     }
                 }
                 if filtered.isEmpty {
@@ -89,7 +93,7 @@ struct TransactionsView: View {
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 11)
-            .background(HubDesign.track, in: .capsule)
+            .glassGlare(.regular, in: .capsule)
         }
     }
 }

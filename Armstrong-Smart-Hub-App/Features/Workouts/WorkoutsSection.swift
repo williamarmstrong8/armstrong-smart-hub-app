@@ -15,8 +15,8 @@ struct WorkoutsSection: View {
     var onResume: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            start
+        VStack(spacing: HubLayout.sectionGap) {
+            BrickCard { start }
             if let last = store.workouts.first {
                 LastWorkoutCard(store: store, workout: last)
             }
@@ -57,7 +57,6 @@ struct WorkoutsSection: View {
                 Text(error).font(.footnote).foregroundStyle(Fit.attention)
             }
         }
-        .padding(.bottom, 36)
     }
 }
 
@@ -88,8 +87,6 @@ struct RoutineCarousel: View {
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $position)
-            // The next routine slides in from the screen's edge, not the gutter.
-            .scrollClipDisabled()
             .onAppear { if position == nil { position = Self.middle(routines.count) } }
             .onChange(of: routines.count) { _, count in position = Self.middle(count) }
         }
@@ -111,7 +108,7 @@ struct LastWorkoutCard: View {
     var workout: WorkoutSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        BrickCard {
             NavigationLink(value: WorkoutRoute(id: workout.id)) {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(alignment: .center, spacing: 12) {
@@ -151,7 +148,6 @@ struct LastWorkoutCard: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.bottom, 16)
     }
 
     private func stat(_ value: String, _ label: String, tint: Color? = nil) -> some View {
@@ -186,10 +182,10 @@ extension Label where Title == Text, Icon == Image {
     /// so the routines' own Start buttons stay the strongest thing on the page.
     func blueButton() -> some View {
         font(.body.weight(.semibold))
-            .foregroundStyle(Fit.action)
+            .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 46)
-            .background(Fit.action.opacity(0.14), in: .rect(cornerRadius: 12, style: .continuous))
+            .glassGlare(.regular.tint(Fit.action.opacity(0.35)), in: .rect(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -339,8 +335,8 @@ struct WorkoutsPage: View {
         // Fill the screen from the first frame: a page still loading would otherwise
         // shrink to its content, showing the background as a strip that then grows.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(BrickLook.page.ignoresSafeArea())
-        .foregroundStyle(BrickLook.ink)
+        .hubPageStyle()
+        .environment(\.fitnessCards, true)
         .navigationTitle("Workouts")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await store.load(api: session.api) }

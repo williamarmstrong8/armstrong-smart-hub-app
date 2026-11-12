@@ -24,18 +24,18 @@ struct MorningCheckin: View {
     private static let swap = AnyTransition.opacity.combined(with: .scale(scale: 0.97, anchor: .top))
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if let feeling, !changing {
-                answered(feeling).transition(Self.swap)
-            } else {
-                asking.transition(Self.swap)
-            }
-            if let stretch = store.suggestions.first, !changing, feeling != nil {
-                past(stretch)
+        BrickCard {
+            VStack(alignment: .leading, spacing: 20) {
+                if let feeling, !changing {
+                    answered(feeling).transition(Self.swap)
+                } else {
+                    asking.transition(Self.swap)
+                }
+                if let stretch = store.suggestions.first, !changing, feeling != nil {
+                    past(stretch)
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 36)
         .onChange(of: store.entry(for: day)) { _, entry in
             if let entry, Feeling.of(entry) == picked { picked = nil }
         }
@@ -150,6 +150,7 @@ struct WeekStrip: View {
         let today = calendar.startOfDay(for: .now)
         let week = calendar.dateInterval(of: .weekOfYear, for: .now)?.start ?? today
         let days = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: week) }
+        BrickCard {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 BrickCaps(text: "This week").foregroundStyle(BrickLook.soft)
@@ -179,6 +180,7 @@ struct WeekStrip: View {
                 }
             }
             .animation(.smooth, value: workoutDays.count)
+        }
         }
     }
 }

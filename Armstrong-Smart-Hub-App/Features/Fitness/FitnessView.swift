@@ -33,13 +33,14 @@ struct FitnessView: View {
                             if let error = store.error, !store.loaded {
                                 ErrorBanner(message: error)
                             }
-                            VStack(spacing: 0) {
-                                // MorningCheckin owns its trailing space; don't double it.
+                            VStack(spacing: HubLayout.sectionGap) {
                                 MorningCheckin(store: checkins)
                                 today
                             }
                             // Live updates stay inside individual overview rows.
-                            OverviewList(store: store)
+                            BrickCard(padding: 0) {
+                                OverviewList(store: store).padding(.horizontal, HubLayout.cardPadding)
+                            }
                             // Keep the carousel's horizontal scroll targets together.
                             workoutsSection
                             syncStatus
@@ -308,8 +309,8 @@ struct FitnessView: View {
         .padding(.bottom, HubLayout.sectionGap)
         .frame(maxWidth: .infinity)
         .background {
-            UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
+            Color.clear
+                .glassGlare(.regular, in: UnevenRoundedRectangle(bottomLeadingRadius: BrickLook.sheetRadius, bottomTrailingRadius: BrickLook.sheetRadius, style: .continuous))
                 .padding(.top, -600)
         }
     }

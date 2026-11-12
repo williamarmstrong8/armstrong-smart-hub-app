@@ -15,8 +15,8 @@ enum HubDesign {
     static let page = adaptive(0xF2F0EE, 0x161414)
     static let surface = adaptive(0xFAF9F8, 0x211F1E)
     static let raised = adaptive(0xFFFFFF, 0x2C2928)
-    static let ink = adaptive(0x262322, 0xF3EFED)
-    static let secondary = adaptive(0x68615D, 0xB8B0AB)
+    static let ink = adaptive(0x262322, 0xFFFFFF)
+    static let secondary = adaptive(0x68615D, 0xE6E1DE)
     static let separator = adaptive(0xD8D2CE, 0x433D39)
     static let track = adaptive(0xE5E0DC, 0x393330)
     static let action = adaptive(0x005DB8, 0x75B8FF)
@@ -60,18 +60,32 @@ extension View {
         modifier(HubAnimation(value: value))
     }
 
+    /// Backdrop pages render in the dark scheme so Liquid Glass goes dark and all text,
+    /// including the system's secondary styles, stays white.
     func hubPageStyle(backdrop: Bool = true) -> some View {
         background {
             if backdrop { AmbientBackdrop() } else { HubDesign.page.ignoresSafeArea() }
         }
-            .foregroundStyle(HubDesign.ink)
-            .tint(HubDesign.action)
+        .modifier(HubPageForeground(dark: backdrop))
+        .tint(HubDesign.action)
     }
 
     func hubListStyle() -> some View {
         scrollContentBackground(.hidden)
             .hubPageStyle()
             .listRowSeparatorTint(HubDesign.separator)
+    }
+}
+
+private struct HubPageForeground: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    let dark: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.colorScheme, dark ? .dark : scheme)
+            .toolbarColorScheme(dark ? .dark : nil, for: .navigationBar)
+            .foregroundStyle(HubDesign.ink, HubDesign.secondary, HubDesign.secondary)
     }
 }
 

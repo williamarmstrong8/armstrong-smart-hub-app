@@ -68,6 +68,7 @@ struct FitPage<Content: View>: View {
             .padding(.horizontal, Fit.gutter)
             .padding(.bottom, HubLayout.bottomInset)
             .frame(maxWidth: .infinity)
+            .environment(\.fitnessCards, true)
         Group {
             if flat {
                 stack
@@ -87,7 +88,6 @@ struct FitPage<Content: View>: View {
         .hubPageStyle()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(BrickLook.page, for: .navigationBar)
     }
 }
 
