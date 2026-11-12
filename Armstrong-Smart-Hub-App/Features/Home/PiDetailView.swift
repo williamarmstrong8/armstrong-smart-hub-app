@@ -25,9 +25,11 @@ struct PiDetailView: View {
         }
         .navigationTitle("Raspberry Pi")
         .navigationBarTitleDisplayMode(.inline)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .refreshable { await pi.load(api: session.api) }
         .task { await pi.load(api: session.api) }
-        .hubPageStyle(backdrop: false)
+        .hubPageStyle()
     }
 
     private func header(_ s: PiStatus) -> some View {
@@ -41,25 +43,29 @@ struct PiDetailView: View {
         .padding(.top, 8)
     }
 
+    /// Fitness's glass rings, two by two, with nothing behind them.
     private func rings(_ s: PiStatus) -> some View {
-        let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-        return LazyVGrid(columns: cols, spacing: 12) {
+        let cols = [GridItem(.flexible(), spacing: 0), GridItem(.flexible(), spacing: 0)]
+        return LazyVGrid(columns: cols, spacing: 28) {
             if let t = s.temperature {
-                Ring(label: "Temperature", value: "\(Int(t.rounded()))°", fraction: t / 85, warn: t >= 70, bad: t >= 80)
+                Ring(label: "Temperature", value: "\(Int(t.rounded()))°", fraction: t / 85, tint: Fit.activity,
+                     detail: t >= 80 ? "Throttling" : t >= 70 ? "Running hot" : "Cool", warn: t >= 70, bad: t >= 80)
             }
             if let load = s.load?.first, let cores = s.cores, cores > 0 {
                 let f = load / Double(cores)
-                Ring(label: "CPU", value: "\(Int((min(f, 1) * 100).rounded()))%", fraction: f, warn: f >= 0.75, bad: f >= 1)
+                Ring(label: "CPU", value: "\(Int((min(f, 1) * 100).rounded()))%", fraction: f, tint: Fit.readiness,
+                     detail: String(format: "Load %.2f · %d cores", load, cores), warn: f >= 0.75, bad: f >= 1)
             }
             if let m = s.memory {
-                Ring(label: "Memory", value: "\(Int((m.fraction * 100).rounded()))%", fraction: m.fraction,
+                Ring(label: "Memory", value: "\(Int((m.fraction * 100).rounded()))%", fraction: m.fraction, tint: Fit.sleep,
                      detail: String(format: "%.1f of %.1f GB", m.used / 1024, m.total / 1024), warn: m.fraction >= 0.85, bad: m.fraction >= 0.95)
             }
             if let d = s.disk {
-                Ring(label: "Disk", value: "\(Int((d.fraction * 100).rounded()))%", fraction: d.fraction,
+                Ring(label: "Disk", value: "\(Int((d.fraction * 100).rounded()))%", fraction: d.fraction, tint: Fit.action,
                      detail: String(format: "%.0f of %.0f GB", d.used, d.total), warn: d.fraction >= 0.85, bad: d.fraction >= 0.95)
             }
         }
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -129,36 +135,30 @@ struct PiDetailView: View {
     }
 }
 
-/// A ring that fills with the value inside; amber, then red, as it nears the limit.
+/// Fitness's ring: tinted Liquid Glass arc, light number inside, label and a line of detail
+/// below. It turns amber, then red, as it nears the limit.
 private struct Ring: View {
     let label: String
     let value: String
     let fraction: Double
+    let tint: Color
     var detail: String?
     var warn = false
     var bad = false
 
     var body: some View {
-        let tint = bad ? HubDesign.danger : warn ? HubDesign.warning : BrickLook.ink
-        BrickCard {
-            VStack(spacing: 12) {
-                ZStack {
-                    Circle().stroke(HubDesign.track.opacity(0.5), lineWidth: 6)
-                    Circle().trim(from: 0, to: min(max(fraction, 0.01), 1))
-                        .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    Text(value).font(.system(size: 26, weight: .light).monospacedDigit())
-                }
-                .frame(width: 96, height: 96)
-                VStack(spacing: 2) {
-                    BrickCaps(text: label).foregroundStyle(BrickLook.soft)
-                    Text(detail ?? " ").font(.caption2).foregroundStyle(BrickLook.soft)
-                }
+        VStack(spacing: 8) {
+            ScoreRing(value: value, fraction: fraction, tint: bad ? HubDesign.danger : warn ? HubDesign.warning : tint,
+                      size: 100, weight: 0.09, glass: true)
+            VStack(spacing: 2) {
+                Text(label).font(.subheadline.weight(.medium))
+                Text(detail ?? " ").font(Fit.label).foregroundStyle(Fit.muted).monospacedDigit().lineLimit(1)
             }
-            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label) \(value)")
+        .accessibilityLabel(label)
+        .accessibilityValue([value, detail].compactMap { $0 }.joined(separator: ", "))
     }
 }
 

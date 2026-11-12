@@ -184,28 +184,22 @@ struct HomeView: View {
             }
             Spacer(minLength: 0)
             if !lights.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 22) {
-                        ForEach(lights.prefix(6)) { light in
-                            Button { toggle(light) } label: {
-                                VStack(spacing: 8) {
-                                    Image(systemName: light.isOn ? "lightbulb.max.fill" : "lightbulb")
-                                        .font(.title)
-                                        .frame(width: 84, height: 84)
-                                        .glassGlare(.regular.interactive(), in: .circle)
-                                    Text(light.name).font(.caption).lineLimit(1)
-                                        .foregroundStyle(BrickLook.soft).frame(width: 92)
-                                }
+                HStack(spacing: 22) {
+                    ForEach(lights.prefix(3)) { light in
+                        Button { toggle(light) } label: {
+                            VStack(spacing: 8) {
+                                Image(systemName: light.isOn ? "lightbulb.max.fill" : "lightbulb")
+                                    .font(.title)
+                                    .frame(width: 84, height: 84)
+                                    .glassGlare(.regular.interactive(), in: .circle)
+                                Text(light.name).font(.caption).lineLimit(1)
+                                    .foregroundStyle(BrickLook.soft).frame(width: 92)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(light.name), \(light.isOn ? "on" : "off")")
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(light.name), \(light.isOn ? "on" : "off")")
                     }
-                    .padding(.horizontal, 4)
-                    .containerRelativeFrame(.horizontal, alignment: .center)
                 }
-                .scrollIndicators(.hidden)
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 .frame(maxWidth: .infinity)
                 .sensoryFeedback(.selection, trigger: on)
             }
