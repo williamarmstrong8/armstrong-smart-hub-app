@@ -9,6 +9,8 @@ struct MerchantInfo: Equatable {
     var note: String?
     var processor: String?
     var location: String?
+    /// For a transfer: the account the money came from, when we can tell.
+    var fromAccount: String?
 
     /// Logo for the merchant's website. Only the merchant's domain is sent.
     var logoURL: URL? {
@@ -16,21 +18,43 @@ struct MerchantInfo: Equatable {
         return URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=128")
     }
 
-    static func resolve(_ t: Transaction) -> MerchantInfo {
+    /// `history` lets a transfer find its other half, so it can show the logo of the account the money left.
+    static func resolve(_ t: Transaction, history: [Transaction] = []) -> MerchantInfo {
         let raw = t.description.uppercased()
         let haystack = "\(t.payee.uppercased()) \(raw)"
         var info = MerchantInfo(name: t.payee)
 
-        if let known = known.first(where: { entry in entry.patterns.contains { haystack.contains($0) } }) {
+        let match = known.first(where: { entry in entry.patterns.contains { haystack.contains($0) } })
+        if let known = match {
             info.name = known.name
             info.domain = known.domain
             info.note = known.note
+        }
+        // Card payments and plain transfers between your own accounts wear the logo of the account the
+        // money came from: this one when it is the outflow, the matching outflow's when it is the inflow.
+        // Venmo, Zelle and the like keep their own logo.
+        if match?.cardPayment == true || (t.category == "Transfers" && match == nil),
+           let from = source(of: t, in: history),
+           let domain = BankLogo.domain(for: from.institution) {
+            info.domain = domain
+            info.fromAccount = from.accountName
         }
         if let p = processors.first(where: { raw.hasPrefix($0.prefix) || raw.contains(" \($0.prefix)") }) {
             info.processor = p.label
         }
         info.location = location(in: raw)
         return info
+    }
+
+    /// Where a transfer's money came from. An outflow came from its own account; an inflow came from the
+    /// account with the same amount going out within a few days.
+    private static func source(of t: Transaction, in history: [Transaction]) -> (institution: String, accountName: String)? {
+        if t.netEffect < 0 { return (t.institution, t.accountName) }
+        let window: Double = 5 * 86_400
+        let pair = history
+            .filter { $0.accountId != t.accountId && abs($0.netEffect + t.netEffect) < 0.01 && abs($0.posted - t.posted) <= window }
+            .min { abs($0.posted - t.posted) < abs($1.posted - t.posted) }
+        return pair.map { ($0.institution, $0.accountName) }
     }
 
     // MARK: Known merchants
@@ -40,10 +64,15 @@ struct MerchantInfo: Equatable {
         let name: String
         let domain: String?
         let note: String?
+        var cardPayment = false
     }
 
     private static func k(_ patterns: [String], _ name: String, _ domain: String?, _ note: String? = nil) -> Known {
         Known(patterns: patterns, name: name, domain: domain, note: note)
+    }
+
+    private static func card(_ patterns: [String], _ name: String, _ domain: String?, _ note: String) -> Known {
+        Known(patterns: patterns, name: name, domain: domain, note: note, cardPayment: true)
     }
 
     /// Order matters: more specific patterns first (Uber Eats before Uber).
@@ -130,9 +159,11 @@ struct MerchantInfo: Equatable {
         k(["VENMO"], "Venmo", "venmo.com", "Money moved between Venmo and the bank, not spending."),
         k(["ZELLE"], "Zelle", "zellepay.com", "Zelle payment to or from a person."),
         k(["PAYPAL"], "PayPal", "paypal.com"),
-        k(["CHASE CREDIT CRD", "CHASE CREDIT CARD"], "Chase card payment", "chase.com", "Paying off the Chase card from the bank. Not new spending."),
-        k(["DISCOVER"], "Discover card payment", "discover.com", "Paying off the Discover card. Not new spending."),
-        k(["AUTOMATIC PAYMENT", "DIRECTPAY", "CREDIT CARD PAYMENT"], "Card payment received", nil, "The card being paid off. The matching outflow is on your bank account."),
+        card(["CHASE CREDIT CRD", "CHASE CREDIT CARD"], "Chase card payment", "chase.com", "Paying off the Chase card from the bank. Not new spending."),
+        card(["AMEX EPAYMENT", "AMERICAN EXPRESS ACH", "AMEX ACH"], "Amex card payment", "americanexpress.com", "Paying off the Amex card from the bank. Not new spending."),
+        card(["CAPITAL ONE MOBILE", "CAPITAL ONE ONLINE", "CAPITAL ONE CRCARDPMT", "CAPITAL ONE PMT"], "Capital One card payment", "capitalone.com", "Paying off the Capital One card from the bank. Not new spending."),
+        card(["DISCOVER"], "Discover card payment", "discover.com", "Paying off the Discover card. Not new spending."),
+        card(["AUTOMATIC PAYMENT", "AUTOPAY PAYMENT", "DIRECTPAY", "CREDIT CARD PAYMENT", "MOBILE PAYMENT", "PAYMENT THANK YOU", "ONLINE PAYMENT"], "Card payment received", nil, "The card being paid off. The matching outflow is on your bank account."),
         k(["ATM WITHDRAWAL", "NON-WF ATM"], "ATM withdrawal", nil, "Cash taken out at an ATM."),
         k(["ATM TRANSACTION FEE", "ATM FEE"], "ATM fee", nil, "Fee for using another bank's ATM."),
         k(["FIDELITY", "SPAXX", "DIVIDEND RECEIVED"], "Fidelity", "fidelity.com", "Brokerage activity: buys, dividends and cash sweeps."),

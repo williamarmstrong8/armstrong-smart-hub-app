@@ -43,7 +43,7 @@ struct TransactionsView: View {
                         }
                         .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                         ForEach(items) { t in
-                            TransactionRow(transaction: t) { retagging = t }
+                            TransactionRow(transaction: t, history: all) { retagging = t }
                                 .contentShape(.rect)
                                 .onTapGesture { retagging = t }
                         }

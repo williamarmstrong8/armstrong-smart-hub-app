@@ -344,10 +344,15 @@ struct BankLogo: View {
     ]
     private static let local: [(String, String)] = [("american express|amex", "/logos/amex.png"), ("discover", "/logos/discover.png")]
 
+    /// The bank's website, for its logo.
+    static func domain(for institution: String) -> String? {
+        domains.first { institution.range(of: $0.0, options: [.regularExpression, .caseInsensitive]) != nil }?.1
+    }
+
     private var url: URL? {
         func match(_ pattern: String) -> Bool { institution.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil }
         if let path = Self.local.first(where: { match($0.0) })?.1 { return session.webURL(path) }
-        if let domain = Self.domains.first(where: { match($0.0) })?.1 {
+        if let domain = Self.domain(for: institution) {
             return URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=128")
         }
         return nil
@@ -379,11 +384,13 @@ struct BankLogo: View {
 
 struct TransactionRow: View {
     let transaction: Transaction
+    /// Other transactions, so a transfer can find the account it came from.
+    var history: [Transaction] = []
     var onTag: (() -> Void)?
 
     var body: some View {
         let t = transaction
-        let info = MerchantInfo.resolve(t)
+        let info = MerchantInfo.resolve(t, history: history)
         HStack(spacing: 14) {
             MerchantLogo(info: info, category: t.category, size: 42)
             VStack(alignment: .leading, spacing: 3) {
@@ -423,7 +430,7 @@ struct CategoryPicker: View {
         NavigationStack {
             List {
                 Section {
-                    TransactionRow(transaction: transaction)
+                    TransactionRow(transaction: transaction, history: history)
                 }
                 .listRowBackground(BrickLook.card)
                 details
@@ -463,7 +470,7 @@ struct CategoryPicker: View {
     /// paid, where, the bank's own wording and how often it shows up.
     private var details: some View {
         let t = transaction
-        let info = MerchantInfo.resolve(t)
+        let info = MerchantInfo.resolve(t, history: history)
         let raw = t.description.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         let others = history.filter { $0.id != t.id && !$0.hold && MerchantInfo.resolve($0).name == info.name }
         let total = (others + [t]).reduce(0) { $0 + $1.netEffect }
@@ -476,6 +483,9 @@ struct CategoryPicker: View {
             }
             if let location = info.location {
                 LabeledContent("Where", value: location)
+            }
+            if let from = info.fromAccount, from != t.accountName {
+                LabeledContent("From", value: from)
             }
             LabeledContent("Card / account", value: t.accountName)
             LabeledContent("Date", value: t.date.formatted(.dateTime.weekday(.wide).month().day().hour().minute()))
