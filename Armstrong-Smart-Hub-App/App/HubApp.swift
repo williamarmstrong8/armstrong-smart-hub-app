@@ -83,7 +83,7 @@ struct RootView: View {
 }
 
 enum HubTab: Hashable {
-    case home, finance, fitness, brick
+    case home, finance, fitness, brick, reflection
 }
 
 /// The iPhone's tabs.
@@ -125,6 +125,9 @@ struct MainTabView: View {
             }
             Tab(Demo.copy("Brick", "Focus"), systemImage: Demo.isOn ? "circle" : "iphone.slash", value: .brick) {
                 BrickView()
+            }
+            Tab("Reflection", systemImage: "leaf", value: .reflection) {
+                ReflectionView()
             }
         }
         // The workout in progress, closed: a card above the tab bar that opens it again.
@@ -187,6 +190,7 @@ struct MainTabView: View {
             case "calendar": tab = .home
             case "fitness": tab = .fitness
             case "brick": tab = .brick
+            case "reflection": tab = .reflection
             default: break
             }
         }
