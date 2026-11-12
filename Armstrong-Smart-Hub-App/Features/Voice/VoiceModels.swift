@@ -175,6 +175,15 @@ struct PiContainer: Decodable, Identifiable, Equatable, Sendable {
     var troubled: Bool { !running || health == "unhealthy" }
 }
 
+/// One Uptime Kuma monitor on the Pi.
+struct PiService: Decodable, Equatable, Identifiable, Sendable {
+    let name: String
+    let up: Bool
+    /// Percent of the last day's checks that passed.
+    let uptime24h: Double?
+    var id: String { name }
+}
+
 /// /api/mobile/pi: how the Pi is doing, or why the hub can't see it.
 struct PiStatus: Decodable, Equatable, Sendable {
     struct Usage: Decodable, Equatable, Sendable {
@@ -195,9 +204,11 @@ struct PiStatus: Decodable, Equatable, Sendable {
     let hubUptimeSeconds: Int?
     let containers: [PiContainer]?
     let dockerError: String?
+    /// Uptime Kuma's monitors; nil when the hub can't read Kuma.
+    let services: [PiService]?
 
     private enum Keys: String, CodingKey {
-        case available, reason, host, temperature, load, cores, memory, swap, disk, uptimeSeconds, hubUptimeSeconds, containers, dockerError
+        case available, reason, host, temperature, load, cores, memory, swap, disk, uptimeSeconds, hubUptimeSeconds, containers, dockerError, services
     }
     private struct MB: Decodable { let usedMB: Double; let totalMB: Double }
     private struct GB: Decodable { let usedGB: Double; let totalGB: Double }
@@ -217,6 +228,7 @@ struct PiStatus: Decodable, Equatable, Sendable {
         hubUptimeSeconds = try c.decodeIfPresent(Int.self, forKey: .hubUptimeSeconds)
         containers = try c.decodeIfPresent([PiContainer].self, forKey: .containers)
         dockerError = try c.decodeIfPresent(String.self, forKey: .dockerError)
+        services = try c.decodeIfPresent([PiService].self, forKey: .services)
     }
 
     var running: Int { containers?.filter(\.running).count ?? 0 }

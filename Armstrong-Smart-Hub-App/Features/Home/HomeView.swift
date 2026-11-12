@@ -15,6 +15,7 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var store = HomeStore()
     @State private var habits = HabitsStore()
+    @State private var pi = PiStore()
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
@@ -61,12 +62,21 @@ struct HomeView: View {
             .refreshable {
                 async let a: Void = store.refresh(api: session.api)
                 async let b: Void = habits.load(api: session.api)
-                _ = await (a, b)
+                async let c: Void = pi.load(api: session.api)
+                _ = await (a, b, c)
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 habits.rollDay()
                 await store.poll(api: session.api)
+            }
+            // The Pi card refreshes every minute while Home is open.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    await pi.load(api: session.api)
+                    try? await Task.sleep(for: .seconds(60))
+                }
             }
             .task { if !habits.fetched { await habits.load(api: session.api) } }
             .sheet(item: $light) { e in
@@ -226,6 +236,8 @@ struct HomeView: View {
             } else if !shelfRequests.isEmpty {
                 MediaShelf(requests: shelfRequests, hiding: TitleCardPresenter.shared.landingID, onPick: open)
             }
+
+            if let status = pi.status, status.available { PiCard(status: status) }
         }
     }
 
