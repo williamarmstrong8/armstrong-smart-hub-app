@@ -184,7 +184,7 @@ struct FitnessView: View {
 
     /// A good sync stays fresh this long; opening the page or returning to the
     /// app inside the window doesn't sync again. Pull-to-refresh always does.
-    private static let staleAfter: TimeInterval = 30 * 60
+    private static let staleAfter: TimeInterval = 10 * 60
     /// After a failed sync, wait this long before retrying on its own.
     private static let retryAfter: TimeInterval = 60
 
@@ -197,7 +197,10 @@ struct FitnessView: View {
         if !force, files.isSyncing { return }
         if !force, let last = files.lastSync {
             let age = Date.now.timeIntervalSince(last.finishedAt)
-            if age < (last.failed == nil ? Self.staleAfter : Self.retryAfter) { return }
+            // A sync that left files behind (cut short in the background, or the hub
+            // was out of reach) isn't a good one: go again as after a failure.
+            let complete = last.failed == nil && last.remaining == 0 && files.store.pendingUpload == 0
+            if age < (complete ? Self.staleAfter : Self.retryAfter) { return }
         }
         watch.ensureConnected()
         var waited = 0.0
@@ -217,9 +220,18 @@ struct FitnessView: View {
             return "Offline · hub data\(since), today from the watch"
         }
         if let last = watch.files.lastSync, let failed = last.failed { return failed }
+        // Part of the hub's answer didn't read: say which, since that part of the page is stale or empty.
+        if let problem = store.snapshot?.problems.first { return "Couldn't read part of the hub's data (\(problem))" }
         switch watch.state {
         case .connected:
-            if let last = watch.files.lastSync { return "Synced \(last.finishedAt.formatted(.relative(presentation: .named)))" }
+            if let last = watch.files.lastSync {
+                let when = last.finishedAt.formatted(.relative(presentation: .named))
+                // Say so when a sync finished without everything: the page would otherwise look up to date.
+                let waiting = watch.files.store.pendingUpload
+                if waiting > 0 { return "Synced \(when) · \(waiting) file\(waiting == 1 ? "" : "s") waiting for the hub" }
+                if last.remaining > 0 { return "Synced \(when) · \(last.remaining) more on the watch" }
+                return "Synced \(when)"
+            }
             return "Connected"
         case .connecting, .pairing, .handshaking: return "Connecting…"
         case let .failed(reason), let .bluetoothOff(reason): return reason

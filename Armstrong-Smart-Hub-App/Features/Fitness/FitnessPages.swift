@@ -337,6 +337,7 @@ struct ReadinessPage: View {
                     }
                 }
             }
+            if let byPart = store.snapshot?.insights?.readiness, byPart.score != nil { ContributorReadinessSection(readiness: byPart) }
             if let history = watch?.readiness?.history, history.count > 1 {
                 FitSection(title: "Trend", trailing: "Last \(history.count) days") {
                     DailyBarChart(points: FitData.points(history), tint: Fit.readiness, domain: 0...100, yTicks: [0, 50, 100],
@@ -473,6 +474,8 @@ struct StrainPage: View {
                                   format: { String(format: "%.1f", $0) })
                 }
             }
+            if let target = insights?.strain?.target { StrainTargetSection(target: target, today: strain) }
+            if let zone = insights?.training.zoneMinutes, zone.week > 0 { ZoneMinutesSection(zone: zone) }
             if let workout = insights?.training.lastWorkout { LastWorkoutSection(workout: workout) }
             if let load = insights?.training.effortLoad, load.week > 0 || load.month > 0 {
                 FitSection(title: "Training load", trailing: load.trend?.capitalized) {
@@ -537,13 +540,18 @@ struct SleepPage: View {
                     HypnogramView(night: night)
                     StageRows(night: night).padding(.top, 8)
                 }
+                if let stages = store.snapshot?.insights?.sleep.lastNight?.stages { SleepStageBalanceSection(stages: stages) }
                 keyMetrics
+                if let breathing = store.snapshot?.insights?.sleep.lastNight?.breathing { BreathingSection(breathing: breathing) }
             } else {
                 ScoreHeader(score: nil, tint: Fit.sleep, status: "No sleep yet")
                 Takeaway(text: "Sleep shows up after a night with the watch on, once it hands over the sleep file.")
             }
             trend
             habits
+            if let sleep = store.snapshot?.insights?.sleep, sleep.debt != nil || sleep.regularity != nil || sleep.chronotype != nil {
+                SleepPatternSection(sleep: sleep)
+            }
             if store.nights.count > 1 {
                 FitSection {
                     NavigationLink { SleepView(nights: store.nights) } label: { LinkRow(title: "All nights") }.buttonStyle(.plain)
@@ -561,6 +569,12 @@ struct SleepPage: View {
                 DetailRow(label: "Lowest heart rate", value: watch?.sleep?.lowestHr.map { "\($0) bpm" } ?? "–")
                 DetailRow(label: "Body Battery charged", value: watch?.sleep?.batteryGained.map { $0 >= 0 ? "+\($0)" : "\($0)" } ?? "–")
                 DetailRow(label: "Average stress", value: watch?.sleep?.avgStress.map { String(format: "%.0f", $0) } ?? "–")
+                if let night = watch?.sleep?.overnight {
+                    if let hrv = night.hrv { DetailRow(label: "Overnight HRV", value: String(format: "%.0f ms", hrv)) }
+                    if let hr = night.heartRate { DetailRow(label: "Average heart rate", value: String(format: "%.0f bpm", hr)) }
+                    if let breaths = night.respiration { DetailRow(label: "Breathing rate", value: String(format: "%.1f /min", breaths)) }
+                    if let spo2 = night.spo2 { DetailRow(label: "Blood oxygen", value: String(format: "%.0f%%", spo2)) }
+                }
                 DetailRow(label: "Times woken", value: (watch?.sleep?.awakenings ?? insights?.sleep.lastNight?.interruptions).map(String.init) ?? "–", last: true)
             }
         }
@@ -720,6 +734,11 @@ struct TrainingPage: View {
             if let endurance = watch?.endurance { EnduranceSection(endurance: endurance) }
             if let races = watch?.races { RacesSection(races: races) }
             if let focus = watch?.focus { LoadFocusSection(focus: focus) }
+            if let hubStatus = store.snapshot?.insights?.training.status, hubStatus.key != "no status" { TrainingStatusSection(status: hubStatus) }
+            if let form = store.snapshot?.insights?.training.form { FormSection(form: form) }
+            if let zones = store.snapshot?.insights?.training.zones {
+                ZoneDistributionSection(zones: zones, monotony: store.snapshot?.insights?.training.monotony)
+            }
             status
         }
     }
@@ -748,7 +767,7 @@ struct TrainingPage: View {
     private var status: some View {
         let metrics = store.snapshot?.metrics
         let watch = store.snapshot?.watch
-        return FitSection(title: "Training status", trailing: metrics?.load.status) {
+        return FitSection(title: "Load and thresholds", trailing: metrics?.load.status) {
             VStack(spacing: 0) {
                 if let load = metrics?.load {
                     DetailRow(label: "Acute load, 7 days", value: "\(load.acute)")
@@ -761,6 +780,7 @@ struct TrainingPage: View {
                 if let condition = store.snapshot?.insights?.training.performanceCondition, let value = condition.value {
                     DetailRow(label: "Performance condition", value: "\(value > 0 ? "+" : "")\(value)")
                 }
+                if let recovery = store.snapshot?.insights?.training.cardioRecovery { CardioRecoveryRow(recovery: recovery) }
                 DetailRow(label: "HRV status", value: hrvStatus, last: true)
             }
         }
@@ -795,15 +815,16 @@ struct HealthPage: View {
                 FitSection(title: "What moves it") {
                     VStack(spacing: 18) {
                         ForEach(hub.parts) { part in
-                            DivergingRow(title: part.label, value: -part.years, scale: 2,
+                            DivergingRow(title: part.label, value: -part.years, scale: part.key == "vo2max" ? 7 : 2,
                                          detail: part.years == 0 ? "±0 yrs" : String(format: "%+.1f yrs", part.years))
                         }
                     }
-                    Takeaway(text: "Starts from the age your VO2 max matches, then adjusts for resting heart rate, HRV, sleep and exercise. Right of center makes you younger.").font(.caption)
+                    Takeaway(text: "Starts from your real age; each habit the research ties to lifespan moves it: VO2 max most (its bar runs to 7 years), then resting heart rate, sleep, steps, time in the heart rate zones, strength training and HRV. Right of center makes you younger.").font(.caption)
                 }
             } else {
-                BigNumber(value: "–", caption: "Hub age needs your VO2 max and your age from the watch profile.")
+                BigNumber(value: "–", caption: "Hub age needs your age from the watch profile and a few weeks of sleep and activity.")
             }
+            if let health = insights?.health { HealthMonitorSection(health: health) }
             if let vitals = insights?.vitals {
                 FitSection(title: "Overnight vitals", trailing: vitals.calibrating ? "Calibrating" : vitals.outliers == 0 ? "All typical" : "\(vitals.outliers) outside range") {
                     VStack(spacing: 20) {
