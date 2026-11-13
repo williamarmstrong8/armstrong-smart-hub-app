@@ -83,19 +83,15 @@ private struct CardFace: View {
     let card: CardStack.Card
     let balance: Double?
 
-    /// The art sits inset in a glass frame, as the movie posters do.
-    private let inset: CGFloat = 5
-
     var body: some View {
         GeometryReader { geo in
-            let outer = geo.size.width * 0.048 + inset
-            let art = RoundedRectangle(cornerRadius: geo.size.width * 0.048, style: .continuous)
+            let shape = RoundedRectangle(cornerRadius: geo.size.width * 0.048, style: .continuous)
             Image(card.art)
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fill)
-                .frame(width: geo.size.width - inset * 2, height: geo.size.height - inset * 2)
-                .clipShape(art)
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipShape(shape)
                 .overlay(alignment: .bottomTrailing) {
                     if let balance {
                         Text(Fmt.compact(balance, "USD"))
@@ -106,8 +102,6 @@ private struct CardFace: View {
                             .padding(12)
                     }
                 }
-                .frame(width: geo.size.width, height: geo.size.height)
-                .glassEffect(.regular, in: .rect(cornerRadius: outer, style: .continuous))
                 .shadow(color: .black.opacity(0.3), radius: 14, y: 8)
         }
     }
