@@ -67,3 +67,36 @@ struct HealthSummaryCard: View {
         }
     }
 }
+
+/// What a subpage's numbers indicate for the person, from the same daily
+/// write as Today's read. Hidden when the hub has none for this page.
+struct PageSummarySection: View {
+    var store: FitnessStore
+    var page: FitnessPage
+
+    private var key: String {
+        switch page {
+        case .readiness: "readiness"
+        case .recovery: "recovery"
+        case .strain: "strain"
+        case .sleep: "sleep"
+        case .heart: "heart"
+        case .energy: "energy"
+        case .training: "training"
+        case .health: "health"
+        }
+    }
+
+    var body: some View {
+        if let text = store.snapshot?.summary?.pages?[key] {
+            FitSection(title: "What this means") {
+                Text(text)
+                    .font(.body)
+                    .foregroundStyle(BrickLook.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+}

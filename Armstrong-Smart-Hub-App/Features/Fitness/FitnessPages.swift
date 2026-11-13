@@ -324,6 +324,7 @@ struct ReadinessPage: View {
                         subtitle: watch?.readiness.flatMap { ISO.parse($0.at) }.map { "Scored \($0.formatted(.dateTime.weekday(.wide).hour().minute()))" },
                         source: score == nil ? nil : watch?.readiness != nil)
             Takeaway(text: advice(level: level, recoveryHours: metrics?.load.recoveryHours))
+            PageSummarySection(store: store, page: .readiness)
             if let factors = metrics?.readiness.factors, !factors.isEmpty {
                 FitSection(title: "Contributors") {
                     VStack(spacing: 18) {
@@ -408,6 +409,7 @@ struct RecoveryPage: View {
                             status: "Learning your baseline", subtitle: "\(have) of \(need) nights with HRV")
                 Takeaway(text: "Recovery compares each night's HRV, resting heart rate, breathing and sleep with your own usual, so it needs a few nights before it can score one.")
             }
+            PageSummarySection(store: store, page: .recovery)
             HrvSection(store: store)
             RestingSection(store: store)
         }
@@ -467,6 +469,7 @@ struct StrainPage: View {
             ScoreHeader(score: nil, display: strain.map { String(format: "%.1f", $0) } ?? "–", fraction: (strain ?? 0) / 21, tint: Fit.activity,
                         status: insights?.strain?.level?.capitalized ?? "No strain yet", subtitle: "Out of 21, from heart rate across the day")
             Takeaway(text: "Strain climbs fast at first and slowly after: 10 is a solid day, 14 a hard one, 18 and up an all-out effort.")
+            PageSummarySection(store: store, page: .strain)
             if let week = insights?.strain?.week, week.contains(where: { $0.strain != nil }) {
                 FitSection(title: "This week") {
                     DailyBarChart(points: week.compactMap { d in DateOnly.parse(d.day).map { DayValue(date: $0, value: d.strain ?? 0) } },
@@ -529,6 +532,7 @@ struct SleepPage: View {
                 ScoreHeader(score: score, tint: Fit.sleep, subtitle: subtitle(night),
                             source: score == nil ? nil : (watch?.sleep != nil || night.watchScore != nil))
                 Takeaway(text: needText(night: night))
+                PageSummarySection(store: store, page: .sleep)
                 if let parts = watch?.sleep?.parts.rows, !parts.isEmpty {
                     FitSection(title: "Contributors") {
                         VStack(spacing: 18) {
@@ -639,6 +643,7 @@ struct HeartPage: View {
                               ("Lowest", points.map(\.value).min().map { "\(Int($0))" } ?? "–"),
                               ("Highest", points.map(\.value).max().map { "\(Int($0))" } ?? "–")])
                 .padding(.bottom, 8)
+            PageSummarySection(store: store, page: .heart)
             FitSection(title: "Through the day") {
                 if points.isEmpty {
                     Takeaway(text: "All-day heart rate appears once the watch hands over a monitoring file.")
@@ -671,6 +676,7 @@ struct EnergyPage: View {
             let day = points.filter { $0.date >= window.0 }
             ScoreHeader(score: current, tint: Fit.energy, status: current.map(Self.batteryWord) ?? "No data", subtitle: "Body Battery",
                         source: current == nil ? nil : live != nil || store.bodyBatteryFromWatch || metrics?.fromWatch("bodyBattery") == true)
+            PageSummarySection(store: store, page: .energy)
             if !day.isEmpty {
                 let changes = zip(day.dropFirst(), day).map { $0.value - $1.value }
                 StatStrip(items: [("Charged", "+\(Int(changes.filter { $0 > 0 }.reduce(0, +)))"),
@@ -731,6 +737,7 @@ struct TrainingPage: View {
         let watch = store.snapshot?.watch
         FitPage(title: "Fitness") {
             vo2
+            PageSummarySection(store: store, page: .training)
             if let endurance = watch?.endurance { EnduranceSection(endurance: endurance) }
             if let races = watch?.races { RacesSection(races: races) }
             if let focus = watch?.focus { LoadFocusSection(focus: focus) }
@@ -824,6 +831,7 @@ struct HealthPage: View {
             } else {
                 BigNumber(value: "–", caption: "Hub age needs your age from the watch profile and a few weeks of sleep and activity.")
             }
+            PageSummarySection(store: store, page: .health)
             if let health = insights?.health { HealthMonitorSection(health: health) }
             if let vitals = insights?.vitals {
                 FitSection(title: "Overnight vitals", trailing: vitals.calibrating ? "Calibrating" : vitals.outliers == 0 ? "All typical" : "\(vitals.outliers) outside range") {
