@@ -36,7 +36,7 @@ enum HubLayout {
     static let minHitTarget: CGFloat = 44
     /// A page hero below its top bar: Fitness's watch, date, title and three rings, which Home,
     /// Finance and Reflection match so every top sheet is the same height.
-    static let heroHeight: CGFloat = 484
+    static let heroHeight: CGFloat = 400
     /// Fitness and Brick's sheet content, top inset to hero, so their glass sheets are exactly as
     /// tall as the HubTabPage ones (top inset + 44pt top bar + 8pt gap + hero).
     static let deviceSheetHeight: CGFloat = topInset + minHitTarget + 8 + heroHeight

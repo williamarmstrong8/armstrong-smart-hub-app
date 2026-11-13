@@ -173,8 +173,6 @@ private struct BrickSheet: View {
                 .padding(.top, HubLayout.sectionGap)
             if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.sectionGap) }
             Spacer(minLength: HubLayout.sectionGap)
-            stats
-            Spacer(minLength: HubLayout.sectionGap)
             brickButton
         }
         .frame(height: HubLayout.deviceSheetHeight, alignment: .top)
@@ -189,24 +187,6 @@ private struct BrickSheet: View {
     }
 
     /// Today's time, today's sessions and the weekly average, in the same place as Fitness's scores.
-    private var stats: some View {
-        let today = Date()
-        let avg = store.average(store.week())
-        return HStack(alignment: .top, spacing: 0) {
-            stat(brickDuration(store.seconds(on: today)), "Today")
-            stat("\(store.sessions(on: today).count)", "Sessions")
-            stat(avg.map(brickDuration) ?? "--", "Daily avg")
-        }
-    }
-
-    private func stat(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 6) {
-            Text(value).font(.title2.weight(.light).monospacedDigit())
-            Text(label).font(.subheadline).foregroundStyle(BrickLook.soft)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
     private var device: some View {
         Button { store.tapTag() } label: {
             deviceArt

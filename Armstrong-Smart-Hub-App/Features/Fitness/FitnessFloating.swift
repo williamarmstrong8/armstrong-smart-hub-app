@@ -10,12 +10,12 @@ struct WatchHero: View {
             Image("GarminHero")
                 .resizable()
                 .scaledToFit()
-                .frame(height: 190)
+                .frame(height: 150)
                 .overlay { syncFace }
                 .rotationEffect(.degrees(-6))
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 250)
+        .frame(height: 180)
         .mask(
             LinearGradient(stops: [.init(color: .clear, location: 0),
                                    .init(color: .black, location: 0.1),

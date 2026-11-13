@@ -4,8 +4,7 @@ import SwiftUI
 /// and its trends. The agent writes the SQL itself; the model is yours to pick.
 struct AgentView: View {
     @Environment(AppSession.self) private var session
-    @Environment(\.dismiss) private var dismiss
-    @State private var store = AgentStore()
+    @State private var store = AgentStore.shared
     @State private var draft = ""
     @FocusState private var focused: Bool
 
@@ -29,15 +28,30 @@ struct AgentView: View {
 
     // MARK: Header
 
+    /// The model picker and the conversation's running cost. The sheet closes with a swipe.
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Menu {
-                Picker("Model", selection: $store.modelID) {
-                    ForEach(store.models) { m in Text("\(m.name) · \(m.note)").tag(m.id) }
+                ForEach(groups, id: \.self) { group in
+                    Section(group) {
+                        ForEach(store.models.filter { ($0.group ?? "Models") == group }) { m in
+                            Button {
+                                store.modelID = m.id
+                            } label: {
+                                if m.id == store.model?.id {
+                                    Label(m.name, systemImage: "checkmark")
+                                } else {
+                                    Text(m.name)
+                                }
+                                Text([m.note, m.priceText].compactMap { $0 }.joined(separator: " · "))
+                            }
+                        }
+                    }
                 }
                 if !store.messages.isEmpty {
-                    Divider()
-                    Button("New chat", systemImage: "square.and.pencil", role: .destructive) { store.reset() }
+                    Section {
+                        Button("New chat", systemImage: "square.and.pencil") { store.reset() }
+                    }
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -53,21 +67,37 @@ struct AgentView: View {
                 .contentShape(.capsule)
             }
             .accessibilityLabel("Model, \(store.model?.name ?? "loading")")
-            Spacer(minLength: 0)
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(HubDesign.ink)
-                    .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
-                    .glassGlare(.regular.interactive(), in: .circle)
-                    .contentShape(.circle)
+            if !store.messages.isEmpty {
+                costPill
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close")
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, HubLayout.gutter)
-        .padding(.top, 16)
+        .padding(.top, 20)
         .padding(.bottom, 8)
+        .hubAnimation(value: store.messages.isEmpty)
+    }
+
+    private var groups: [String] {
+        var seen: [String] = []
+        for m in store.models where !seen.contains(m.group ?? "Models") { seen.append(m.group ?? "Models") }
+        return seen
+    }
+
+    /// What this chat has cost on the AI Gateway so far; "≈" while a figure is still an estimate.
+    private var costPill: some View {
+        HStack(spacing: 4) {
+            if !store.sessionCostIsExact { Text("≈") }
+            Text(AgentCost.format(store.sessionCost)).contentTransition(.numericText())
+        }
+        .font(.subheadline.weight(.medium).monospacedDigit())
+        .foregroundStyle(HubDesign.secondary)
+        .padding(.horizontal, 14)
+        .frame(minHeight: HubLayout.minHitTarget)
+        .glassGlare(.regular, in: .capsule)
+        .animation(.default, value: store.sessionCost)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("This chat has cost \(store.sessionCostIsExact ? "" : "about ")\(AgentCost.format(store.sessionCost))")
     }
 
     // MARK: Transcript
@@ -150,13 +180,18 @@ struct AgentView: View {
                     .font(.footnote)
                 }
                 if m.text.isEmpty {
-                    if m.steps.isEmpty, store.sending { ThinkingDots() }
+                    if m.steps.isEmpty, store.sending, m.id == store.messages.last?.id { ThinkingDots() }
                 } else {
                     Text(markdown(m.text))
                         .font(.body)
                         .foregroundStyle(m.failed ? HubDesign.danger : HubDesign.ink)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                if !m.costs.isEmpty {
+                    Text("\(m.costIsExact ? "" : "≈ ")\(AgentCost.format(m.cost)) · \(m.costs.count) model call\(m.costs.count == 1 ? "" : "s")")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(HubDesign.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
