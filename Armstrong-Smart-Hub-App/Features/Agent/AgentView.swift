@@ -8,14 +8,6 @@ struct AgentView: View {
     @State private var draft = ""
     @FocusState private var focused: Bool
 
-    private static let suggestions = [
-        "How has my spending changed month over month?",
-        "Is my sleep score related to my resting heart rate?",
-        "Which days do I work out most, and how do I sleep after?",
-        "What are my biggest recurring charges?",
-        "Show my HRV trend over the last 90 days",
-    ]
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -66,6 +58,9 @@ struct AgentView: View {
                     modelButton(m)
                 }
             }
+        }
+        if store.models.isEmpty {
+            Text(store.modelsError ?? "Loading models…")
         }
         if !store.messages.isEmpty {
             Section {
@@ -161,23 +156,6 @@ struct AgentView: View {
                     .font(.subheadline).foregroundStyle(HubDesign.secondary)
             }
             .padding(.top, 24)
-            VStack(spacing: 10) {
-                ForEach(Self.suggestions, id: \.self) { s in
-                    Button { store.send(s, api: session.api) } label: {
-                        HStack {
-                            Text(s).font(.subheadline).multilineTextAlignment(.leading)
-                            Spacer(minLength: 8)
-                            Image(systemName: "arrow.up.right").font(.footnote).foregroundStyle(HubDesign.secondary)
-                        }
-                        .foregroundStyle(HubDesign.ink)
-                        .padding(.horizontal, 16).padding(.vertical, 12)
-                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget, alignment: .leading)
-                        .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.cardRadius))
-                        .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
         }
     }
 

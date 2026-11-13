@@ -56,6 +56,8 @@ final class AgentStore {
     var messages: [AgentMessage] = []
     var models: [AgentModel] = []
     var sending = false
+    /// Why the model list didn't load, shown in the picker.
+    var modelsError: String?
     /// The chosen model's gateway id; empty until the list loads, then the hub's default.
     var modelID: String = UserDefaults.standard.string(forKey: AgentStore.modelKey) ?? "" {
         didSet { UserDefaults.standard.set(modelID, forKey: AgentStore.modelKey) }
@@ -76,7 +78,14 @@ final class AgentStore {
     func loadModels(api: APIClient) async {
         guard models.isEmpty else { return }
         struct Reply: Decodable { let models: [AgentModel]; let `default`: String }
-        guard let reply: Reply = try? await api.get("/api/mobile/agent") else { return }
+        let reply: Reply
+        do {
+            reply = try await api.get("/api/mobile/agent")
+        } catch {
+            modelsError = "The hub doesn't have the agent yet. Redeploy it."
+            return
+        }
+        modelsError = nil
         models = reply.models
         if !reply.models.contains(where: { $0.id == modelID }) { modelID = reply.default }
     }
