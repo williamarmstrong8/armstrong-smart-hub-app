@@ -314,7 +314,7 @@ struct ReflectionView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 BrickCaps(text: e.created.formatted(date: .abbreviated, time: .shortened))
                                     .foregroundStyle(HubDesign.secondary)
-                                Text(e.text).font(.body).lineLimit(5).multilineTextAlignment(.leading)
+                                Text(JournalMarkdown.preview(e.text)).font(.body).lineLimit(5).multilineTextAlignment(.leading)
                             }
                         }
                         .foregroundStyle(HubDesign.ink)
@@ -390,6 +390,7 @@ private struct JournalEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
     @State private var confirmDelete = false
+    @State private var editing: Bool
     @FocusState private var focused: Bool
 
     init(entry: JournalEntry?, onSave: @escaping (String) -> Void, onDelete: (() -> Void)?) {
@@ -397,24 +398,37 @@ private struct JournalEditor: View {
         self.onSave = onSave
         self.onDelete = onDelete
         _text = State(initialValue: entry?.text ?? "")
+        _editing = State(initialValue: entry == nil)
     }
 
     private var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
-    var body: some View {
-        NavigationStack {
+    @ViewBuilder private var content: some View {
+        if editing {
             TextEditor(text: $text)
                 .scrollContentBackground(.hidden)
                 .focused($focused)
                 .padding(.horizontal, 16)
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
-                        Text("What's on your mind?")
+                        Text("What's on your mind? Markdown works.")
                             .foregroundStyle(HubDesign.secondary)
                             .padding(.horizontal, 21).padding(.top, 8)
                             .allowsHitTesting(false)
                     }
                 }
+        } else {
+            ScrollView {
+                JournalMarkdown(text: text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20).padding(.vertical, 12)
+            }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            content
                 .navigationTitle(entry == nil ? "New entry" : "Entry")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -425,7 +439,11 @@ private struct JournalEditor: View {
                         }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { onSave(text); dismiss() }.disabled(empty)
+                        if editing {
+                            Button("Save") { onSave(text); dismiss() }.disabled(empty)
+                        } else {
+                            Button("Edit") { editing = true; focused = true }
+                        }
                     }
                 }
                 .confirmationDialog("Delete this entry?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -434,7 +452,75 @@ private struct JournalEditor: View {
         }
         .hubPageStyle()
         .presentationDetents([.large])
-        .onAppear { focused = true }
+        .onAppear { focused = editing }
+    }
+}
+
+/// Journal text rendered as markdown: headings, bullets, numbered lists, quotes, bold, italics, code, links.
+private struct JournalMarkdown: View {
+    let text: String
+
+    private static let inline = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+
+    static func inline(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: inline)) ?? AttributedString(s)
+    }
+
+    /// One flat attributed string for card previews: heading marks dropped (line made bold), bullets as dots.
+    static func preview(_ text: String) -> AttributedString {
+        let lines = text.components(separatedBy: "\n").map { line -> String in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if let h = heading(t) { return "**\(h.text)**" }
+            if t.hasPrefix("- ") || t.hasPrefix("* ") { return "• " + t.dropFirst(2) }
+            if t.hasPrefix("> ") { return String(t.dropFirst(2)) }
+            return line
+        }
+        return inline(lines.joined(separator: "\n"))
+    }
+
+    private static func heading(_ t: String) -> (level: Int, text: String)? {
+        let hashes = t.prefix(while: { $0 == "#" }).count
+        guard (1...4).contains(hashes), t.dropFirst(hashes).first == " " else { return nil }
+        return (hashes, t.dropFirst(hashes + 1).trimmingCharacters(in: .whitespaces))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) { _, raw in
+                line(raw.trimmingCharacters(in: .whitespaces))
+            }
+        }
+        .textSelection(.enabled)
+    }
+
+    @ViewBuilder private func line(_ t: String) -> some View {
+        if t.isEmpty {
+            Color.clear.frame(height: 4)
+        } else if let h = Self.heading(t) {
+            Text(Self.inline(h.text))
+                .font(h.level == 1 ? .title2.bold() : h.level == 2 ? .title3.bold() : .headline)
+                .padding(.top, 4)
+        } else if t.hasPrefix("- ") || t.hasPrefix("* ") {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("•")
+                Text(Self.inline(String(t.dropFirst(2))))
+            }
+        } else if let dot = t.firstIndex(of: "."), t[..<dot].allSatisfy(\.isNumber), !t[..<dot].isEmpty,
+                  t[t.index(after: dot)...].hasPrefix(" ") {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(String(t[...dot])).monospacedDigit()
+                Text(Self.inline(t[t.index(after: dot)...].trimmingCharacters(in: .whitespaces)))
+            }
+        } else if t.hasPrefix("> ") {
+            Text(Self.inline(String(t.dropFirst(2))))
+                .foregroundStyle(HubDesign.secondary)
+                .padding(.leading, 12)
+                .overlay(alignment: .leading) { Rectangle().fill(HubDesign.secondary.opacity(0.5)).frame(width: 3) }
+        } else if t == "---" || t == "***" {
+            Divider()
+        } else {
+            Text(Self.inline(t))
+        }
     }
 }
 
