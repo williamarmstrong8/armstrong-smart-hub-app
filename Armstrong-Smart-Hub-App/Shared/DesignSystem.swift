@@ -147,12 +147,63 @@ struct HubTabPage<Hero: View, Content: View>: View {
     }
 }
 
-/// Liquid Glass behind a settings-style list's rows. Put it on each Section.
-struct GlassRowBackground: View {
-    var body: some View { Color.clear.glassGlare(.regular, in: .rect(cornerRadius: 0)) }
+/// A settings-style page: sections grouped into glass cards on the ambient backdrop.
+struct GlassForm<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: HubLayout.sectionGap) { content }
+                .padding(.horizontal, HubLayout.gutter)
+                .padding(.top, HubLayout.topInset)
+                .padding(.bottom, HubLayout.bottomInset)
+                .containerRelativeFrame(.horizontal)
+        }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .hubPageStyle(backdrop: true)
+    }
+}
+
+/// One glass card holding a section's rows, split by hairlines, with an optional header and footer.
+struct GlassSection<Header: View, Content: View, Footer: View>: View {
+    @ViewBuilder var content: Content
+    @ViewBuilder var header: Header
+    @ViewBuilder var footer: Footer
+
+    init(@ViewBuilder content: () -> Content, @ViewBuilder header: () -> Header, @ViewBuilder footer: () -> Footer) {
+        self.content = content(); self.header = header(); self.footer = footer()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header.font(.footnote.weight(.medium)).foregroundStyle(HubDesign.secondary).textCase(.uppercase).padding(.horizontal, 8)
+            BrickCard(padding: 0) {
+                Group(subviews: content) { rows in
+                    VStack(spacing: 0) {
+                        ForEach(rows.indices, id: \.self) { i in
+                            rows[i]
+                                .padding(.horizontal, 16).padding(.vertical, 12)
+                                .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget, alignment: .leading)
+                            if i < rows.count - 1 { BrickDivider().padding(.leading, 16) }
+                        }
+                    }
+                }
+            }
+            footer.font(.footnote).foregroundStyle(HubDesign.secondary).padding(.horizontal, 8)
+        }
+    }
+}
+
+extension GlassSection where Header == EmptyView, Footer == EmptyView {
+    init(@ViewBuilder content: () -> Content) { self.init(content: content, header: { EmptyView() }, footer: { EmptyView() }) }
+}
+extension GlassSection where Header == Text, Footer == EmptyView {
+    init(_ title: String, @ViewBuilder content: () -> Content) { self.init(content: content, header: { Text(title) }, footer: { EmptyView() }) }
+}
+extension GlassSection where Header == EmptyView {
+    init(@ViewBuilder content: () -> Content, @ViewBuilder footer: () -> Footer) { self.init(content: content, header: { EmptyView() }, footer: footer) }
 }
 
 extension View {
-    /// A list on the ambient backdrop; its Sections add `.listRowBackground(GlassRowBackground())`.
+    /// A list on the ambient backdrop.
     func hubGlassList() -> some View { hubListStyle() }
 }

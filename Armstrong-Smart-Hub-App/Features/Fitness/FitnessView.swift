@@ -345,8 +345,8 @@ struct WatchSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
+            GlassForm {
+                GlassSection {
                     LabeledContent("Watch", value: watch.identity?.model ?? watch.savedWatchName ?? "–")
                     if let identity = watch.identity { LabeledContent("Firmware", value: identity.firmware) }
                     LabeledContent("Status", value: status)
@@ -358,9 +358,8 @@ struct WatchSheet: View {
                         Button("Connect") { watch.connectSaved() }
                     }
                 }
-                .listRowBackground(GlassRowBackground())
 
-                Section {
+                GlassSection {
                     let files = watch.files
                     Button {
                         Task { await files.sync(api: session.api) }
@@ -405,9 +404,8 @@ struct WatchSheet: View {
                 } footer: {
                     Text("Each sync copies up to \(watch.files.perSyncLimit) of the newest activity, sleep and monitoring files, then sends them to the hub. Nothing on the watch is changed or removed.")
                 }
-                .listRowBackground(GlassRowBackground())
 
-                Section {
+                GlassSection {
                     let files = watch.files
                     if let last = files.lastSync {
                         ForEach(last.byKind.sorted { $0.key < $1.key }, id: \.key) { kind, count in
@@ -427,9 +425,8 @@ struct WatchSheet: View {
                 } footer: {
                     Text("Which file types the watch lists, what reached this phone, and any file the hub couldn't read.")
                 }
-                .listRowBackground(GlassRowBackground())
 
-                Section("Connection log") {
+                GlassSection("Connection log") {
                     if watch.log.isEmpty { Text("Nothing yet.").foregroundStyle(.secondary) }
                     ForEach(watch.log.suffix(80).reversed()) { line in
                         HStack(alignment: .firstTextBaseline) {
@@ -439,9 +436,8 @@ struct WatchSheet: View {
                         .font(.caption)
                     }
                 }
-                .listRowBackground(GlassRowBackground())
 
-                Section {
+                GlassSection {
                     Button("Pair a different watch") { pairing = true }
                     Button("Forget this watch", role: .destructive) {
                         watch.forget()
@@ -450,9 +446,7 @@ struct WatchSheet: View {
                 } footer: {
                     Text("The log shows message types, never their contents. To fully unpair, also forget the watch in iOS Settings → Bluetooth.")
                 }
-                .listRowBackground(GlassRowBackground())
             }
-            .hubGlassList()
             .navigationTitle("Watch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
@@ -481,16 +475,15 @@ struct PairWatchSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
+            GlassForm {
+                GlassSection {
                     Label { Text("Unpair the watch from Garmin Connect or any other phone or computer. It holds one pairing at a time.") } icon: { Text("1").monospacedDigit().foregroundStyle(.secondary) }
                     Label { Text("On the watch: Settings → Connectivity → Phone → Pair Phone. Don't scan its QR code.") } icon: { Text("2").monospacedDigit().foregroundStyle(.secondary) }
                     Label { Text("Pick it below, then accept the pairing request iOS shows.") } icon: { Text("3").monospacedDigit().foregroundStyle(.secondary) }
                 }
-                .listRowBackground(GlassRowBackground())
                 .font(.subheadline)
 
-                Section {
+                GlassSection {
                     if watch.candidates.isEmpty {
                         HStack {
                             ProgressView()
@@ -514,9 +507,7 @@ struct PairWatchSheet: View {
                 } footer: {
                     Text("Only pick your own watch.")
                 }
-                .listRowBackground(GlassRowBackground())
             }
-            .hubGlassList()
             .navigationTitle("Pair watch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
