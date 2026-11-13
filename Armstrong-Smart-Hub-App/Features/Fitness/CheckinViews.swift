@@ -2,9 +2,9 @@ import SwiftUI
 
 // MARK: Morning check-in
 
-/// One question a morning: how you feel, as the hub's three best guesses on
-/// cards (from last night's numbers and what you said the days before), the
-/// likeliest outlined. Once answered: the answer as one line with its icon.
+/// One question a morning: how you feel, as the hub's three best guesses as
+/// plain text options (from last night's numbers and what you said the days before), the
+/// likeliest outlined. Once answered: the answer as one line.
 /// Under both, a past day to confirm if there is one. Straight on the page;
 /// the days' answers show in the week strip (WeekStrip). Every answer is a
 /// label the hub learns from (checkin-engine.ts).
@@ -51,9 +51,10 @@ struct MorningCheckin: View {
                 Text(store.guess == nil ? "Pick the closest" : "Our three best guesses from your data")
                     .font(.subheadline).foregroundStyle(BrickLook.soft)
             }
-            HStack(alignment: .top, spacing: 10) {
-                ForEach(options) { option in
-                    CheckinChoice(option: option, guessed: store.guess != nil && option.id == options.first?.id) {
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                    if index > 0 { Rectangle().fill(BrickLook.line).frame(width: 1).padding(.vertical, 6) }
+                    CheckinChoice(option: option, guessed: store.guess != nil && index == 0) {
                         answer(option.key, offered: options.map(\.key))
                     }
                 }
@@ -61,7 +62,7 @@ struct MorningCheckin: View {
             // The feelings the cards don't show, for a morning the guesses missed.
             Menu {
                 ForEach(Feeling.all.filter { key in !options.contains { $0.key == key } }, id: \.self) { key in
-                    Button { answer(key, offered: options.map(\.key)) } label: { Label(Feeling.label(key), systemImage: Feeling.icon(key)) }
+                    Button { answer(key, offered: options.map(\.key)) } label: { Text(Feeling.label(key)) }
                 }
             } label: {
                 Text("Other").font(.footnote).foregroundStyle(BrickLook.soft)
@@ -72,17 +73,11 @@ struct MorningCheckin: View {
         }
     }
 
-    /// The answer: its icon on a tinted circle and one line. Tap to change it.
+    /// The answer as one line, in its color. Tap Change to pick again.
     private func answered(_ feeling: String) -> some View {
-        let tint = Feeling.tint(feeling)
-        return HStack(spacing: 14) {
-            Image(systemName: Feeling.icon(feeling))
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(tint)
-                .frame(width: 52, height: 52)
-                .background(tint.opacity(0.14), in: .circle)
+        HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(Feeling.answer(feeling)).font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
+                Text(Feeling.answer(feeling)).font(.system(size: 22, weight: .regular)).foregroundStyle(Feeling.tint(feeling))
                 Text("Checked in").font(.subheadline).foregroundStyle(BrickLook.soft)
             }
             Spacer(minLength: 8)
@@ -185,8 +180,8 @@ struct WeekStrip: View {
     }
 }
 
-/// A morning card: icon, the feeling and a few words why, on a soft tile.
-/// The hub's likeliest guess is outlined in its color, so it is one tap to agree.
+/// A morning option: the feeling and a few words why, plain text on the page.
+/// The hub's likeliest guess is set in its color with a bar under it, so it is one tap to agree.
 struct CheckinChoice: View {
     var option: CheckinOption
     var guessed: Bool
@@ -196,19 +191,17 @@ struct CheckinChoice: View {
         let tint = Feeling.tint(option.key)
         Button(action: action) {
             VStack(spacing: 6) {
-                Image(systemName: Feeling.icon(option.key)).font(.system(size: 24, weight: .regular)).foregroundStyle(tint)
-                    .frame(height: 30)
-                Text(option.label).font(.body).foregroundStyle(BrickLook.ink).lineLimit(1).minimumScaleFactor(0.8)
+                Text(option.label)
+                    .font(.system(size: 17, weight: guessed ? .semibold : .regular))
+                    .foregroundStyle(guessed ? tint : BrickLook.ink)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                Capsule().fill(guessed ? tint : .clear).frame(width: 18, height: 2)
                 Text(option.reason ?? " ")
                     .font(.caption2).foregroundStyle(BrickLook.soft)
                     .multilineTextAlignment(.center).lineLimit(2, reservesSpace: true)
             }
-            .padding(.horizontal, 8).padding(.vertical, 14)
+            .padding(.horizontal, 8).padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .background(guessed ? tint.opacity(0.12) : BrickLook.pill, in: .rect(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(guessed ? tint : .clear, lineWidth: 1.5)
-            }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
