@@ -265,10 +265,6 @@ struct FitnessView: View {
             .accessibilityLabel("Watch settings")
             .padding(.top, 4)
             if watch.savedWatchID != nil {
-                Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
-                    .font(.caption.weight(.medium)).tracking(1.2)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(BrickLook.soft).padding(.top, 14)
                 Button { showingWatch = true } label: {
                     Text(watchTitle)
                         .font(.largeTitle.weight(.light))
