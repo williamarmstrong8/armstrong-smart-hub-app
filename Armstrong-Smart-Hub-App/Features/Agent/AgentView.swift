@@ -32,27 +32,7 @@ struct AgentView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Menu {
-                ForEach(groups, id: \.self) { group in
-                    Section(group) {
-                        ForEach(store.models.filter { ($0.group ?? "Models") == group }) { m in
-                            Button {
-                                store.modelID = m.id
-                            } label: {
-                                if m.id == store.model?.id {
-                                    Label(m.name, systemImage: "checkmark")
-                                } else {
-                                    Text(m.name)
-                                }
-                                Text([m.note, m.priceText].compactMap { $0 }.joined(separator: " · "))
-                            }
-                        }
-                    }
-                }
-                if !store.messages.isEmpty {
-                    Section {
-                        Button("New chat", systemImage: "square.and.pencil") { store.reset() }
-                    }
-                }
+                modelMenu
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
@@ -78,6 +58,47 @@ struct AgentView: View {
         .hubAnimation(value: store.messages.isEmpty)
     }
 
+    @ViewBuilder
+    private var modelMenu: some View {
+        ForEach(groups, id: \.self) { group in
+            Section(group) {
+                ForEach(models(in: group)) { m in
+                    modelButton(m)
+                }
+            }
+        }
+        if !store.messages.isEmpty {
+            Section {
+                Button("New chat", systemImage: "square.and.pencil") { store.reset() }
+            }
+        }
+    }
+
+    private func models(in group: String) -> [AgentModel] {
+        store.models.filter { ($0.group ?? "Models") == group }
+    }
+
+    /// A model's name (checked when it's the one in use) over its note and price.
+    private func modelButton(_ m: AgentModel) -> some View {
+        let selected = m.id == store.model?.id
+        let detail = [m.note, m.priceText].compactMap { $0 }.joined(separator: " · ")
+        return Button {
+            store.modelID = m.id
+        } label: {
+            modelTitle(m.name, selected: selected)
+            Text(detail)
+        }
+    }
+
+    @ViewBuilder
+    private func modelTitle(_ name: String, selected: Bool) -> some View {
+        if selected {
+            Label(name, systemImage: "checkmark")
+        } else {
+            Text(name)
+        }
+    }
+
     private var groups: [String] {
         var seen: [String] = []
         for m in store.models where !seen.contains(m.group ?? "Models") { seen.append(m.group ?? "Models") }
@@ -97,7 +118,12 @@ struct AgentView: View {
         .glassGlare(.regular, in: .capsule)
         .animation(.default, value: store.sessionCost)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("This chat has cost \(store.sessionCostIsExact ? "" : "about ")\(AgentCost.format(store.sessionCost))")
+        .accessibilityLabel(costLabel)
+    }
+
+    private var costLabel: String {
+        let about = store.sessionCostIsExact ? "" : "about "
+        return "This chat has cost " + about + AgentCost.format(store.sessionCost)
     }
 
     // MARK: Transcript
@@ -189,7 +215,7 @@ struct AgentView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !m.costs.isEmpty {
-                    Text("\(m.costIsExact ? "" : "≈ ")\(AgentCost.format(m.cost)) · \(m.costs.count) model call\(m.costs.count == 1 ? "" : "s")")
+                    Text(costLine(m))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(HubDesign.secondary)
                 }
@@ -197,6 +223,13 @@ struct AgentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.trailing, 16)
         }
+    }
+
+    /// "≈ $0.0031 · 3 model calls" under an answer.
+    private func costLine(_ m: AgentMessage) -> String {
+        let prefix = m.costIsExact ? "" : "≈ "
+        let calls = m.costs.count == 1 ? "1 model call" : "\(m.costs.count) model calls"
+        return prefix + AgentCost.format(m.cost) + " · " + calls
     }
 
     /// Bold, italics, code and links; line breaks kept. Tables and headings show as plain text.
@@ -216,7 +249,9 @@ struct AgentView: View {
                 .onSubmit(send)
                 .padding(.horizontal, 18).padding(.vertical, 13)
                 .glassGlare(.regular, in: .rect(cornerRadius: 26))
-            Button(action: store.sending ? store.stop : send) {
+            Button {
+                if store.sending { store.stop() } else { send() }
+            } label: {
                 Image(systemName: store.sending ? "stop.fill" : "arrow.up")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(HubDesign.ink)

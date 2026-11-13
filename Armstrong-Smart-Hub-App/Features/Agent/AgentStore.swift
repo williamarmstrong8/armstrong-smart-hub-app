@@ -57,9 +57,12 @@ final class AgentStore {
     var models: [AgentModel] = []
     var sending = false
     /// The chosen model's gateway id; empty until the list loads, then the hub's default.
-    var modelID: String = UserDefaults.standard.string(forKey: "agent.model") ?? "" {
-        didSet { UserDefaults.standard.set(modelID, forKey: "agent.model") }
+    var modelID: String = UserDefaults.standard.string(forKey: AgentStore.modelKey) ?? "" {
+        didSet { UserDefaults.standard.set(modelID, forKey: AgentStore.modelKey) }
     }
+
+    /// Bumped when the default model changes, so the new default applies once.
+    private static let modelKey = "agent.model.2"
 
     private var task: Task<Void, Never>?
 
