@@ -15,10 +15,6 @@ enum BrickLook {
     static let live = HubDesign.positive
     /// The grey of the "Brick" pressed into the device; the picture is the same in dark mode, so this is too.
     static let wordmark = HubDesign.adaptive(0x9B9692, 0x9B9692)
-    /// The three stats under the device: time back, what it held, the yearly pace.
-    static let backTint = HubDesign.adaptive(0x1E9E4A, 0x3DDC6E)
-    static let heldTint = HubDesign.adaptive(0xD98A00, 0xFFB340)
-    static let paceTint = HubDesign.adaptive(0x2F6FD6, 0x6FA8FF)
 
     static let cardRadius = HubLayout.cardRadius
     /// The top sheet's bottom corners on Brick and Fitness: Brick's 64-point button's
@@ -362,12 +358,10 @@ enum BrickLifeBack {
     }
 }
 
-/// One stat under the device: an icon for what it is, a short number and its label. No goal, so no ring to fill.
+/// One stat under the device: a short number and its label.
 struct BrickLifeStat {
     var value: String
     var label: String
-    var icon: String
-    var tint: Color
 }
 
 extension BrickLifeBack {
@@ -378,28 +372,26 @@ extension BrickLifeBack {
         if h >= 24 { value = String(format: h >= 240 ? "%.0f" : "%.1f", h / 24); label = "Days back" }
         else if h >= 1 { value = String(format: h >= 10 ? "%.0f" : "%.1f", h); label = "Hours back" }
         else { value = "\(Int(seconds / 60))"; label = "Minutes back" }
-        return BrickLifeStat(value: value, label: label, icon: "hourglass", tint: BrickLook.backTint)
+        return BrickLifeStat(value: value, label: label)
     }
 
     /// What the time would have held: books (about 7 hours each), films (2 hours) or episodes (45 minutes).
     static func held(_ seconds: TimeInterval) -> BrickLifeStat {
         let h = seconds / 3600
-        let (unit, name, icon): (Double, String, String) = h >= 7 ? (7, "Books", "book.closed.fill")
-            : (h >= 2 ? (2, "Films", "film.fill") : (0.75, "Episodes", "tv.fill"))
-        return BrickLifeStat(value: "\(Int(h / unit))", label: "\(name)' worth", icon: icon, tint: BrickLook.heldTint)
+        let (unit, name): (Double, String) = h >= 7 ? (7, "Books") : (h >= 2 ? (2, "Films") : (0.75, "Episodes"))
+        return BrickLifeStat(value: "\(Int(h / unit))", label: "\(name)' worth")
     }
 
     /// Days a year at the recent daily pace.
     static func pace(_ pace: TimeInterval?) -> BrickLifeStat {
         let d = (pace ?? 0) * 365 / 86400
         let value = pace == nil ? "–" : (d >= 10 ? String(format: "%.0f", d) : String(format: "%.1f", d))
-        return BrickLifeStat(value: value, label: "Days a year", icon: "calendar", tint: BrickLook.paceTint)
+        return BrickLifeStat(value: value, label: "Days a year")
     }
 }
 
 /// Three stats under the device, in the room Fitness gives its scores: life back so far, what it
-/// would have held, and the days a year at this pace. Each is a tinted glass disc with its icon
-/// and number, and opens the history.
+/// would have held, and the days a year at this pace. Plain numbers; each opens the history.
 struct BrickLifeStats: View {
     let store: BrickStore
     var size: CGFloat = 100
@@ -407,29 +399,22 @@ struct BrickLifeStats: View {
     var body: some View {
         let total = store.lifetimeSeconds
         HStack(alignment: .top, spacing: 0) {
-            disc(BrickLifeBack.back(total))
-            disc(BrickLifeBack.held(total))
-            disc(BrickLifeBack.pace(total >= 60 ? store.dailyPace : nil))
+            stat(BrickLifeBack.back(total))
+            stat(BrickLifeBack.held(total))
+            stat(BrickLifeBack.pace(total >= 60 ? store.dailyPace : nil))
         }
     }
 
-    private func disc(_ r: BrickLifeStat) -> some View {
+    private func stat(_ r: BrickLifeStat) -> some View {
         NavigationLink(value: BrickRoute.activity) {
-            VStack(spacing: 8) {
-                VStack(spacing: size * 0.04) {
-                    Image(systemName: r.icon)
-                        .font(.system(size: size * 0.2, weight: .semibold))
-                        .foregroundStyle(r.tint)
-                    Text(r.value)
-                        .font(Fit.number(size * 0.3))
-                        .foregroundStyle(BrickLook.ink)
-                        .lineLimit(1).minimumScaleFactor(0.5)
-                        .contentTransition(.numericText())
-                }
-                .padding(.horizontal, size * 0.12)
-                .frame(width: size, height: size)
-                .glassEffect(.regular.tint(r.tint.opacity(0.18)), in: Circle())
-                Text(r.label).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+            VStack(spacing: 6) {
+                Text(r.value)
+                    .font(Fit.number(size * 0.44))
+                    .foregroundStyle(BrickLook.ink)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                    .contentTransition(.numericText())
+                Text(r.label).font(.subheadline.weight(.medium)).foregroundStyle(BrickLook.soft)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
             .contentShape(.rect)
