@@ -12,7 +12,7 @@ struct WatchHero: View {
             Image("GarminHero")
                 .resizable()
                 .scaledToFit()
-                .frame(height: 210)
+                .frame(height: 196)
                 .overlay { timeFace }
                 .overlay { syncFace }
                 .rotationEffect(.degrees(-6))
@@ -28,6 +28,7 @@ struct WatchHero: View {
         )
         // The watch is bigger than the slot; it overflows evenly so the hero's height is unchanged.
         .frame(height: 180)
+        .offset(y: -10)
         .accessibilityHidden(true)
     }
 
