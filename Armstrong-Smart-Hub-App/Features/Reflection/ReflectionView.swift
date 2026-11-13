@@ -69,7 +69,6 @@ struct ReflectionView: View {
     @State private var journal: JournalTarget?
     @State private var searchingBooks = false
     @State private var openBookID: UUID?
-    @State private var scanning = false
 
     var body: some View {
         NavigationStack {
@@ -83,9 +82,6 @@ struct ReflectionView: View {
             }, mountains: true)
             .scrollDismissesKeyboard(.interactively)
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .bottom) {
-                if !searchingBooks { scanButton }
-            }
             // The book search page's keyboard mustn't resize the page underneath it.
             .ignoresSafeArea(searchingBooks ? .keyboard : [])
             .allowsHitTesting(!searchingBooks)
@@ -234,24 +230,6 @@ struct ReflectionView: View {
             } else {
                 BookShelf(books: store.books) { openBookID = $0.id }
             }
-        }
-    }
-
-    private var scanButton: some View {
-        Button { scanning = true } label: {
-            Label("Scan a quote", systemImage: "text.viewfinder")
-                .font(.headline)
-                .foregroundStyle(HubDesign.ink)
-                .padding(.horizontal, 24)
-                .frame(minHeight: 52)
-                .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)), in: .capsule)
-                .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, 8)
-        .fullScreenCover(isPresented: $scanning) {
-            QuoteScanFlow(store: store, bookID: nil) { scanning = false }
         }
     }
 
