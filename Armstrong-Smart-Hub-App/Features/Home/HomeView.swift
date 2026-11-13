@@ -25,10 +25,11 @@ struct HomeView: View {
     @State private var showAutomations = false
     @State private var searching = false
     @State private var showBackground = false
+    @State private var showAccount = false
 
     var body: some View {
         NavigationStack {
-            HubTabPage(topBar: { topBar }, hero: {
+            HubTabPage(hero: {
                 if store.state != nil, store.state?.configured != false { hero }
             }, content: {
                 content
@@ -110,6 +111,7 @@ struct HomeView: View {
                 .toast(toast)
             }
             .sheet(isPresented: $showBackground) { BackgroundSettingsView() }
+            .sheet(isPresented: $showAccount) { SettingsView() }
             .fullScreenCover(isPresented: $display) {
                 DisplayModeView(store: store)
             }
@@ -146,19 +148,28 @@ struct HomeView: View {
         TitleCardPresenter.shared.open(p, api: session.api) { Task { await store.refresh(api: session.api) } }
     }
 
-    private var topBar: some View {
-        BrickTopBar {
-            Menu("More", systemImage: "ellipsis") {
-                Button("Display mode", systemImage: "rectangle.on.rectangle") { display = true }
-                Button("Choose devices", systemImage: "slider.horizontal.3") { managing = true }
-                    .disabled(store.entities.isEmpty)
-                Button("Automations", systemImage: "bolt") { showAutomations = true }
-                    .disabled(store.state?.automations == nil || store.state?.errors.automations != nil)
-                Button("Add habit", systemImage: "plus.circle") { editingHabit = .new }
-                Button("Background", systemImage: "photo") { showBackground = true }
-            }
-            .labelStyle(.iconOnly)
+    /// Everything that used to sit in the page's corners, behind one button at the bottom.
+    private var settingsButton: some View {
+        Menu {
+            Button("Display mode", systemImage: "rectangle.on.rectangle") { display = true }
+            Button("Choose devices", systemImage: "slider.horizontal.3") { managing = true }
+                .disabled(store.entities.isEmpty)
+            Button("Automations", systemImage: "bolt") { showAutomations = true }
+                .disabled(store.state?.automations == nil || store.state?.errors.automations != nil)
+            Button("Add habit", systemImage: "plus.circle") { editingHabit = .new }
+            Button("Background", systemImage: "photo") { showBackground = true }
+            Button("Account", systemImage: "person.crop.circle") { showAccount = true }
+        } label: {
+            Label("Settings", systemImage: "gearshape")
+                .font(.headline)
+                .foregroundStyle(HubDesign.ink)
+                .padding(.horizontal, 24)
+                .frame(minHeight: 52)
+                .glassGlare(.regular.interactive(), in: .capsule)
+                .contentShape(.capsule)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
     }
 
     /// A centred greeting and one line on the house, quick buttons for the lights, and a Docker check.
@@ -256,6 +267,7 @@ struct HomeView: View {
                 MediaShelf(requests: shelfRequests, hiding: TitleCardPresenter.shared.landingID, onPick: open)
             }
 
+            settingsButton
         }
     }
 

@@ -20,6 +20,7 @@ struct BrickView: View {
                 VStack(spacing: HubLayout.sectionGap) {
                     BrickSheet(store: store, path: $path)
                     LazyVStack(spacing: HubLayout.sectionGap) {
+                        pageButtons
                         BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()))
                         settings
                     }
@@ -68,6 +69,27 @@ struct BrickView: View {
                                              set: { if !$0 { store.message = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(store.message ?? "") }
+    }
+
+    // MARK: Modes and schedules
+
+    private var pageButtons: some View {
+        HStack(spacing: 12) {
+            pageButton("Modes", icon: "square.on.square", route: .modes)
+            pageButton("Schedules", icon: "calendar.badge.clock", route: .schedules)
+        }
+    }
+
+    private func pageButton(_ title: String, icon: String, route: BrickRoute) -> some View {
+        Button { path.append(route) } label: {
+            Label(title, systemImage: icon)
+                .font(.headline)
+                .foregroundStyle(BrickLook.ink)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .glassGlare(.regular.interactive(), in: .capsule)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Settings
@@ -142,24 +164,7 @@ private struct BrickSheet: View {
     var body: some View {
         let p = store.blockingProfile
         VStack(spacing: 0) {
-            HStack {
-                Button { path.append(.schedules) } label: {
-                    Image(systemName: "calendar.badge.clock")
-                        .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
-                        .contentShape(.rect)
-                }
-                .accessibilityLabel("Schedules")
-                Spacer()
-                Button { path.append(.modes) } label: {
-                    Image(systemName: "square.on.square")
-                        .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
-                        .contentShape(.rect)
-                }
-                .accessibilityLabel("Modes")
-            }
-            .font(.title2.weight(.light))
-            .foregroundStyle(BrickLook.ink)
-            .buttonStyle(.plain)
+            Color.clear.frame(height: HubLayout.minHitTarget)
             .padding(.top, HubLayout.topInset)
             device.padding(.top, HubLayout.sectionGap)
             Text(p?.name ?? Demo.copy("Unbricked", "Ready to focus"))

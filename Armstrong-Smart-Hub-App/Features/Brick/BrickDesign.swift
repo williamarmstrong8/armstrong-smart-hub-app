@@ -119,22 +119,6 @@ extension View {
     func brickBackdrop() -> some View { hubPageStyle() }
 }
 
-/// The top row every tab shares: account on the left, the page's own buttons on the right.
-struct BrickTopBar<Trailing: View>: View {
-    @ViewBuilder var trailing: Trailing
-    var body: some View {
-        HStack(spacing: 8) {
-            AccountButton()
-            Spacer(minLength: 8)
-            trailing
-        }
-        .buttonStyle(HubToolbarButtonStyle())
-        .frame(minHeight: HubLayout.minHitTarget)
-        .font(.title3.weight(.regular))
-        .foregroundStyle(HubDesign.ink)
-    }
-}
-
 /// A small rounded fact under a hero.
 struct BrickPill: View {
     var text: String

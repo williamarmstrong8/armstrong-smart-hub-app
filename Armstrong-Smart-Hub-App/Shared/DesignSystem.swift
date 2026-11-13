@@ -108,8 +108,7 @@ struct HubToolbarButtonStyle: ButtonStyle {
 /// A stable header and one vertical scroll owner. The top bar and hero sit together on a glass
 /// sheet over the backdrop, as on Fitness and Brick. Lazy sections avoid constructing
 /// offscreen charts and images; identity belongs to the feature's data, not its index.
-struct HubTabPage<TopBar: View, Hero: View, Content: View>: View {
-    @ViewBuilder var topBar: TopBar
+struct HubTabPage<Hero: View, Content: View>: View {
     @ViewBuilder var hero: Hero
     @ViewBuilder var content: Content
     /// An ambient gradient behind the page, for screens built from Liquid Glass.
@@ -119,7 +118,8 @@ struct HubTabPage<TopBar: View, Hero: View, Content: View>: View {
         ScrollView(.vertical) {
             VStack(spacing: HubLayout.sectionGap) {
                 VStack(spacing: 8) {
-                    topBar
+                    // Where the page's buttons used to sit; kept so every top sheet stays one height.
+                    Color.clear.frame(height: HubLayout.minHitTarget)
                     hero
                 }
                 .padding(.horizontal, HubLayout.gutter)
@@ -145,4 +145,14 @@ struct HubTabPage<TopBar: View, Hero: View, Content: View>: View {
         .demoScroll()
         .hubPageStyle(backdrop: mountains)
     }
+}
+
+/// Liquid Glass behind a settings-style list's rows. Put it on each Section.
+struct GlassRowBackground: View {
+    var body: some View { Color.clear.glassGlare(.regular, in: .rect(cornerRadius: 0)) }
+}
+
+extension View {
+    /// A list on the ambient backdrop; its Sections add `.listRowBackground(GlassRowBackground())`.
+    func hubGlassList() -> some View { hubListStyle() }
 }

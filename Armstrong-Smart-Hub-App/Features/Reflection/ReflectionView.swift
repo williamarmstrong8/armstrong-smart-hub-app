@@ -61,12 +61,8 @@ private enum JournalTarget: Identifiable {
 /// Reflection: guided breathing that floods the screen with colour, quotes worth keeping, and a journal.
 struct ReflectionView: View {
     @State private var store = ReflectionStore()
-    @AppStorage("reflection.minutes") private var minutes = 3
     @AppStorage("reflection.goal") private var goal = 60
-    @AppStorage("reflection.colorHex") private var colorHex = floodColors[0].hex
-    @AppStorage("reflection.pattern") private var patternID = "box"
-    @State private var showSettings = false
-    @State private var run: MeditationRun?
+    @State private var startingSession = false
     @State private var addingQuote = false
     @State private var quoteToDelete: ReflectionQuote?
     @State private var confirmQuoteDelete = false
@@ -77,12 +73,7 @@ struct ReflectionView: View {
 
     var body: some View {
         NavigationStack {
-            HubTabPage(topBar: {
-                BrickTopBar {
-                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel("Reflection settings")
-                }
-            }, hero: {
+            HubTabPage(hero: {
                 hero
             }, content: {
                 meditateSection
@@ -116,16 +107,8 @@ struct ReflectionView: View {
                     .presentationDetents([.medium])
                     .presentationBackground(.clear)
             }
-            .fullScreenCover(item: $run) { r in
-                MeditationFlood(color: Color(hexForWhiteText: r.hex), minutes: r.minutes, pattern: r.pattern) { done in
-                    store.finishedMeditation(minutes: done)
-                } onClose: {
-                    run = nil
-                }
-            }
-            .sheet(isPresented: $showSettings) {
-                ReflectionSettings(goal: $goal, minutes: $minutes, colorHex: $colorHex)
-                    .presentationDetents([.medium, .large])
+            .navigationDestination(isPresented: $startingSession) {
+                StartSessionPage(store: store)
             }
             .sheet(item: $journal) { target in
                 switch target {
@@ -217,59 +200,20 @@ struct ReflectionView: View {
     // MARK: Meditate
 
     private var meditateSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            BrickCard {
-                VStack(alignment: .leading, spacing: 16) {
-                    BrickCaps(text: "Length").foregroundStyle(HubDesign.secondary)
-                    HStack(spacing: 8) {
-                        ForEach(durations, id: \.self) { m in
-                            let selected = m == minutes
-                            Button { minutes = m } label: {
-                                HStack(spacing: 4) {
-                                    if selected { Image(systemName: "checkmark") }
-                                    Text("\(m) min")
-                                }
-                                .font(.subheadline.weight(selected ? .semibold : .regular)).monospacedDigit()
-                                .foregroundStyle(HubDesign.ink)
-                                .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
-                                .glassGlare(selected ? .regular.tint(HubDesign.action.opacity(0.55)) : .regular, in: .capsule)
-                                .contentShape(.capsule)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityAddTraits(selected ? .isSelected : [])
-                        }
-                    }
-
-                    BrickCaps(text: "Breathing").foregroundStyle(HubDesign.secondary)
-                    Menu {
-                        Picker("Breathing pattern", selection: $patternID) {
-                            ForEach(BreathPattern.all) { Text($0.title).tag($0.id) }
-                        }
-                    } label: {
-                        HStack {
-                            Text(BreathPattern.find(patternID).title).monospacedDigit()
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.up.chevron.down").font(.footnote)
-                        }
-                        .font(.subheadline)
+        BrickCard {
+            VStack(alignment: .leading, spacing: 16) {
+                BrickCaps(text: "Meditation").foregroundStyle(HubDesign.secondary)
+                Text("Guided breathing over a wash of colour.")
+                    .font(.subheadline).foregroundStyle(HubDesign.secondary)
+                Button { startingSession = true } label: {
+                    Label("Start session", systemImage: "wind")
+                        .font(.headline)
                         .foregroundStyle(HubDesign.ink)
-                        .padding(.horizontal, 16)
-                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
-                        .glassGlare(.regular, in: .capsule)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)), in: .capsule)
                         .contentShape(.capsule)
-                    }
-                    .accessibilityLabel("Breathing pattern, \(BreathPattern.find(patternID).title)")
-
-                    Button { run = MeditationRun(minutes: minutes, hex: colorHex, pattern: BreathPattern.find(patternID)) } label: {
-                        Label("Begin \(minutes) min", systemImage: "wind")
-                            .font(.headline)
-                            .foregroundStyle(HubDesign.ink)
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)), in: .capsule)
-                            .contentShape(.capsule)
-                    }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -703,17 +647,59 @@ private struct MeditationFlood: View {
     }
 }
 
-/// Reflection's settings: the colour that floods the screen, the weekly goal, and the default sitting length.
-private struct ReflectionSettings: View {
-    @Binding var goal: Int
-    @Binding var minutes: Int
-    @Binding var colorHex: String
-    @Environment(\.dismiss) private var dismiss
+/// Where a session is set up: how long, which breathing, the colour, and the weekly goal. Begin starts it.
+private struct StartSessionPage: View {
+    let store: ReflectionStore
+    @AppStorage("reflection.minutes") private var minutes = 3
+    @AppStorage("reflection.goal") private var goal = 60
+    @AppStorage("reflection.colorHex") private var colorHex = floodColors[0].hex
+    @AppStorage("reflection.pattern") private var patternID = "box"
+    @State private var run: MeditationRun?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Meditation background") {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: HubLayout.sectionGap) {
+                group("Length") {
+                    HStack(spacing: 8) {
+                        ForEach(durations, id: \.self) { m in
+                            let selected = m == minutes
+                            Button { minutes = m } label: {
+                                HStack(spacing: 4) {
+                                    if selected { Image(systemName: "checkmark") }
+                                    Text("\(m) min")
+                                }
+                                .font(.subheadline.weight(selected ? .semibold : .regular)).monospacedDigit()
+                                .foregroundStyle(HubDesign.ink)
+                                .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                                .glassGlare(selected ? .regular.tint(HubDesign.action.opacity(0.55)) : .regular, in: .capsule)
+                                .contentShape(.capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(selected ? .isSelected : [])
+                        }
+                    }
+                }
+                group("Breathing") {
+                    Menu {
+                        Picker("Breathing pattern", selection: $patternID) {
+                            ForEach(BreathPattern.all) { Text($0.title).tag($0.id) }
+                        }
+                    } label: {
+                        HStack {
+                            Text(BreathPattern.find(patternID).title).monospacedDigit()
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.up.chevron.down").font(.footnote)
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 16)
+                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                        .glassGlare(.regular, in: .capsule)
+                        .contentShape(.capsule)
+                    }
+                    .accessibilityLabel("Breathing pattern, \(BreathPattern.find(patternID).title)")
+                }
+                group("Background") {
                     HStack(spacing: 16) {
                         ForEach(floodColors, id: \.hex) { c in
                             Button { colorHex = c.hex } label: {
@@ -730,19 +716,44 @@ private struct ReflectionSettings: View {
                         Spacer(minLength: 0)
                     }
                 }
-                Section("Weekly goal") {
+                group("Weekly goal") {
                     Stepper("\(goal) min a week", value: $goal, in: 15...600, step: 15)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: HubLayout.minHitTarget)
+                        .glassGlare(.regular, in: .capsule)
                 }
-                Section("Default length") {
-                    Picker("Length", selection: $minutes) {
-                        ForEach(durations, id: \.self) { Text("\($0) min").tag($0) }
-                    }
-                    .pickerStyle(.segmented)
+                Button { run = MeditationRun(minutes: minutes, hex: colorHex, pattern: BreathPattern.find(patternID)) } label: {
+                    Label("Begin \(minutes) min", systemImage: "wind")
+                        .font(.headline)
+                        .foregroundStyle(HubDesign.ink)
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)).interactive(), in: .capsule)
+                        .contentShape(.capsule)
                 }
+                .buttonStyle(.plain)
             }
-            .navigationTitle("Reflection")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .padding(.horizontal, HubLayout.gutter)
+            .padding(.top, HubLayout.topInset)
+            .padding(.bottom, HubLayout.bottomInset)
+            .containerRelativeFrame(.horizontal)
+        }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .hubPageStyle(backdrop: true)
+        .navigationTitle("Start session")
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $run) { r in
+            MeditationFlood(color: Color(hexForWhiteText: r.hex), minutes: r.minutes, pattern: r.pattern) { done in
+                store.finishedMeditation(minutes: done)
+            } onClose: {
+                run = nil
+            }
+        }
+    }
+
+    private func group<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BrickCaps(text: title).foregroundStyle(HubDesign.secondary)
+            content()
         }
     }
 }

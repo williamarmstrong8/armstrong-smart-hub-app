@@ -13,7 +13,6 @@ struct FitnessView: View {
     @State private var store = FitnessStore()
     @State private var checkins = CheckinStore.shared
     @State private var showingWatch = false
-    @State private var showingFaces = false
     @State private var pairing = false
     @State private var workouts = WorkoutStore.shared
     /// The pages open on top of the overview.
@@ -134,7 +133,6 @@ struct FitnessView: View {
             }
             #endif
             .sheet(isPresented: $showingWatch) { WatchSheet() }
-            .sheet(isPresented: $showingFaces) { WatchFacesSheet() }
             .sheet(isPresented: $pairing) { PairWatchSheet() }
         }
     }
@@ -257,25 +255,14 @@ struct FitnessView: View {
     /// The top sheet, like Brick's: the watch floating on it, the day, and the three scores.
     private var sheet: some View {
         VStack(spacing: 0) {
-            BrickTopBar {
-                if watch.savedWatchID != nil {
-                    Button { showingWatch = true } label: {
-                        TablerIcon(name: "device-watch", size: 22)
-                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
-                            .contentShape(.rect)
-                    }
-                    .accessibilityLabel("Watch")
-                }
-            }
-            .buttonStyle(.plain)
-            .frame(minHeight: HubLayout.minHitTarget)
-            .padding(.top, HubLayout.topInset)
-            Button { if watch.savedWatchID != nil { showingFaces = true } } label: {
+            Color.clear.frame(height: HubLayout.minHitTarget)
+                .padding(.top, HubLayout.topInset)
+            Button { if watch.savedWatchID != nil { showingWatch = true } else { pairing = true } } label: {
                 WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Watch faces")
+            .accessibilityLabel("Watch settings")
             .padding(.top, 4)
             if watch.savedWatchID != nil {
                 Text(Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()).uppercased())
@@ -340,6 +327,7 @@ struct WatchSheet: View {
     @Environment(WatchLink.self) private var watch
     @Environment(\.dismiss) private var dismiss
     @State private var pairing = false
+    @State private var showingFaces = false
     @State private var reparse: String?
 
     /// Asks the hub to parse every file it has stored again, so data from before a parser fix shows up.
@@ -362,6 +350,7 @@ struct WatchSheet: View {
                     LabeledContent("Watch", value: watch.identity?.model ?? watch.savedWatchName ?? "–")
                     if let identity = watch.identity { LabeledContent("Firmware", value: identity.firmware) }
                     LabeledContent("Status", value: status)
+                    Button("Watch faces", systemImage: "applewatch.watchface") { showingFaces = true }
                     switch watch.state {
                     case .connected, .connecting, .pairing, .handshaking:
                         Button("Disconnect", role: .destructive) { watch.disconnect() }
@@ -369,6 +358,7 @@ struct WatchSheet: View {
                         Button("Connect") { watch.connectSaved() }
                     }
                 }
+                .listRowBackground(GlassRowBackground())
 
                 Section {
                     let files = watch.files
@@ -415,6 +405,7 @@ struct WatchSheet: View {
                 } footer: {
                     Text("Each sync copies up to \(watch.files.perSyncLimit) of the newest activity, sleep and monitoring files, then sends them to the hub. Nothing on the watch is changed or removed.")
                 }
+                .listRowBackground(GlassRowBackground())
 
                 Section {
                     let files = watch.files
@@ -436,6 +427,7 @@ struct WatchSheet: View {
                 } footer: {
                     Text("Which file types the watch lists, what reached this phone, and any file the hub couldn't read.")
                 }
+                .listRowBackground(GlassRowBackground())
 
                 Section("Connection log") {
                     if watch.log.isEmpty { Text("Nothing yet.").foregroundStyle(.secondary) }
@@ -447,6 +439,7 @@ struct WatchSheet: View {
                         .font(.caption)
                     }
                 }
+                .listRowBackground(GlassRowBackground())
 
                 Section {
                     Button("Pair a different watch") { pairing = true }
@@ -457,11 +450,14 @@ struct WatchSheet: View {
                 } footer: {
                     Text("The log shows message types, never their contents. To fully unpair, also forget the watch in iOS Settings → Bluetooth.")
                 }
+                .listRowBackground(GlassRowBackground())
             }
+            .hubGlassList()
             .navigationTitle("Watch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $pairing) { PairWatchSheet() }
+            .sheet(isPresented: $showingFaces) { WatchFacesSheet() }
         }
     }
 
@@ -491,6 +487,7 @@ struct PairWatchSheet: View {
                     Label { Text("On the watch: Settings → Connectivity → Phone → Pair Phone. Don't scan its QR code.") } icon: { Text("2").monospacedDigit().foregroundStyle(.secondary) }
                     Label { Text("Pick it below, then accept the pairing request iOS shows.") } icon: { Text("3").monospacedDigit().foregroundStyle(.secondary) }
                 }
+                .listRowBackground(GlassRowBackground())
                 .font(.subheadline)
 
                 Section {
@@ -517,7 +514,9 @@ struct PairWatchSheet: View {
                 } footer: {
                     Text("Only pick your own watch.")
                 }
+                .listRowBackground(GlassRowBackground())
             }
+            .hubGlassList()
             .navigationTitle("Pair watch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }

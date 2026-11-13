@@ -12,7 +12,7 @@ struct FinanceView: View {
 
     var body: some View {
         NavigationStack {
-            HubTabPage(topBar: { topBar }, hero: {
+            HubTabPage(hero: {
                 if let r = store.response, r.configured, r.hasData == true, let d = r.dashboard { hero(d) }
             }, content: {
                 content
@@ -20,7 +20,10 @@ struct FinanceView: View {
             .toolbarBackground(HubDesign.page, for: .navigationBar)
             .toolbar(.hidden, for: .navigationBar)
             .task { if !store.fetched { await store.load(api: session.api) } }
-            .refreshable { await store.load(api: session.api) }
+            .refreshable {
+                if store.response?.configured == true { await store.sync(api: session.api, toast: toast) }
+                else { await store.load(api: session.api) }
+            }
             .sheet(item: $retagging) { t in
                 CategoryPicker(transaction: t, options: store.categoryOptions, history: store.dashboard?.transactions ?? []) { category in
                     Task { await store.retag(t, to: category, api: session.api, toast: toast) }
@@ -46,20 +49,6 @@ struct FinanceView: View {
             }
             #endif
             .toast(toast)
-        }
-    }
-
-    private var topBar: some View {
-        BrickTopBar {
-            if store.response?.configured == true {
-                Button {
-                    Task { await store.sync(api: session.api, toast: toast) }
-                } label: {
-                    if store.syncing { ProgressView() } else { Image(systemName: "arrow.clockwise") }
-                }
-                .disabled(store.syncing)
-                .accessibilityLabel("Sync")
-            }
         }
     }
 

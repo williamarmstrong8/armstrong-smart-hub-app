@@ -152,18 +152,3 @@ struct Poster: View {
         .glassGlare(.regular, in: .rect(cornerRadius: radius, style: .continuous))
     }
 }
-
-/// Settings and sign-out, reached from the person icon on each tab.
-struct AccountButton: View {
-    @State private var showing = false
-
-    var body: some View {
-        Button {
-            showing = true
-        } label: {
-            Image(systemName: "person.crop.circle")
-        }
-        .accessibilityLabel("Account and settings")
-        .sheet(isPresented: $showing) { SettingsView() }
-    }
-}

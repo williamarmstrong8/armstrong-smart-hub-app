@@ -13,6 +13,7 @@ struct SettingsView: View {
                         LabeledContent("Name", value: user.name)
                         LabeledContent("Email", value: user.email)
                     }
+                    .listRowBackground(GlassRowBackground())
                 }
                 Section("Hub") {
                     LabeledContent("Address", value: session.serverURL?.host() ?? "Not set")
@@ -20,6 +21,7 @@ struct SettingsView: View {
                         Button("Open the hub in Safari") { openURL(url) }
                     }
                 }
+                .listRowBackground(GlassRowBackground())
                 if let url = session.webURL("/calendar") {
                     Section {
                         Button("Reconnect Google Calendar", systemImage: "arrow.triangle.2.circlepath") { openURL(url) }
@@ -28,6 +30,7 @@ struct SettingsView: View {
                     } footer: {
                         Text("Opens the hub's Calendar page in Safari, where Google is linked. Reconnect to let Jarvis add events.")
                     }
+                    .listRowBackground(GlassRowBackground())
                 }
                 Section {
                     Button("Sign out", role: .destructive) {
@@ -37,8 +40,9 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .listRowBackground(GlassRowBackground())
             }
-            .hubListStyle()
+            .hubGlassList()
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
