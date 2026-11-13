@@ -29,7 +29,7 @@ struct HealthSummaryCard: View {
                     }
                     if let summary {
                         Text(summary.text)
-                            .font(.body)
+                            .font(.title3)
                             .foregroundStyle(BrickLook.ink)
                             .opacity(isToday ? 1 : 0.6)
                             .fixedSize(horizontal: false, vertical: true)
@@ -53,50 +53,8 @@ struct HealthSummaryCard: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Label(isToday ? "Today's read" : "Latest read", systemImage: "sparkles")
-                .font(.headline)
-                .foregroundStyle(BrickLook.ink)
-            Spacer()
-            if let created = summary.flatMap({ ISO.parse($0.createdAt) }) {
-                let when = created.formatted(.relative(presentation: .named))
-                Text(when.prefix(1).uppercased() + when.dropFirst())
-                    .font(.footnote)
-                    .foregroundStyle(BrickLook.soft)
-            }
-        }
-    }
-}
-
-/// What a subpage's numbers indicate for the person, from the same daily
-/// write as Today's read. Hidden when the hub has none for this page.
-struct PageSummarySection: View {
-    var store: FitnessStore
-    var page: FitnessPage
-
-    private var key: String {
-        switch page {
-        case .readiness: "readiness"
-        case .recovery: "recovery"
-        case .strain: "strain"
-        case .sleep: "sleep"
-        case .heart: "heart"
-        case .energy: "energy"
-        case .training: "training"
-        case .health: "health"
-        }
-    }
-
-    var body: some View {
-        if let text = store.snapshot?.summary?.pages?[key] {
-            FitSection(title: "What this means") {
-                Text(text)
-                    .font(.body)
-                    .foregroundStyle(BrickLook.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-            }
-        }
+        Label(isToday ? "Today's read" : "Latest read", systemImage: "sparkles")
+            .font(.headline)
+            .foregroundStyle(BrickLook.ink)
     }
 }

@@ -79,8 +79,6 @@ struct FitnessSummary: Decodable {
     var text: String
     var model: String
     var createdAt: String
-    /// A few sentences per subpage, keyed by FitnessPage's case name. Missing from older hubs and failed writes.
-    var pages: [String: String]?
 }
 
 struct FitnessHrv: Decodable, Identifiable {
