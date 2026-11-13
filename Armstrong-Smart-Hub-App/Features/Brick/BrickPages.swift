@@ -326,6 +326,7 @@ struct BrickActivityPage: View {
                 .padding(.vertical, 22)
                 .glassGlare(.regular, in: RoundedRectangle(cornerRadius: BrickLook.cardRadius, style: .continuous))
                 .padding(.horizontal, Fit.gutter).padding(.top, 28)
+                allTime.padding(.horizontal, Fit.gutter).padding(.top, 16)
                 VStack(spacing: 16) {
                     ForEach(Array(shown)) { d in
                         BrickDayCard(day: d.date, seconds: d.value, sessions: store.sessions(on: d.date))
@@ -351,6 +352,48 @@ struct BrickActivityPage: View {
         if weeksBack == 1 { return "Last week" }
         guard let a = week.first?.date, let b = week.last?.date else { return "" }
         return "\(a.formatted(.dateTime.month(.abbreviated).day())) – \(b.formatted(.dateTime.month(.abbreviated).day()))"
+    }
+
+    /// Everything since the first session: the plain totals, then what they add up to.
+    @ViewBuilder private var allTime: some View {
+        let total = store.lifetimeSeconds
+        if total >= 60, let first = store.firstBrickDay {
+            let pace = store.dailyPace ?? 0
+            let worth = BrickLifeBack.worth(total)
+            BrickCard {
+                BrickCaps(text: "All time").foregroundStyle(BrickLook.soft)
+                Text("\(BrickLifeBack.span(total)) of life back since \(first.formatted(.dateTime.month(.abbreviated).day().year()))")
+                    .font(.title3).padding(.top, 10)
+                    .fixedSize(horizontal: false, vertical: true)
+                VStack(spacing: 0) {
+                    line("What it held", "\(worth.value) \(worth.label)")
+                    BrickDivider()
+                    line("Daily pace, last 4 weeks", brickDuration(pace))
+                    BrickDivider()
+                    line("A year at this pace", BrickLifeBack.yearly(pace))
+                    BrickDivider()
+                    line("Of a 16-hour waking day", BrickLifeBack.wakingShare(pace))
+                    BrickDivider()
+                    line("Longest session", brickDuration(store.longestSession))
+                    if let best = store.bestDay {
+                        BrickDivider()
+                        line("Best day", "\(brickDuration(best.value)) · \(best.date.formatted(.dateTime.month(.abbreviated).day()))")
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+
+    private func line(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title).foregroundStyle(BrickLook.soft)
+            Spacer(minLength: 12)
+            Text(value).monospacedDigit()
+        }
+        .font(.body)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
     }
 
     private func stat(_ value: String, _ label: String) -> some View {

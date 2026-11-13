@@ -21,7 +21,10 @@ struct BrickView: View {
                     BrickSheet(store: store, path: $path)
                     LazyVStack(spacing: HubLayout.sectionGap) {
                         pageButtons
-                        BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()))
+                        NavigationLink(value: BrickRoute.activity) {
+                            BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()), chevron: true)
+                        }
+                        .buttonStyle(.plain)
                         settings
                     }
                     .padding(.horizontal, HubLayout.gutter)
@@ -174,6 +177,7 @@ private struct BrickSheet: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, HubLayout.sectionGap)
             }
+            if !Demo.isOn { BrickLifeStats(store: store).padding(.top, HubLayout.sectionGap) }
             if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.sectionGap) }
             Spacer(minLength: HubLayout.sectionGap)
             brickButton

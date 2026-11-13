@@ -296,6 +296,8 @@ struct BrickDayCard: View {
     var day: Date
     var seconds: TimeInterval
     var sessions: [BrickSession]
+    /// Shown when the card opens the history page.
+    var chevron = false
 
     var body: some View {
         let today = Calendar.current.isDateInToday(day)
@@ -304,6 +306,10 @@ struct BrickDayCard: View {
                 if today { Circle().fill(BrickLook.live).frame(width: 9, height: 9) }
                 BrickCaps(text: today ? "Today" : day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
                     .foregroundStyle(today ? BrickLook.ink : BrickLook.soft)
+                if chevron {
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .medium)).foregroundStyle(BrickLook.soft)
+                }
             }
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -316,6 +322,71 @@ struct BrickDayCard: View {
             }
             .padding(.top, 10)
         }
+    }
+}
+
+// MARK: Time earned back
+
+/// Brick time read as life rather than minutes: days back, what that time is worth, and where the pace leads.
+enum BrickLifeBack {
+    /// "2.4 days", "14 hours", "35 min".
+    static func span(_ seconds: TimeInterval) -> String {
+        let h = seconds / 3600
+        if h >= 24 { return String(format: h >= 240 ? "%.0f days" : "%.1f days", h / 24) }
+        if h >= 1 { return String(format: h >= 10 ? "%.0f hours" : "%.1f hours", h) }
+        return "\(Int(seconds / 60)) min"
+    }
+
+    /// What the time would have held: books past a book's worth (about 7 hours), films past one, else episodes.
+    static func worth(_ seconds: TimeInterval) -> (value: String, label: String) {
+        let h = seconds / 3600
+        if h >= 7 { return ("\(Int(h / 7))", Int(h / 7) == 1 ? "book's worth" : "books' worth") }
+        if h >= 2 { return ("\(Int(h / 2))", Int(h / 2) == 1 ? "film's worth" : "films' worth") }
+        let e = Int(seconds / (45 * 60))
+        return ("\(e)", e == 1 ? "episode's worth" : "episodes' worth")
+    }
+
+    /// Days a year at a daily pace.
+    static func yearly(_ pace: TimeInterval) -> String {
+        let d = pace * 365 / 86400
+        return d >= 10 ? String(format: "%.0f days", d) : String(format: "%.1f days", d)
+    }
+
+    /// Share of a 16-hour waking day.
+    static func wakingShare(_ pace: TimeInterval) -> String {
+        "\(Int((pace / (16 * 3600) * 100).rounded()))%"
+    }
+}
+
+/// Three numbers under the device: life back so far, what it was worth, and a year at this pace.
+struct BrickLifeStats: View {
+    let store: BrickStore
+
+    var body: some View {
+        let total = store.lifetimeSeconds
+        if total < 60 {
+            Text("Time you take back adds up here")
+                .font(.subheadline).foregroundStyle(BrickLook.soft)
+                .frame(maxWidth: .infinity)
+        } else {
+            let worth = BrickLifeBack.worth(total)
+            HStack(alignment: .top, spacing: 0) {
+                item(BrickLifeBack.span(total), "of life back")
+                item(worth.value, worth.label)
+                item(store.dailyPace.map(BrickLifeBack.yearly) ?? "--", "a year at this pace")
+            }
+        }
+    }
+
+    private func item(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(BrickLook.ink)
+                .contentTransition(.numericText())
+            Text(label).font(.footnote).foregroundStyle(BrickLook.soft)
+        }
+        .lineLimit(1).minimumScaleFactor(0.7)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -373,6 +444,64 @@ extension BrickStore {
         let done = week.filter { $0.date < today && $0.date >= cal.startOfDay(for: first) }
         guard !done.isEmpty else { return nil }
         return done.reduce(0) { $0 + $1.value } / Double(done.count)
+    }
+
+    /// Every span of Brick time ever, overlaps counted once and lockdowns left out. Runs to now while bricked.
+    var lifetimeSeconds: TimeInterval {
+        let lockdownNames = Set(profiles.filter(\.lockdown).map(\.name))
+        let spans = sessions
+            .filter { !lockdownNames.contains($0.profileName) }
+            .map { ($0.start, $0.end ?? now) }
+            .filter { $0.1 > $0.0 }
+            .sorted { $0.0 < $1.0 }
+        var total: TimeInterval = 0
+        var cur: (Date, Date)?
+        for s in spans {
+            if let c = cur, s.0 <= c.1 { cur = (c.0, max(c.1, s.1)) }
+            else { if let c = cur { total += c.1.timeIntervalSince(c.0) }; cur = s }
+        }
+        if let c = cur { total += c.1.timeIntervalSince(c.0) }
+        return total
+    }
+
+    /// The first day with Brick time, if any.
+    var firstBrickDay: Date? {
+        let lockdownNames = Set(profiles.filter(\.lockdown).map(\.name))
+        return sessions.filter { !lockdownNames.contains($0.profileName) }.map(\.start).min().map { cal.startOfDay(for: $0) }
+    }
+
+    /// Average Brick time a day over the last four weeks' finished days (fewer if Brick is newer).
+    /// Today counts too when it's the only day there is. nil before any session.
+    var dailyPace: TimeInterval? {
+        guard let first = firstBrickDay else { return nil }
+        let today = cal.startOfDay(for: Date())
+        let from = max(first, cal.date(byAdding: .day, value: -28, to: today) ?? first)
+        let days = cal.dateComponents([.day], from: from, to: today).day ?? 0
+        guard days > 0 else { return seconds(on: today) }
+        let total = (0..<days).reduce(0.0) { t, i in
+            t + seconds(on: cal.date(byAdding: .day, value: i, to: from) ?? from)
+        }
+        return total / Double(days)
+    }
+
+    /// The longest single session, lockdowns left out.
+    var longestSession: TimeInterval {
+        let lockdownNames = Set(profiles.filter(\.lockdown).map(\.name))
+        return sessions.filter { !lockdownNames.contains($0.profileName) }
+            .map { ($0.end ?? now).timeIntervalSince($0.start) }.max() ?? 0
+    }
+
+    /// The day with the most Brick time since the first one.
+    var bestDay: DayValue? {
+        guard let first = firstBrickDay else { return nil }
+        let today = cal.startOfDay(for: Date())
+        var d = first, best: DayValue?
+        while d <= today {
+            let v = seconds(on: d)
+            if v > (best?.value ?? 0) { best = DayValue(date: d, value: v) }
+            d = cal.date(byAdding: .day, value: 1, to: d) ?? today.addingTimeInterval(86400)
+        }
+        return best
     }
 
     /// Days in a row with a session, counting today if it has one.
