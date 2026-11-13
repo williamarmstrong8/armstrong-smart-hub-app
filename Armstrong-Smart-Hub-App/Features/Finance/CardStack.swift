@@ -27,9 +27,6 @@ struct CardStack: View {
 
     var accounts: [Account]
     @State private var front = 0
-    /// The front card has slid out and is about to go to the back.
-    @State private var lifting = false
-    @State private var busy = false
 
     private let peek: CGFloat = 16
     private let ratio: CGFloat = 1.586
@@ -45,44 +42,27 @@ struct CardStack: View {
                     // 0 is the front card, larger numbers sit further back.
                     let depth = (i - front + cards.count) % cards.count
                     let d = CGFloat(depth)
-                    let out = depth == 0 && lifting
                     CardFace(card: card, balance: balance(for: card))
                         .frame(width: width, height: height)
-                        .scaleEffect(1 - d * 0.06 + (out ? 0.04 : 0), anchor: .top)
-                        .rotation3DEffect(.degrees(out ? -14 : 0), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
-                        .rotationEffect(.degrees(out ? 2.5 : 0))
-                        .offset(y: -d * peek + (out ? height * 0.5 : 0))
+                        .scaleEffect(1 - d * 0.06, anchor: .top)
+                        .offset(y: -d * peek)
                         .opacity(depth == 0 ? 1 : 0.9)
-                        .zIndex(Double(cards.count - depth) + (out ? 10 : 0))
+                        .zIndex(Double(cards.count - depth))
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
             .contentShape(.rect)
-            .onTapGesture { advance() }
-            .sensoryFeedback(.impact(weight: .light), trigger: front)
+            .onTapGesture {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { front = (front + 1) % cards.count }
+            }
+            .sensoryFeedback(.selection, trigger: front)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Cards")
         .accessibilityValue(accessibilityValue)
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Shows the next card")
-        .accessibilityAction { advance() }
-    }
-
-    /// The front card slides down and out, then the stack springs forward and it tucks in at the back.
-    private func advance() {
-        guard !busy else { return }
-        busy = true
-        withAnimation(.easeOut(duration: 0.2)) { lifting = true }
-        Task {
-            try? await Task.sleep(for: .milliseconds(190))
-            withAnimation(.spring(response: 0.62, dampingFraction: 0.68)) {
-                front = (front + 1) % Self.wallet.count
-                lifting = false
-            }
-            try? await Task.sleep(for: .milliseconds(320))
-            busy = false
-        }
+        .accessibilityAction { front = (front + 1) % Self.wallet.count }
     }
 
     private var accessibilityValue: String {
