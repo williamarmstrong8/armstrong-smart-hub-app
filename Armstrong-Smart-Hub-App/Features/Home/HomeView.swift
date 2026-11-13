@@ -26,6 +26,7 @@ struct HomeView: View {
     @State private var searching = false
     @State private var showBackground = false
     @State private var showAccount = false
+    @State private var showAgent = false
 
     var body: some View {
         NavigationStack {
@@ -112,6 +113,7 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showBackground) { BackgroundSettingsView() }
             .sheet(isPresented: $showAccount) { SettingsView() }
+            .sheet(isPresented: $showAgent) { AgentView().presentationDragIndicator(.visible) }
             .fullScreenCover(isPresented: $display) {
                 DisplayModeView(store: store)
             }
@@ -192,6 +194,18 @@ struct HomeView: View {
                     .multilineTextAlignment(.center)
                     .accessibilityAddTraits(.isHeader)
                 Text(summary).font(.title3).foregroundStyle(BrickLook.soft)
+                Button { showAgent = true } label: {
+                    Label("Ask Jarvis", systemImage: "sparkles")
+                        .font(.headline)
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 24)
+                        .frame(minHeight: 52)
+                        .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)).interactive(), in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 14)
+                .accessibilityHint("Opens the data agent")
             }
             Spacer(minLength: 0)
             if let status = pi.status, status.available, let containers = status.containers, !containers.isEmpty {
