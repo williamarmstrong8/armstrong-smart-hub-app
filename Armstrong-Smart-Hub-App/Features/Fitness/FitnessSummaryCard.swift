@@ -59,7 +59,8 @@ struct HealthSummaryCard: View {
                 .foregroundStyle(BrickLook.ink)
             Spacer()
             if let created = summary.flatMap({ ISO.parse($0.createdAt) }) {
-                Text(created.formatted(.relative(presentation: .named)).capitalizedFirst)
+                let when = created.formatted(.relative(presentation: .named))
+                Text(when.prefix(1).uppercased() + when.dropFirst())
                     .font(.footnote)
                     .foregroundStyle(BrickLook.soft)
             }
