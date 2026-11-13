@@ -12,13 +12,13 @@ struct WatchHero: View {
             Image("GarminHero")
                 .resizable()
                 .scaledToFit()
-                .frame(height: 150)
+                .frame(height: 210)
                 .overlay { timeFace }
                 .overlay { syncFace }
                 .rotationEffect(.degrees(-6))
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 180)
+        .frame(height: 230)
         .mask(
             LinearGradient(stops: [.init(color: .clear, location: 0),
                                    .init(color: .black, location: 0.1),
@@ -26,6 +26,8 @@ struct WatchHero: View {
                                    .init(color: .clear, location: 1)],
                            startPoint: .top, endPoint: .bottom)
         )
+        // The watch is bigger than the slot; it overflows evenly so the hero's height is unchanged.
+        .frame(height: 180)
         .accessibilityHidden(true)
     }
 
