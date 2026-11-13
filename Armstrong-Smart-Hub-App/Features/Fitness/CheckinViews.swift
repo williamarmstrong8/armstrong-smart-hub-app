@@ -285,9 +285,11 @@ struct CheckinButton: View {
 
 // MARK: Sessions
 
-/// "How did it feel?" for a logged workout or a watch activity, prefilled
-/// with the hub's guess (effort from Training Effect or set RPE, feel from
-/// the morning).
+/// How a logged workout or watch activity felt: one question, three plain-text
+/// answers, one tap. The hub's guess (from Training Effect or set RPE) is set
+/// in its color with a bar, like the morning check-in. The tap saves; it sets
+/// "versus expected" and puts effort in that band (keeping the hub's number
+/// when it already fits). A saved note or tags from before are kept.
 struct SessionFeedbackSection: View {
     @Environment(AppSession.self) private var session
     var kind: String
@@ -296,115 +298,94 @@ struct SessionFeedbackSection: View {
     @State private var store = CheckinStore.shared
     @State private var guess: SessionGuess?
     @State private var saved: SessionFeedback?
-    @State private var feel: Int?
-    @State private var effort: Int?
-    @State private var vsExpected: Int?
-    @State private var tags: Set<String> = []
-    @State private var note = ""
+    @State private var picked: Int?
     @State private var editing = false
     @State private var loaded = false
 
-    static let feelWords = ["Awful", "Rough", "OK", "Good", "Great"]
-    static let quickTags: [Tag] = [
-        .init(key: "strong", label: "Strong"), .init(key: "weak", label: "Weak"), .init(key: "low_energy", label: "Low energy"),
-        .init(key: "pumped", label: "Pumped"), .init(key: "pain", label: "Pain"), .init(key: "sore", label: "Sore going in"),
-        .init(key: "distracted", label: "Distracted"), .init(key: "pr", label: "PR"),
+    /// Hard, as expected, easy: versus expected, the effort band and the color.
+    private struct Level {
+        let vs: Int
+        let word: String
+        let band: ClosedRange<Int>
+        let tint: Color
+    }
+    private static let levels = [
+        Level(vs: 1, word: "Easy", band: 1...4, tint: Fit.positive),
+        Level(vs: 0, word: "Just right", band: 5...7, tint: Fit.action),
+        Level(vs: -1, word: "Hard", band: 8...10, tint: Fit.attention),
     ]
 
+    private static func level(forEffort e: Int?) -> Int? {
+        guard let e else { return nil }
+        return levels.firstIndex { $0.band.contains(e) }
+    }
+
+    /// What the card highlights: the answer once given, else the hub's guess.
+    private var answer: Int? {
+        if let picked { return picked }
+        if let vs = saved?.vsExpected { return Self.levels.firstIndex { $0.vs == vs } }
+        return nil
+    }
+
     var body: some View {
-        FitSection(title: "How did it feel?", trailing: saved == nil && guess?.feel != nil ? "Our guess" : nil) {
-            if let saved, !editing {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text([saved.feel.map { Self.feelWords[$0 - 1] }, saved.effort.map { "effort \($0)/10" }].compactMap { $0 }.joined(separator: " · "))
-                            .font(Fit.value)
-                        let extra = [saved.vsExpected.map { $0 > 0 ? "Easier than expected" : $0 < 0 ? "Harder than expected" : "As expected" }]
-                            .compactMap { $0 } + saved.tags.map { t in Self.quickTags.first { $0.key == t }?.label ?? t }
-                        if !extra.isEmpty { Text(extra.joined(separator: ", ")).font(.subheadline).foregroundStyle(Fit.muted) }
-                    }
-                    Spacer()
-                    Button("Edit") { editing = true }.font(.subheadline)
-                }
-            } else if loaded {
-                form
-            } else {
+        FitSection(title: "How was it?", trailing: saved == nil && guess?.effort != nil ? "Our guess" : nil) {
+            if !loaded {
                 ProgressView().frame(maxWidth: .infinity)
+            } else if let index = answer, !editing {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(Self.levels[index].word).font(.system(size: 22, weight: .regular)).foregroundStyle(Self.levels[index].tint)
+                    Spacer()
+                    Button("Change") { withAnimation(.snappy) { editing = true } }
+                        .font(.footnote).foregroundStyle(BrickLook.soft).buttonStyle(.plain)
+                }
+            } else {
+                let guessed = Self.level(forEffort: guess?.effort)
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(Array(Self.levels.enumerated()), id: \.offset) { index, level in
+                        if index > 0 { Rectangle().fill(BrickLook.line).frame(width: 1).padding(.vertical, 6) }
+                        Button { Task { await save(index) } } label: {
+                            VStack(spacing: 6) {
+                                Text(level.word)
+                                    .font(.system(size: 17, weight: guessed == index ? .semibold : .regular))
+                                    .foregroundStyle(guessed == index ? level.tint : BrickLook.ink)
+                                    .lineLimit(1).minimumScaleFactor(0.8)
+                                Capsule().fill(guessed == index ? level.tint : .clear).frame(width: 18, height: 2)
+                            }
+                            .padding(.vertical, 10).frame(maxWidth: .infinity).contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
         .task(id: id) { await load() }
-    }
-
-    @ViewBuilder private var form: some View {
-        if let reasons = guess?.reasons, !reasons.isEmpty {
-            Takeaway(text: reasons.joined(separator: ". ") + ".")
-        }
-        HStack(spacing: 8) {
-            ForEach(1...5, id: \.self) { value in
-                Chip(title: Self.feelWords[value - 1], selected: feel == value, tint: Fit.action) { feel = value }
-            }
-        }
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Effort").font(.subheadline)
-                Spacer()
-                Text(effort.map { "\($0) of 10" } ?? "–").font(.subheadline).monospacedDigit().foregroundStyle(Fit.muted)
-            }
-            HStack(spacing: 4) {
-                ForEach(1...10, id: \.self) { value in
-                    Button { effort = value } label: {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(value <= (effort ?? 0) ? Fit.activity.opacity(0.35 + Double(value) * 0.065) : Fit.track)
-                            .frame(height: 28)
-                            .overlay { Text("\(value)").font(.caption2).foregroundStyle(value <= (effort ?? 0) ? Color.primary : Fit.muted) }
-                    }
-                    .buttonStyle(.plain)
-                    .sensoryFeedback(.selection, trigger: effort == value)
-                }
-            }
-        }
-        HStack(spacing: 8) {
-            Chip(title: "Harder", selected: vsExpected == -1, tint: Fit.attention) { vsExpected = vsExpected == -1 ? nil : -1 }
-            Chip(title: "As expected", selected: vsExpected == 0, tint: Fit.muted) { vsExpected = vsExpected == 0 ? nil : 0 }
-            Chip(title: "Easier", selected: vsExpected == 1, tint: Fit.positive) { vsExpected = vsExpected == 1 ? nil : 1 }
-        }
-        TagCloud(tags: Self.quickTags, selected: tags) { key in
-            if tags.contains(key) { tags.remove(key) } else { tags.insert(key) }
-        }
-        TextField("Note", text: $note, axis: .vertical).font(.subheadline).lineLimit(1...3)
-            .padding(10).background(Fit.track.opacity(0.5), in: .rect(cornerRadius: 10))
-        Button {
-            Task { await save() }
-        } label: { Text("Save").frame(maxWidth: .infinity) }
-            .buttonStyle(.borderedProminent).tint(Fit.readiness).controlSize(.large)
-            .disabled(feel == nil && effort == nil && vsExpected == nil && tags.isEmpty)
     }
 
     private func load() async {
         let result = await store.session(kind: kind, id: id, api: session.api)
         guess = result.guess
         saved = result.feedback
-        let source = result.feedback
-        feel = source?.feel ?? result.guess?.feel
-        effort = source?.effort ?? result.guess?.effort
-        vsExpected = source?.vsExpected
-        tags = Set(source?.tags ?? [])
-        note = source?.note ?? ""
         loaded = true
     }
 
-    private func save() async {
-        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let feedback = SessionFeedback(kind: kind, refId: id, feel: feel, effort: effort, vsExpected: vsExpected, tags: tags.sorted(),
-                                       note: trimmed.isEmpty ? nil : trimmed)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        saved = feedback
-        editing = false
+    private func save(_ index: Int) async {
+        let level = Self.levels[index]
+        let hub = guess?.effort ?? saved?.effort
+        let effort = hub.flatMap { level.band.contains($0) ? $0 : nil } ?? (level.band.lowerBound + level.band.upperBound) / 2
+        let feedback = SessionFeedback(kind: kind, refId: id, feel: saved?.feel, effort: effort, vsExpected: level.vs,
+                                       tags: saved?.tags ?? [], note: saved?.note)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.snappy) {
+            picked = index
+            saved = feedback
+            editing = false
+        }
         onSaved?()
         await store.save(feedback, api: session.api)
     }
 }
 
-/// Right after a workout: the same question in a sheet, dismissed by saving or skipping.
+/// Right after a workout: the one question in a short sheet, dismissed by answering or skipping.
 struct SessionFeedbackSheet: View {
     @Environment(\.dismiss) private var dismiss
     var kind: String
@@ -416,7 +397,7 @@ struct SessionFeedbackSheet: View {
             ScrollView {
                 SessionFeedbackSection(kind: kind, id: id) {
                     Task {
-                        try? await Task.sleep(for: .milliseconds(500))
+                        try? await Task.sleep(for: .milliseconds(600))
                         dismiss()
                     }
                 }
@@ -426,51 +407,6 @@ struct SessionFeedbackSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Skip") { dismiss() } } }
         }
-        .presentationDetents([.medium, .large])
-    }
-}
-
-// MARK: Pieces
-
-struct Chip: View {
-    var title: String
-    var selected: Bool
-    var tint: Color
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(title).font(.footnote.weight(selected ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.75)
-                .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 34)
-                .foregroundStyle(selected ? tint : Color.primary)
-                .background(selected ? tint.opacity(0.15) : Fit.track.opacity(0.5), in: .capsule)
-                .overlay { Capsule().strokeBorder(selected ? tint : .clear, lineWidth: 1) }
-        }
-        .buttonStyle(.plain)
-        .sensoryFeedback(.selection, trigger: selected)
-    }
-}
-
-/// Tags that wrap onto as many lines as they need.
-struct TagCloud: View {
-    var tags: [Tag]
-    var selected: Set<String>
-    var toggle: (String) -> Void
-
-    var body: some View {
-        FlowLayout(spacing: 8) {
-            ForEach(tags) { tag in
-                let on = selected.contains(tag.key)
-                Button { toggle(tag.key) } label: {
-                    Text(tag.label).font(.footnote.weight(on ? .semibold : .regular))
-                        .padding(.horizontal, 12).frame(minHeight: 32)
-                        .foregroundStyle(on ? Fit.health : Color.primary)
-                        .background(on ? Fit.health.opacity(0.15) : Fit.track.opacity(0.5), in: .capsule)
-                        .overlay { Capsule().strokeBorder(on ? Fit.health : .clear, lineWidth: 1) }
-                }
-                .buttonStyle(.plain)
-                .sensoryFeedback(.selection, trigger: on)
-            }
-        }
+        .presentationDetents([.height(300)])
     }
 }
