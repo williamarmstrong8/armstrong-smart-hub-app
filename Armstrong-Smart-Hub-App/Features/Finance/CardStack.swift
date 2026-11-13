@@ -20,7 +20,7 @@ struct CardStack: View {
         Card(id: "csr", issuer: "Chase", name: "Sapphire Reserve", art: "CardSapphireReserve",
              tint: Color(red: 0.07, green: 0.20, blue: 0.45), match: ["sapphire", "reserve"]),
         Card(id: "discover", issuer: "Discover", name: "Discover it", art: "CardDiscoverIt",
-             tint: Color(red: 0.95, green: 0.48, blue: 0.10), match: ["discover"]),
+             tint: Color(red: 0.55, green: 0.12, blue: 0.20), match: ["discover"]),
         Card(id: "bcp", issuer: "American Express", name: "Blue Cash Preferred", art: "CardBlueCashPreferred",
              tint: Color(red: 0.18, green: 0.47, blue: 0.82), match: ["blue cash", "amex", "american express"]),
     ]
