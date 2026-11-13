@@ -13,12 +13,58 @@ struct FitnessInsights: Decodable {
     var training: Training
     var age: Age?
     var vitals: Vitals?
+    /// A readiness score laid out by contributor, and the health monitor (lib/fitness/scores.ts). Missing from older hubs.
+    var readiness: ContributorReadiness?
+    var health: Health?
+
+    /// A score that is still learning a baseline carries `have` and `need`; once `ready`, its own fields.
+    struct ContributorReadiness: Decodable {
+        var score: Int?
+        var level: String?
+        var contributors: [Contributor]
+        struct Contributor: Decodable, Identifiable {
+            var key: String
+            var label: String
+            var score: Int?
+            var weight: Double
+            var detail: String
+            var id: String { key }
+        }
+    }
+
+    struct Health: Decodable {
+        var monitor: Monitor?
+        var hrvStability: Stability?
+
+        struct Monitor: Decodable {
+            var status: String
+            var have: Int?
+            var need: Int?
+            var level: String?
+            var points: Int?
+            var signs: [Sign]?
+            struct Sign: Decodable, Identifiable {
+                var key: String
+                var label: String
+                var value: Double
+                var usual: Double
+                /// Standard deviations toward strain: positive is worse.
+                var z: Double
+                var flagged: Bool
+                var id: String { key }
+            }
+        }
+        struct Stability: Decodable { var status: String; var have: Int?; var need: Int?; var cv: Double?; var level: String?; var nights: Int? }
+    }
 
     struct Strain: Decodable {
         var today: Double?
         var level: String?
         var week: [Day]
+        /// How much strain today can take, from this morning's recovery. Missing from older hubs.
+        var target: Target?
         struct Day: Decodable { var day: String; var strain: Double? }
+        struct Target: Decodable { var low: Double; var high: Double; var state: String?; var advice: String }
     }
 
     /// Either `ready` with a score and zone, or `calibrating` with how many nights it has.
@@ -37,6 +83,50 @@ struct FitnessInsights: Decodable {
         var need: Need
         var lastNight: LastNight?
         var bedtimeSpread: Int?
+        /// Missing from older hubs.
+        var debt: Debt?
+        var chronotype: Chronotype?
+        var regularity: Regularity?
+        var naps: [Nap]?
+
+        struct Debt: Decodable { var status: String; var have: Int?; var need: Int?; var hours: Double?; var level: String?; var nights: Int?; var averageHours: Double? }
+        struct Chronotype: Decodable {
+            var status: String
+            var have: Int?
+            var need: Int?
+            var type: String?
+            /// Minutes after local midnight (negative before it).
+            var midpoint: Int?
+            var bedtime: Int?
+            var wake: Int?
+            var socialJetlagMinutes: Int?
+        }
+        struct Regularity: Decodable { var status: String; var have: Int?; var need: Int?; var score: Int?; var level: String?; var days: Int? }
+        struct Nap: Decodable, Identifiable {
+            var start: String
+            var end: String
+            var minutes: Int
+            var id: String { start }
+        }
+        struct StageShare: Decodable, Identifiable {
+            var key: String
+            var minutes: Int
+            var share: Int
+            var low: Int
+            var high: Int
+            var status: String
+            var id: String { key }
+        }
+        struct Breathing: Decodable {
+            /// Falls in blood oxygen an hour.
+            var index: Double
+            var events: Int
+            var hours: Double
+            var level: String
+            var average: Double
+            var lowest: Double
+            var minutesBelow90: Int
+        }
 
         struct Need: Decodable { var hours: Double; var baseline: Double; var debt: Double; var strain: Double; var naps: Double }
         struct LastNight: Decodable {
@@ -47,6 +137,10 @@ struct FitnessInsights: Decodable {
             var interruptions: Int
             var recoveryIndex: RecoveryIndex?
             var apple: AppleScore
+            /// Share of the night asleep, percent; each stage against its healthy range; overnight breathing. Missing from older hubs.
+            var efficiency: Int?
+            var stages: [StageShare]?
+            var breathing: Breathing?
         }
         struct RecoveryIndex: Decodable { var score: Int; var lowestHr: Int; var lowestAt: Double; var share: Double }
         struct AppleScore: Decodable { var score: Int; var duration: Int; var consistency: Int; var interruptions: Int }
@@ -78,6 +172,39 @@ struct FitnessInsights: Decodable {
         var hill: Hill?
         var performanceCondition: Condition?
         var effortLoad: EffortLoad
+        /// Fitness / fatigue / form, monotony, training status, zones and cardio recovery. Missing from older hubs.
+        var form: Form?
+        var monotony: Monotony?
+        var status: Status?
+        var zones: Zones?
+        var zoneMinutes: ZoneMinutes?
+        var cardioRecovery: CardioRecovery?
+
+        struct Form: Decodable {
+            var fitness: Double
+            var fatigue: Double
+            var form: Double
+            var label: String
+            /// Fitness gained over the last week.
+            var ramp: Double?
+            var series: [Day]
+            struct Day: Decodable { var day: String; var fitness: Double; var fatigue: Double; var form: Double }
+        }
+        struct Monotony: Decodable { var monotony: Double; var strain: Int; var weekLoad: Int; var level: String }
+        struct Status: Decodable { var key: String; var label: String; var detail: String; var vo2maxTrend: Double? }
+        struct Zones: Decodable {
+            var week: Distribution
+            var month: Distribution
+            struct Distribution: Decodable { var minutes: [Int]; var low: Int?; var moderate: Int?; var high: Int?; var pattern: String? }
+        }
+        struct ZoneMinutes: Decodable {
+            var today: Int
+            var week: Int
+            var goal: Int
+            var days: [Day]
+            struct Day: Decodable { var day: String; var minutes: Int; var fatBurn: Int; var cardio: Int; var peak: Int }
+        }
+        struct CardioRecovery: Decodable { var latest: Double; var at: String; var average: Int; var sessions: Int; var level: String }
 
         struct Workout: Decodable {
             var sport: String

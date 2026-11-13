@@ -1,6 +1,7 @@
 import CoreBluetooth
 import Foundation
 import Observation
+import UIKit
 
 /// The phone's Bluetooth link to the Garmin watch, in place of Garmin Connect.
 ///
@@ -99,6 +100,10 @@ final class WatchLink: NSObject {
     private var wantsConnection = false
     /// Whether this connection has told the watch its setup is done.
     private var setupSent = false
+    /// The UTC offset the watch was last given on this connection; nil until it has asked for the time.
+    private var offsetSentToWatch: Int?
+    private var lastClockNudge = Date.distantPast
+    private var lastClockCheck = Date.distantPast
 
     override init() {
         super.init()
@@ -112,6 +117,42 @@ final class WatchLink: NSObject {
         if Demo.isOn { startDemoWatch(); return }
         #endif
         central = CBCentralManager(delegate: self, queue: .main, options: [CBCentralManagerOptionRestoreIdentifierKey: Self.restoreID])
+        // A new time zone (travel) or a clock change (daylight saving): tell the watch straight away.
+        for name in [Notification.Name.NSSystemTimeZoneDidChange, UIApplication.significantTimeChangeNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.syncClock(reason: "the phone's time changed", force: true) }
+            }
+        }
+    }
+
+    // MARK: Clock
+
+    /// The phone's UTC offset right now. The cached zone is dropped first: a
+    /// process woken in the background keeps the zone it started with otherwise.
+    private static func phoneOffset() -> Int {
+        NSTimeZone.resetSystemTimeZone()
+        return TimeZone.current.secondsFromGMT()
+    }
+
+    private static func offsetName(_ seconds: Int) -> String {
+        String(format: "UTC%+d:%02d", seconds / 3600, abs(seconds) % 3600 / 60)
+    }
+
+    /// The watch sets its clock and time zone from the phone, but only when it
+    /// asks, which it does on connecting. With the link up for days it never
+    /// asks again, so a flight or the end of daylight saving left it on the old
+    /// zone. TIME_UPDATED is the system event Garmin Connect and Gadgetbridge
+    /// send when the phone's time changes; the watch answers by asking for the
+    /// time. Sent when the offset differs from what the watch last got, at most
+    /// every 2 minutes.
+    func syncClock(reason: String, force: Bool = false) {
+        guard state == .connected else { return }
+        let offset = Self.phoneOffset()
+        guard force || offset != offsetSentToWatch else { return }
+        guard Date.now.timeIntervalSince(lastClockNudge) > 120 else { return }
+        lastClockNudge = .now
+        send(GFDIMessage.systemEvent(.timeUpdated))
+        note("Asked the watch to take the time again (\(reason)): phone is on \(Self.offsetName(offset)), watch last got \(offsetSentToWatch.map(Self.offsetName) ?? "nothing")")
     }
 
     var isBusy: Bool {
@@ -191,6 +232,7 @@ final class WatchLink: NSObject {
     /// just renews iOS's pending request.
     func ensureConnected() {
         guard !Demo.isOn else { return }
+        if state == .connected { syncClock(reason: "the phone's time zone changed") }
         guard savedWatchID != nil, central.state == .poweredOn, state != .connected, state != .scanning else { return }
         if isBusy {
             guard Date.now.timeIntervalSince(stateChangedAt) > 30, let peripheral else { return }
@@ -243,6 +285,8 @@ final class WatchLink: NSObject {
     private func reset() {
         handles = [:]
         setupSent = false
+        offsetSentToWatch = nil
+        lastClockNudge = .distantPast
         rawLogged = [:]
         assembler.reset()
         outbox = []
@@ -434,6 +478,12 @@ final class WatchLink: NSObject {
         // so any packet is a chance to reopen a stalled heart rate stream, in the
         // background as well as with the app open.
         if state == .connected, let at = heartRateAt, Date.now.timeIntervalSince(at) > 30 { keepHeartRateFlowing() }
+        // The watch's packets wake the app in the background, so this catches a new
+        // time zone without the app being opened.
+        if state == .connected, offsetSentToWatch != nil, Date.now.timeIntervalSince(lastClockCheck) > 60 {
+            lastClockCheck = .now
+            syncClock(reason: "the phone's time zone changed")
+        }
         if files.handle(packet) { return }
         switch packet {
         case .closeAllResponse:
@@ -538,7 +588,10 @@ final class WatchLink: NSObject {
                 if info.maxPacketSize > 0 { maxWrite = min(maxWrite, Int(info.maxPacketSize)) }
             }
         case .currentTimeRequest:
-            send(GFDIMessage.timeResponse())
+            let offset = Self.phoneOffset()
+            send(GFDIMessage.timeResponse(timeZone: .current))
+            offsetSentToWatch = offset
+            note("Gave the watch the time, \(Self.offsetName(offset))")
             return
         case .configuration:
             send(GFDIMessage.ack(message.type))
@@ -579,6 +632,11 @@ extension WatchLink {
             send(GFDIMessage.systemEvent(event))
         }
         note("Told the watch setup is complete")
+        // The watch normally asks for the time by itself on connecting; if it hasn't, prompt it.
+        Task {
+            try? await Task.sleep(for: .seconds(12))
+            if state == .connected, offsetSentToWatch == nil { syncClock(reason: "it hadn't asked since connecting", force: true) }
+        }
         if ProcessInfo.processInfo.arguments.contains("-probeFiles") { // DIAGNOSTIC
             Task { try? await Task.sleep(for: .seconds(4)); await files.probeOnly() }
         }

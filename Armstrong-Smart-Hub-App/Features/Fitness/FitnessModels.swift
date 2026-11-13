@@ -19,6 +19,51 @@ struct FitnessSnapshot: Decodable {
     var allDayThrough: String?
 
     struct FileCount: Decodable { var kind: String; var count: Int }
+
+    /// Blocks that didn't decode, with why (shown in the watch sheet's diagnostics).
+    var problems: [String] = []
+
+    enum CodingKeys: String, CodingKey { case days, activities, sleep, heartRate, files, hrv, metrics, insights, watch, allDayThrough }
+
+    /// The hub's models change more often than the app is rebuilt. One value
+    /// of an unexpected shape used to fail the whole snapshot, which left the
+    /// page on its old copy after a sync that had worked; now only the block
+    /// it is in goes missing, and the rest of the page updates.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var problems: [String] = []
+        func block<T: Decodable>(_ key: CodingKeys, _ type: T.Type) -> T? {
+            do { return try c.decodeIfPresent(T.self, forKey: key) } catch {
+                problems.append("\(key.stringValue): \(Self.describe(error))")
+                return nil
+            }
+        }
+        days = block(.days, [FitnessDay].self) ?? []
+        activities = block(.activities, [FitnessActivity].self) ?? []
+        sleep = block(.sleep, [SleepNight].self) ?? []
+        heartRate = block(.heartRate, [HeartRatePoint].self) ?? []
+        files = block(.files, [FileCount].self) ?? []
+        hrv = block(.hrv, [FitnessHrv].self)
+        metrics = block(.metrics, FitnessMetrics.self)
+        insights = block(.insights, FitnessInsights.self)
+        watch = block(.watch, FitnessWatch.self)
+        allDayThrough = block(.allDayThrough, String.self)
+        self.problems = problems
+        #if DEBUG
+        for problem in problems { print("FITNESS snapshot block dropped:", problem) }
+        #endif
+    }
+
+    private static func describe(_ error: Error) -> String {
+        func path(_ context: DecodingError.Context) -> String { context.codingPath.map(\.stringValue).joined(separator: ".") }
+        switch error as? DecodingError {
+        case let .keyNotFound(key, context): return "no \(key.stringValue) at \(path(context))"
+        case let .valueNotFound(_, context): return "null at \(path(context))"
+        case let .typeMismatch(_, context): return "wrong type at \(path(context))"
+        case let .dataCorrupted(context): return "unreadable at \(path(context))"
+        default: return error.localizedDescription
+        }
+    }
 }
 
 struct FitnessHrv: Decodable, Identifiable {

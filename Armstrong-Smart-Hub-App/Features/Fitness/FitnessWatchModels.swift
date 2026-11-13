@@ -78,6 +78,9 @@ struct FitnessWatch: Decodable {
         var lowestHr: Int?
         var batteryGained: Int?
         var history: [Point]
+        /// The watch's own averages over the night. Missing from older hubs.
+        var overnight: Overnight?
+        struct Overnight: Decodable { var hrv: Double?; var heartRate: Double?; var respiration: Double?; var spo2: Double? }
 
         struct Parts: Decodable {
             var duration: Int?

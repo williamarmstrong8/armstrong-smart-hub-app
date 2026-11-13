@@ -22,6 +22,8 @@ final class WatchFiles {
         var uploaded: Int
         var failed: String?
         var finishedAt: Date
+        /// Files the watch listed that still aren't on the phone (a sync that was cut short).
+        var remaining = 0
     }
 
     private(set) var isSyncing = false
@@ -31,8 +33,13 @@ final class WatchFiles {
     private(set) var lastSync: Summary?
     let store = FitStore()
 
-    /// Newest files fetched per sync, so a first sync of a full watch is gradual.
-    var perSyncLimit = 25
+    /// Most files fetched in one sync. The watch closes an all-day file every time
+    /// it's synced and after every sleep and workout, about 30 small ones a day,
+    /// so a cap near that left holes in the day until several more syncs had run.
+    var perSyncLimit = 600
+    /// Files go to the hub after this many downloads, so a long sync that is cut
+    /// short has already delivered most of what it fetched.
+    private let uploadEvery = 20
     private let maxFileBytes = 4 * 1024 * 1024
     private let idleTimeout: TimeInterval = 15
 
@@ -85,6 +92,7 @@ final class WatchFiles {
         var downloaded = 0
         var uploaded = 0
         var failure: String?
+        var remaining = 0
         if link.state == .connected { do {
             progress = "Reading the watch's directory"
             fraction = 0.05
@@ -114,6 +122,8 @@ final class WatchFiles {
                     return a != b ? a < b : ($0.date ?? .distantPast) > ($1.date ?? .distantPast)
                 }
                 .prefix(perSyncLimit)
+            remaining = wanted.count
+            link.note("Sync wants \(wanted.count) file(s): \(Self.describe(Array(wanted)))")
             for (number, file) in wanted.enumerated() {
                 progress = "Downloading \(file.kind.replacingOccurrences(of: "_", with: " ")) \(number + 1) of \(wanted.count)"
                 fraction = 0.2 + 0.65 * Double(number) / Double(max(wanted.count, 1))
@@ -122,12 +132,17 @@ final class WatchFiles {
                     let data = try await download(file)
                     try store.save(file, data: data)
                     downloaded += 1
+                    remaining -= 1
                     link.note("Saved \(file.kind)\(refresh ? " again (it grew)" : "") (\(data.count) bytes, FIT \(GarminFiles.isFIT(data) ? "valid" : "INVALID"))")
                 } catch {
                     // One bad file shouldn't stop the rest; a lost connection does.
                     link.note("Skipped \(file.kind): \(error.localizedDescription)")
                     failure = failure ?? "\(file.kind): \(error.localizedDescription)"
                     if link.state != .connected { throw error }
+                }
+                // Hand over what's here so far; an upload problem waits for the end of the sync.
+                if downloaded > 0, downloaded % uploadEvery == 0, number + 1 < wanted.count {
+                    uploaded += (try? await upload(api: api)) ?? 0
                 }
             }
         } catch {
@@ -138,7 +153,7 @@ final class WatchFiles {
         fraction = 0.9
         do {
             await postLive(api: api)
-            uploaded = try await upload(api: api)
+            uploaded += try await upload(api: api)
         } catch is CancellationError {
         } catch {
             failure = failure ?? error.localizedDescription
@@ -146,7 +161,8 @@ final class WatchFiles {
         }
         if link.state == .connected { await markSynced(listed) }
         lastSync = Summary(listed: listed.count, byKind: Dictionary(grouping: listed, by: \.kind).mapValues(\.count),
-                           downloaded: downloaded, uploaded: uploaded, failed: failure, finishedAt: .now)
+                           downloaded: downloaded, uploaded: uploaded, failed: failure, finishedAt: .now, remaining: remaining)
+        link.note("Sync done: \(listed.count) listed, \(downloaded) copied, \(uploaded) sent, \(remaining) left on the watch, \(store.pendingUpload) waiting for the hub\(failure.map { ", problem: \($0)" } ?? "")")
         // The hub has parsed what was just sent; put its sleep, HRV and training numbers on the glances.
         progress = "Updating the glances"
         fraction = 0.97
