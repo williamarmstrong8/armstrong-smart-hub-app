@@ -18,6 +18,10 @@ struct FitnessView: View {
     /// The pages open on top of the overview.
     @State private var path = NavigationPath()
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
+    /// When the watch last played its sync ring. It plays at most every 6 hours;
+    /// syncs in between still run, just without it.
+    @AppStorage("fitness.syncAnimationAt") private var syncAnimationAt: Double = 0
+    @State private var showSyncRing = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -100,6 +104,11 @@ struct FitnessView: View {
                 async let synced: Void = autoSync(force: true)
                 async let logged: Void = workouts.load(api: session.api)
                 await (synced, logged)
+            }
+            .onChange(of: watch.files.isSyncing, initial: true) { _, syncing in
+                guard syncing else { return }
+                showSyncRing = Date.now.timeIntervalSince1970 - syncAnimationAt >= Self.syncRingEvery
+                if showSyncRing { syncAnimationAt = Date.now.timeIntervalSince1970 }
             }
             .onChange(of: watch.files.lastSync) {
                 Task { await store.load(api: session.api) }
@@ -186,6 +195,8 @@ struct FitnessView: View {
     /// A good sync stays fresh this long; opening the page or returning to the
     /// app inside the window doesn't sync again. Pull-to-refresh always does.
     private static let staleAfter: TimeInterval = 10 * 60
+    /// The sync ring on the watch plays at most this often.
+    private static let syncRingEvery: TimeInterval = 6 * 3600
     /// After a failed sync, wait this long before retrying on its own.
     private static let retryAfter: TimeInterval = 60
 
@@ -271,7 +282,8 @@ struct FitnessView: View {
             Color.clear.frame(height: HubLayout.minHitTarget)
                 .padding(.top, HubLayout.topInset)
             Button { if watch.savedWatchID != nil { showingWatch = true } else { pairing = true } } label: {
-                WatchHero(progress: watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil)
+                WatchHero(progress: showSyncRing && watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil,
+                          time: store.updatedAt ?? watch.files.lastSync?.finishedAt)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)

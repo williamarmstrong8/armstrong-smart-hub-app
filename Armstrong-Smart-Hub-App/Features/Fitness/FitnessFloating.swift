@@ -4,6 +4,8 @@ import SwiftUI
 struct WatchHero: View {
     /// 0...1 while the watch syncs; nil shows the watch's own face.
     var progress: Double?
+    /// Shown as the face's time: when the data was last refreshed. The PNG's own time is erased.
+    var time: Date?
 
     var body: some View {
         ZStack {
@@ -11,6 +13,7 @@ struct WatchHero: View {
                 .resizable()
                 .scaledToFit()
                 .frame(height: 150)
+                .overlay { timeFace }
                 .overlay { syncFace }
                 .rotationEffect(.degrees(-6))
         }
@@ -24,6 +27,25 @@ struct WatchHero: View {
                            startPoint: .top, endPoint: .bottom)
         )
         .accessibilityHidden(true)
+    }
+
+    /// The face's time, where the PNG's "4:37:33" was (x 335-715, y 302-394 of
+    /// 835x992 px, level with the image): white, about 90 px tall digits.
+    private var timeFace: some View {
+        GeometryReader { geo in
+            let k = geo.size.height / 992
+            Text(time.map { $0.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()) } ?? "--:--")
+                .font(.system(size: 128 * k, weight: .regular))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .frame(width: 400 * k, height: 110 * k)
+                .position(x: 525 * k, y: 348 * k)
+                .contentTransition(.numericText())
+                .hubAnimation(value: time)
+        }
+        .allowsHitTesting(false)
     }
 
     /// The watch's screen as it sits in the cutout (835x992 px): an ellipse
