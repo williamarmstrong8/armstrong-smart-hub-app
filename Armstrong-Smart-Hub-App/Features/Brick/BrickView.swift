@@ -167,13 +167,13 @@ private struct BrickSheet: View {
             Color.clear.frame(height: HubLayout.minHitTarget)
             .padding(.top, HubLayout.topInset)
             device.padding(.top, HubLayout.sectionGap)
-            // Set like the wordmark on the device: heavy rounded letters, tight, in its pressed-in grey.
-            Text(p?.name ?? Demo.copy("Unbricked", "Ready to focus"))
-                .font(.system(size: 40, weight: .heavy, design: .rounded))
-                .tracking(-0.6)
-                .foregroundStyle(BrickLook.wordmark)
-                .multilineTextAlignment(.center)
-                .padding(.top, HubLayout.sectionGap)
+            // The film's plain circle has no face to print on, so its title stays underneath.
+            if Demo.isOn {
+                Text(p?.name ?? Demo.copy("Unbricked", "Ready to focus"))
+                    .font(.largeTitle.weight(.light))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, HubLayout.sectionGap)
+            }
             if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.sectionGap) }
             Spacer(minLength: HubLayout.sectionGap)
             brickButton
@@ -199,6 +199,7 @@ private struct BrickSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(store.isBlocking ? "Unbrick with tag" : "Brick with tag")
+        .accessibilityValue(store.blockingProfile?.name ?? "Unbricked")
     }
 
     /// The device picture; the film uses a plain circle in its place.
@@ -211,8 +212,25 @@ private struct BrickSheet: View {
             .padding(14)
             .hubAnimation(value: store.isBlocking)
         } else {
-            Image("BrickDevice").resizable().scaledToFit()
+            Image("BrickDeviceBlank").resizable().scaledToFit()
+                .overlay { faceText }
         }
+    }
+
+    /// The status pressed into the device where its "Brick" was: heavy rounded letters in the
+    /// device's grey, a dark inner shadow along the top edge and a light catch along the bottom.
+    private var faceText: some View {
+        Text(store.blockingProfile?.name ?? "Unbricked")
+            .font(.system(size: 34, weight: .heavy, design: .rounded))
+            .tracking(-0.8)
+            .lineLimit(1)
+            .minimumScaleFactor(0.4)
+            .foregroundStyle(BrickLook.wordmark.shadow(.inner(color: .black.opacity(0.45), radius: 1.2, x: 0, y: 1.2)))
+            .shadow(color: .white.opacity(0.7), radius: 0.4, x: 0, y: 0.8)
+            .padding(.horizontal, 30)
+            .contentTransition(.opacity)
+            .hubAnimation(value: store.blockingProfile?.name)
+            .accessibilityHidden(true)
     }
 
     /// Lockdowns on now. They don't count as Brick time, so they get a line here rather than the timer.
