@@ -34,6 +34,7 @@ struct FitnessView: View {
                             }
                             VStack(spacing: HubLayout.sectionGap) {
                                 MorningCheckin(store: checkins)
+                                HealthSummaryCard(store: store)
                                 today
                             }
                             // Live updates stay inside individual overview rows.

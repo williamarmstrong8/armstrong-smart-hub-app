@@ -160,6 +160,8 @@ final class WatchFiles {
             link.note("Upload stopped: \(error.localizedDescription)")
         }
         if link.state == .connected { await markSynced(listed) }
+        // The first sync that brings a new night gets the day's summary written; later ones are no-ops on the hub.
+        if uploaded > 0 { await askForSummary(api: api) }
         lastSync = Summary(listed: listed.count, byKind: Dictionary(grouping: listed, by: \.kind).mapValues(\.count),
                            downloaded: downloaded, uploaded: uploaded, failed: failure, finishedAt: .now, remaining: remaining)
         link.note("Sync done: \(listed.count) listed, \(downloaded) copied, \(uploaded) sent, \(remaining) left on the watch, \(store.pendingUpload) waiting for the hub\(failure.map { ", problem: \($0)" } ?? "")")
@@ -224,6 +226,19 @@ final class WatchFiles {
         var duplicate: Bool?
         var parsed: Bool?
         var error: String?
+    }
+
+    /// Asks the hub to write today's health summary from what it now has. It
+    /// answers at once and writes in the background; the page shows it on its
+    /// next load.
+    private func askForSummary(api: APIClient) async {
+        progress = "Asking for today's summary"
+        let request = api.request("/api/mobile/fitness/summary?tz=\(TimeZone.current.secondsFromGMT())", method: "POST", timeout: 30)
+        do {
+            _ = try await api.data(request)
+        } catch {
+            link?.note("Summary request failed: \(error.localizedDescription)")
+        }
     }
 
     /// Sends saved files the hub hasn't acknowledged, oldest first. The hub
