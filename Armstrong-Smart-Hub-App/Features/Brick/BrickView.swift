@@ -166,23 +166,13 @@ private struct BrickSheet: View {
                 .font(.largeTitle.weight(.light))
                 .multilineTextAlignment(.center)
                 .padding(.top, HubLayout.sectionGap)
-            Group {
-                if store.isBlocking, let s = store.current {
-                    if let end = store.endsAt {
-                        Text("\(Demo.copy("Unbricks", "Ends")) in \(Text(timerInterval: Date()...max(Date(), end)))")
-                    } else {
-                        Text("\(Demo.copy("Bricked", "Focused")) for \(Text(s.start, style: .timer))")
-                    }
-                } else {
-                    Text(store.hasTag ? "Tap a tag to start its mode" : "Register a tag to start")
-                }
-            }
-            .font(.body).monospacedDigit().foregroundStyle(BrickLook.soft)
-            .multilineTextAlignment(.center).padding(.top, HubLayout.topInset)
             if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.sectionGap) }
-            stats.padding(.top, HubLayout.sectionGap)
-            brickButton.padding(.top, HubLayout.sectionGap)
+            Spacer(minLength: HubLayout.sectionGap)
+            stats
+            Spacer(minLength: HubLayout.sectionGap)
+            brickButton
         }
+        .frame(height: HubLayout.deviceSheetHeight, alignment: .top)
         .padding(.horizontal, HubLayout.gutter)
         .padding(.bottom, HubLayout.sectionGap)
         .frame(maxWidth: .infinity)

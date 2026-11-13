@@ -308,6 +308,7 @@ struct FitnessView: View {
                 welcome.padding(.top, HubLayout.sectionGap)
             }
         }
+        .frame(height: HubLayout.deviceSheetHeight, alignment: .top)
         .padding(.horizontal, HubLayout.gutter)
         .padding(.bottom, HubLayout.sectionGap)
         .frame(maxWidth: .infinity)
