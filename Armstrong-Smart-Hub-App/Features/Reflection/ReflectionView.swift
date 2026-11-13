@@ -409,6 +409,9 @@ private struct JournalEditor: View {
                 .scrollContentBackground(.hidden)
                 .focused($focused)
                 .padding(.horizontal, 16)
+                .onChange(of: text) { old, new in
+                    if let fixed = JournalMarkdown.autoBullet(old: old, new: new) { text = fixed }
+                }
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
                         Text("What's on your mind? Markdown works.")
@@ -471,11 +474,27 @@ private struct JournalMarkdown: View {
         let lines = text.components(separatedBy: "\n").map { line -> String in
             let t = line.trimmingCharacters(in: .whitespaces)
             if let h = heading(t) { return "**\(h.text)**" }
-            if t.hasPrefix("- ") || t.hasPrefix("* ") { return "• " + t.dropFirst(2) }
+            if t.hasPrefix("- ") || t.hasPrefix("* ") || t.hasPrefix("• ") { return "• " + t.dropFirst(2) }
             if t.hasPrefix("> ") { return String(t.dropFirst(2)) }
             return line
         }
         return inline(lines.joined(separator: "\n"))
+    }
+
+    /// Typing "- " at the start of a line becomes a "•"; Return after a bullet continues it, Return on an empty one ends it.
+    static func autoBullet(old: String, new: String) -> String? {
+        guard new.count == old.count + 1, new.hasPrefix(old) else { return nil }
+        let lastStart = new.lastIndex(of: "\n").map { new.index(after: $0) } ?? new.startIndex
+        let lastLine = new[lastStart...]
+        if lastLine == "- " || lastLine == "* " { return String(new[..<lastStart]) + "• " }
+        if new.hasSuffix("\n") {
+            let body = String(new.dropLast())
+            let prevStart = body.lastIndex(of: "\n").map { body.index(after: $0) } ?? body.startIndex
+            let prev = body[prevStart...]
+            if prev == "• " { return String(body[..<prevStart]) + "\n" }
+            if prev.hasPrefix("• ") { return new + "• " }
+        }
+        return nil
     }
 
     private static func heading(_ t: String) -> (level: Int, text: String)? {
@@ -500,7 +519,7 @@ private struct JournalMarkdown: View {
             Text(Self.inline(h.text))
                 .font(h.level == 1 ? .title2.bold() : h.level == 2 ? .title3.bold() : .headline)
                 .padding(.top, 4)
-        } else if t.hasPrefix("- ") || t.hasPrefix("* ") {
+        } else if t.hasPrefix("- ") || t.hasPrefix("* ") || t.hasPrefix("• ") {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("•")
                 Text(Self.inline(String(t.dropFirst(2))))
