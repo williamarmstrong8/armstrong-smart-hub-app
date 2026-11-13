@@ -15,7 +15,7 @@ enum BrickLook {
     static let live = HubDesign.positive
     /// The grey of the "Brick" pressed into the device; the picture is the same in dark mode, so this is too.
     static let wordmark = HubDesign.adaptive(0x9B9692, 0x9B9692)
-    /// The three rings under the device: time back, what it held, the yearly pace.
+    /// The three stats under the device: time back, what it held, the yearly pace.
     static let backTint = HubDesign.adaptive(0x1E9E4A, 0x3DDC6E)
     static let heldTint = HubDesign.adaptive(0xD98A00, 0xFFB340)
     static let paceTint = HubDesign.adaptive(0x2F6FD6, 0x6FA8FF)
@@ -362,51 +362,44 @@ enum BrickLifeBack {
     }
 }
 
-/// One ring under the device: a short number, what it counts, and how full the ring is.
-struct BrickLifeRing {
+/// One stat under the device: an icon for what it is, a short number and its label. No goal, so no ring to fill.
+struct BrickLifeStat {
     var value: String
     var label: String
-    var fraction: Double
+    var icon: String
     var tint: Color
 }
 
 extension BrickLifeBack {
-    /// Milestones the "back" ring fills toward, in hours: a day, two, five, ten, then every 25 days.
-    private static func nextMilestone(_ hours: Double) -> Double {
-        for h in [1.0, 6, 12, 24, 48, 120, 240] where hours < h { return h }
-        return (floor(hours / 600) + 1) * 600
-    }
-
-    /// Time back so far: hours under a day, then days. The ring fills toward the next milestone.
-    static func backRing(_ seconds: TimeInterval) -> BrickLifeRing {
+    /// Time back so far: minutes, then hours, then days.
+    static func back(_ seconds: TimeInterval) -> BrickLifeStat {
         let h = seconds / 3600
-        let goal = nextMilestone(h)
         let value: String, label: String
         if h >= 24 { value = String(format: h >= 240 ? "%.0f" : "%.1f", h / 24); label = "Days back" }
         else if h >= 1 { value = String(format: h >= 10 ? "%.0f" : "%.1f", h); label = "Hours back" }
         else { value = "\(Int(seconds / 60))"; label = "Minutes back" }
-        return BrickLifeRing(value: value, label: label, fraction: h / goal, tint: BrickLook.backTint)
+        return BrickLifeStat(value: value, label: label, icon: "hourglass", tint: BrickLook.backTint)
     }
 
-    /// What the time would have held, the ring filling toward the next one.
-    static func heldRing(_ seconds: TimeInterval) -> BrickLifeRing {
+    /// What the time would have held: books (about 7 hours each), films (2 hours) or episodes (45 minutes).
+    static func held(_ seconds: TimeInterval) -> BrickLifeStat {
         let h = seconds / 3600
-        let (unit, name): (Double, String) = h >= 7 ? (7, "Books") : (h >= 2 ? (2, "Films") : (0.75, "Episodes"))
-        let n = h / unit
-        return BrickLifeRing(value: "\(Int(n))", label: "\(name)' worth", fraction: n - floor(n), tint: BrickLook.heldTint)
+        let (unit, name, icon): (Double, String, String) = h >= 7 ? (7, "Books", "book.closed.fill")
+            : (h >= 2 ? (2, "Films", "film.fill") : (0.75, "Episodes", "tv.fill"))
+        return BrickLifeStat(value: "\(Int(h / unit))", label: "\(name)' worth", icon: icon, tint: BrickLook.heldTint)
     }
 
-    /// Days a year at the recent daily pace; the ring is that pace's share of a 16-hour waking day.
-    static func paceRing(_ pace: TimeInterval?) -> BrickLifeRing {
-        guard let pace else { return BrickLifeRing(value: "–", label: "Days a year", fraction: 0, tint: BrickLook.paceTint) }
-        let d = pace * 365 / 86400
-        return BrickLifeRing(value: d >= 10 ? String(format: "%.0f", d) : String(format: "%.1f", d),
-                             label: "Days a year", fraction: pace / (16 * 3600), tint: BrickLook.paceTint)
+    /// Days a year at the recent daily pace.
+    static func pace(_ pace: TimeInterval?) -> BrickLifeStat {
+        let d = (pace ?? 0) * 365 / 86400
+        let value = pace == nil ? "–" : (d >= 10 ? String(format: "%.0f", d) : String(format: "%.1f", d))
+        return BrickLifeStat(value: value, label: "Days a year", icon: "calendar", tint: BrickLook.paceTint)
     }
 }
 
-/// Three rings under the device, the way Fitness shows its scores: life back so far, what it would
-/// have held, and the days a year at this pace. Each opens the history.
+/// Three stats under the device, in the room Fitness gives its scores: life back so far, what it
+/// would have held, and the days a year at this pace. Each is a tinted glass disc with its icon
+/// and number, and opens the history.
 struct BrickLifeStats: View {
     let store: BrickStore
     var size: CGFloat = 100
@@ -414,16 +407,28 @@ struct BrickLifeStats: View {
     var body: some View {
         let total = store.lifetimeSeconds
         HStack(alignment: .top, spacing: 0) {
-            ring(BrickLifeBack.backRing(total))
-            ring(BrickLifeBack.heldRing(total))
-            ring(BrickLifeBack.paceRing(total >= 60 ? store.dailyPace : nil))
+            disc(BrickLifeBack.back(total))
+            disc(BrickLifeBack.held(total))
+            disc(BrickLifeBack.pace(total >= 60 ? store.dailyPace : nil))
         }
     }
 
-    private func ring(_ r: BrickLifeRing) -> some View {
+    private func disc(_ r: BrickLifeStat) -> some View {
         NavigationLink(value: BrickRoute.activity) {
             VStack(spacing: 8) {
-                ScoreRing(value: r.value, fraction: r.fraction, tint: r.tint, size: size, weight: 0.09, glass: true)
+                VStack(spacing: size * 0.04) {
+                    Image(systemName: r.icon)
+                        .font(.system(size: size * 0.2, weight: .semibold))
+                        .foregroundStyle(r.tint)
+                    Text(r.value)
+                        .font(Fit.number(size * 0.3))
+                        .foregroundStyle(BrickLook.ink)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                        .contentTransition(.numericText())
+                }
+                .padding(.horizontal, size * 0.12)
+                .frame(width: size, height: size)
+                .glassEffect(.regular.tint(r.tint.opacity(0.18)), in: Circle())
                 Text(r.label).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)

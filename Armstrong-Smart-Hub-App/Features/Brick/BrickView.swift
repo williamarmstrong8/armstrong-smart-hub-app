@@ -178,7 +178,7 @@ private struct BrickSheet: View {
                     .padding(.top, HubLayout.sectionGap)
             }
             if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.topInset) }
-            // The rings sit centred in the room between the device and the button.
+            // The stats sit centred in the room between the device and the button.
             Spacer(minLength: 8)
             // Smaller when a line under the button or a lockdown chip needs the room; gone when both do.
             if !Demo.isOn, store.activeLockdowns.isEmpty || !hasSubline {
