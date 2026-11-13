@@ -93,8 +93,6 @@ private struct CardFace: View {
                 .aspectRatio(contentMode: .fill)
                 .frame(width: geo.size.width, height: geo.size.height)
                 .clipShape(shape)
-                // Liquid-glass rim and sheen over the real card.
-                .glassGlare(.regular.tint(card.tint.opacity(0.25)), in: shape)
                 .overlay(alignment: .bottomTrailing) {
                     if let balance {
                         Text(Fmt.compact(balance, "USD"))
