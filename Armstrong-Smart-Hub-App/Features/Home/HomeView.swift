@@ -183,26 +183,6 @@ struct HomeView: View {
                 Text(summary).font(.title3).foregroundStyle(BrickLook.soft)
             }
             Spacer(minLength: 0)
-            if !lights.isEmpty {
-                HStack(spacing: 22) {
-                    ForEach(lights.prefix(3)) { light in
-                        Button { toggle(light) } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: light.isOn ? "lightbulb.max.fill" : "lightbulb")
-                                    .font(.title)
-                                    .frame(width: 84, height: 84)
-                                    .glassGlare(.regular.interactive(), in: .circle)
-                                Text(light.name).font(.caption).lineLimit(1)
-                                    .foregroundStyle(BrickLook.soft).frame(width: 92)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(light.name), \(light.isOn ? "on" : "off")")
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .sensoryFeedback(.selection, trigger: on)
-            }
             if let status = pi.status, status.available, let containers = status.containers, !containers.isEmpty {
                 NavigationLink { PiDetailView(pi: pi) } label: { dockerCheck(status, containers) }
                     .buttonStyle(.plain)
@@ -211,20 +191,20 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight)
-        .padding(.bottom, 4)
     }
 
-    /// Whether the containers are up: a dot per app, and a word if one's down.
+    /// "Pi healthy", or a red dot and what's wrong.
     private func dockerCheck(_ status: PiStatus, _ containers: [PiContainer]) -> some View {
         let bad = status.troubled
-        return HStack(spacing: 10) {
-            HStack(spacing: 4) {
-                ForEach(containers.prefix(16)) { c in
-                    Circle().fill(c.troubled ? HubDesign.danger : HubDesign.positive).frame(width: 6, height: 6)
-                }
-            }
-            Text(bad.isEmpty ? "Docker · all \(containers.count) up" : bad.count == 1 ? "\(bad[0].name) is down" : "\(bad.count) containers down")
-                .font(.footnote).foregroundStyle(BrickLook.soft)
+        let down = (status.services ?? []).filter { !$0.up }
+        let problem: String? = {
+            if let s = down.first { return down.count == 1 ? "\(s.name) is down" : "\(down.count) services down" }
+            if !bad.isEmpty { return bad.count == 1 ? "\(bad[0].name) is down" : "\(bad.count) containers down" }
+            return nil
+        }()
+        return HStack(spacing: 8) {
+            if problem != nil { Circle().fill(HubDesign.danger).frame(width: 8, height: 8) }
+            Text(problem ?? "Pi healthy").font(.footnote).foregroundStyle(BrickLook.soft)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .glassGlare(.regular, in: .capsule)
