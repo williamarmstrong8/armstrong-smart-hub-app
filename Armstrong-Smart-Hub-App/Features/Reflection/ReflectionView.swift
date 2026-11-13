@@ -592,7 +592,7 @@ private struct MarkdownTextView: UIViewRepresentable {
             storage.setAttributes([.font: base, .foregroundColor: UIColor.label], range: full)
             let dim = UIColor.tertiaryLabel
             let str = storage.string as NSString
-            str.enumerateSubstrings(in: full, options: [.byLines, .substringNotRequired]) { _, _, lineRange, _, _ in
+            str.enumerateSubstrings(in: full, options: [.byLines, .substringNotRequired]) { _, _, lineRange, _ in
                 let line = str.substring(with: lineRange)
                 let hashes = line.prefix(while: { $0 == "#" }).count
                 if (1...4).contains(hashes), line.dropFirst(hashes).first == " " {
