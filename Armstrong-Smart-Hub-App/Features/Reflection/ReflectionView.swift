@@ -405,13 +405,8 @@ private struct JournalEditor: View {
 
     @ViewBuilder private var content: some View {
         if editing {
-            TextEditor(text: $text)
-                .scrollContentBackground(.hidden)
-                .focused($focused)
+            MarkdownTextView(text: $text, focused: $focused)
                 .padding(.horizontal, 16)
-                .onChange(of: text) { old, new in
-                    if let fixed = JournalMarkdown.autoBullet(old: old, new: new) { text = fixed }
-                }
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty {
                         Text("What's on your mind? Markdown works.")
@@ -481,22 +476,6 @@ private struct JournalMarkdown: View {
         return inline(lines.joined(separator: "\n"))
     }
 
-    /// Typing "- " at the start of a line becomes a "•"; Return after a bullet continues it, Return on an empty one ends it.
-    static func autoBullet(old: String, new: String) -> String? {
-        guard new.count == old.count + 1, new.hasPrefix(old) else { return nil }
-        let lastStart = new.lastIndex(of: "\n").map { new.index(after: $0) } ?? new.startIndex
-        let lastLine = new[lastStart...]
-        if lastLine == "- " || lastLine == "* " { return String(new[..<lastStart]) + "• " }
-        if new.hasSuffix("\n") {
-            let body = String(new.dropLast())
-            let prevStart = body.lastIndex(of: "\n").map { body.index(after: $0) } ?? body.startIndex
-            let prev = body[prevStart...]
-            if prev == "• " { return String(body[..<prevStart]) + "\n" }
-            if prev.hasPrefix("• ") { return new + "• " }
-        }
-        return nil
-    }
-
     private static func heading(_ t: String) -> (level: Int, text: String)? {
         let hashes = t.prefix(while: { $0 == "#" }).count
         guard (1...4).contains(hashes), t.dropFirst(hashes).first == " " else { return nil }
@@ -539,6 +518,117 @@ private struct JournalMarkdown: View {
             Divider()
         } else {
             Text(Self.inline(t))
+        }
+    }
+}
+
+/// A text editor that styles markdown as you type, like Notion: headings grow, **bold**, *italic*, `code` and quotes
+/// show styled with their marks dimmed; "- " becomes a bullet and Return continues the list.
+private struct MarkdownTextView: UIViewRepresentable {
+    @Binding var text: String
+    var focused: FocusState<Bool>.Binding
+
+    func makeUIView(context: Context) -> UITextView {
+        let v = UITextView()
+        v.delegate = context.coordinator
+        v.backgroundColor = .clear
+        v.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
+        v.alwaysBounceVertical = true
+        v.keyboardDismissMode = .interactive
+        v.text = text
+        Coordinator.style(v)
+        return v
+    }
+
+    func updateUIView(_ v: UITextView, context: Context) {
+        if v.text != text { v.text = text; Coordinator.style(v) }
+        if focused.wrappedValue, !v.isFirstResponder { v.becomeFirstResponder() }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: MarkdownTextView
+        init(_ p: MarkdownTextView) { parent = p }
+
+        func textViewDidChange(_ v: UITextView) {
+            parent.text = v.text
+            Self.style(v)
+        }
+
+        func textViewDidBeginEditing(_ v: UITextView) { parent.focused.wrappedValue = true }
+        func textViewDidEndEditing(_ v: UITextView) { parent.focused.wrappedValue = false }
+
+        func textView(_ v: UITextView, shouldChangeTextIn range: NSRange, replacementText t: String) -> Bool {
+            let ns = v.text as NSString
+            let line = ns.lineRange(for: NSRange(location: range.location, length: 0))
+            let before = ns.substring(with: NSRange(location: line.location, length: range.location - line.location))
+            func replace(_ r: NSRange, with s: String, caret: Int) {
+                v.textStorage.replaceCharacters(in: r, with: s)
+                v.selectedRange = NSRange(location: caret, length: 0)
+                textViewDidChange(v)
+            }
+            if t == " ", range.length == 0, before == "-" || before == "*" {
+                replace(NSRange(location: line.location, length: 1), with: "• ", caret: line.location + 2)
+                return false
+            }
+            if t == "\n", range.length == 0, before.hasPrefix("• ") {
+                if before == "• " {
+                    replace(NSRange(location: line.location, length: 2), with: "", caret: line.location)
+                } else {
+                    replace(NSRange(location: range.location, length: 0), with: "\n• ", caret: range.location + 3)
+                }
+                return false
+            }
+            return true
+        }
+
+        static func style(_ v: UITextView) {
+            let storage = v.textStorage
+            let full = NSRange(location: 0, length: storage.length)
+            let selected = v.selectedRange
+            let base = UIFont.preferredFont(forTextStyle: .body)
+            storage.beginEditing()
+            storage.setAttributes([.font: base, .foregroundColor: UIColor.label], range: full)
+            let dim = UIColor.tertiaryLabel
+            let str = storage.string as NSString
+            str.enumerateSubstrings(in: full, options: [.byLines, .substringNotRequired]) { _, _, lineRange, _, _ in
+                let line = str.substring(with: lineRange)
+                let hashes = line.prefix(while: { $0 == "#" }).count
+                if (1...4).contains(hashes), line.dropFirst(hashes).first == " " {
+                    let style: UIFont.TextStyle = hashes == 1 ? .title1 : hashes == 2 ? .title2 : .title3
+                    let f = UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: style).pointSize, weight: .bold)
+                    storage.addAttribute(.font, value: f, range: lineRange)
+                    storage.addAttribute(.foregroundColor, value: dim, range: NSRange(location: lineRange.location, length: hashes + 1))
+                } else if line.hasPrefix("> ") {
+                    storage.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: lineRange)
+                    storage.addAttribute(.foregroundColor, value: dim, range: NSRange(location: lineRange.location, length: 2))
+                }
+            }
+            func mark(_ pattern: String, trait: UIFontDescriptor.SymbolicTraits?, mono: Bool = false, marks: Int) {
+                guard let re = try? NSRegularExpression(pattern: pattern) else { return }
+                for m in re.matches(in: storage.string, range: full) {
+                    let r = m.range
+                    storage.enumerateAttribute(.font, in: r) { val, sub, _ in
+                        let cur = (val as? UIFont) ?? base
+                        var f = cur
+                        if let trait, let d = cur.fontDescriptor.withSymbolicTraits(cur.fontDescriptor.symbolicTraits.union(trait)) {
+                            f = UIFont(descriptor: d, size: cur.pointSize)
+                        }
+                        if mono { f = UIFont.monospacedSystemFont(ofSize: cur.pointSize * 0.92, weight: .regular) }
+                        storage.addAttribute(.font, value: f, range: sub)
+                    }
+                    if mono { storage.addAttribute(.backgroundColor, value: UIColor.secondarySystemFill, range: r) }
+                    storage.addAttribute(.foregroundColor, value: dim, range: NSRange(location: r.location, length: marks))
+                    storage.addAttribute(.foregroundColor, value: dim, range: NSRange(location: r.location + r.length - marks, length: marks))
+                }
+            }
+            mark("\\*\\*[^*\\n]+\\*\\*", trait: .traitBold, marks: 2)
+            mark("(?<![*\\w])\\*[^*\\n]+\\*(?![*\\w])", trait: .traitItalic, marks: 1)
+            mark("`[^`\\n]+`", trait: nil, mono: true, marks: 1)
+            storage.endEditing()
+            v.selectedRange = selected
+            v.typingAttributes = [.font: base, .foregroundColor: UIColor.label]
         }
     }
 }
