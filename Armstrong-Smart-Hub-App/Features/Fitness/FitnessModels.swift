@@ -17,13 +17,16 @@ struct FitnessSnapshot: Decodable {
     var watch: FitnessWatch?
     /// When the newest all-day reading is from: the day-long charts end here. Missing from older hubs.
     var allDayThrough: String?
+    /// The newest once-a-day plain-English read of the data, and whether a newer one is being written. Missing from older hubs.
+    var summary: FitnessSummary?
+    var summaryWriting: Bool?
 
     struct FileCount: Decodable { var kind: String; var count: Int }
 
     /// Blocks that didn't decode, with why (shown in the watch sheet's diagnostics).
     var problems: [String] = []
 
-    enum CodingKeys: String, CodingKey { case days, activities, sleep, heartRate, files, hrv, metrics, insights, watch, allDayThrough }
+    enum CodingKeys: String, CodingKey { case days, activities, sleep, heartRate, files, hrv, metrics, insights, watch, allDayThrough, summary, summaryWriting }
 
     /// The hub's models change more often than the app is rebuilt. One value
     /// of an unexpected shape used to fail the whole snapshot, which left the
@@ -48,6 +51,8 @@ struct FitnessSnapshot: Decodable {
         insights = block(.insights, FitnessInsights.self)
         watch = block(.watch, FitnessWatch.self)
         allDayThrough = block(.allDayThrough, String.self)
+        summary = block(.summary, FitnessSummary.self)
+        summaryWriting = block(.summaryWriting, Bool.self)
         self.problems = problems
         #if DEBUG
         for problem in problems { print("FITNESS snapshot block dropped:", problem) }
@@ -64,6 +69,16 @@ struct FitnessSnapshot: Decodable {
         default: return error.localizedDescription
         }
     }
+}
+
+/// One paragraph on how the person is doing, written by a model on the hub after the morning sync (lib/fitness/daily-summary.ts).
+struct FitnessSummary: Decodable {
+    /// The sleep file it was written after.
+    var night: String
+    var nightEnd: String
+    var text: String
+    var model: String
+    var createdAt: String
 }
 
 struct FitnessHrv: Decodable, Identifiable {
