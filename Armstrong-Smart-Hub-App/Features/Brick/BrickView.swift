@@ -167,8 +167,11 @@ private struct BrickSheet: View {
             Color.clear.frame(height: HubLayout.minHitTarget)
             .padding(.top, HubLayout.topInset)
             device.padding(.top, HubLayout.sectionGap)
+            // Set like the wordmark on the device: heavy rounded letters, tight, in its pressed-in grey.
             Text(p?.name ?? Demo.copy("Unbricked", "Ready to focus"))
-                .font(.largeTitle.weight(.light))
+                .font(.system(size: 40, weight: .heavy, design: .rounded))
+                .tracking(-0.6)
+                .foregroundStyle(BrickLook.wordmark)
                 .multilineTextAlignment(.center)
                 .padding(.top, HubLayout.sectionGap)
             if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.sectionGap) }
@@ -192,8 +195,6 @@ private struct BrickSheet: View {
             deviceArt
                 .frame(width: 168, height: 168)
                 .shadow(color: .black.opacity(0.16), radius: 20, y: 14)
-                .saturation(store.isBlocking ? 0 : 1)
-                .opacity(store.isBlocking ? 0.7 : 1)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

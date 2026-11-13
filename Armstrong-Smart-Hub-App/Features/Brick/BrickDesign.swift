@@ -13,6 +13,8 @@ enum BrickLook {
     static let bar = HubDesign.adaptive(0x43505C, 0xA9B7C4)
     static let track = HubDesign.track
     static let live = HubDesign.positive
+    /// The grey of the "Brick" pressed into the device.
+    static let wordmark = HubDesign.adaptive(0x9B9692, 0xB3AEAA)
 
     static let cardRadius = HubLayout.cardRadius
     /// The top sheet's bottom corners on Brick and Fitness: Brick's 64-point button's
