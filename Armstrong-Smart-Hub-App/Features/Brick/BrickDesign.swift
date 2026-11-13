@@ -15,6 +15,10 @@ enum BrickLook {
     static let live = HubDesign.positive
     /// The grey of the "Brick" pressed into the device; the picture is the same in dark mode, so this is too.
     static let wordmark = HubDesign.adaptive(0x9B9692, 0x9B9692)
+    /// The three rings under the device: time back, what it held, the yearly pace.
+    static let backTint = HubDesign.adaptive(0x1E9E4A, 0x3DDC6E)
+    static let heldTint = HubDesign.adaptive(0xD98A00, 0xFFB340)
+    static let paceTint = HubDesign.adaptive(0x2F6FD6, 0x6FA8FF)
 
     static let cardRadius = HubLayout.cardRadius
     /// The top sheet's bottom corners on Brick and Fitness: Brick's 64-point button's
@@ -358,35 +362,76 @@ enum BrickLifeBack {
     }
 }
 
-/// Three numbers under the device: life back so far, what it was worth, and a year at this pace.
+/// One ring under the device: a short number, what it counts, and how full the ring is.
+struct BrickLifeRing {
+    var value: String
+    var label: String
+    var fraction: Double
+    var tint: Color
+}
+
+extension BrickLifeBack {
+    /// Milestones the "back" ring fills toward, in hours: a day, two, five, ten, then every 25 days.
+    private static func nextMilestone(_ hours: Double) -> Double {
+        for h in [1.0, 6, 12, 24, 48, 120, 240] where hours < h { return h }
+        return (floor(hours / 600) + 1) * 600
+    }
+
+    /// Time back so far: hours under a day, then days. The ring fills toward the next milestone.
+    static func backRing(_ seconds: TimeInterval) -> BrickLifeRing {
+        let h = seconds / 3600
+        let goal = nextMilestone(h)
+        let value: String, label: String
+        if h >= 24 { value = String(format: h >= 240 ? "%.0f" : "%.1f", h / 24); label = "Days back" }
+        else if h >= 1 { value = String(format: h >= 10 ? "%.0f" : "%.1f", h); label = "Hours back" }
+        else { value = "\(Int(seconds / 60))"; label = "Minutes back" }
+        return BrickLifeRing(value: value, label: label, fraction: h / goal, tint: BrickLook.backTint)
+    }
+
+    /// What the time would have held, the ring filling toward the next one.
+    static func heldRing(_ seconds: TimeInterval) -> BrickLifeRing {
+        let h = seconds / 3600
+        let (unit, name): (Double, String) = h >= 7 ? (7, "Books") : (h >= 2 ? (2, "Films") : (0.75, "Episodes"))
+        let n = h / unit
+        return BrickLifeRing(value: "\(Int(n))", label: "\(name)' worth", fraction: n - floor(n), tint: BrickLook.heldTint)
+    }
+
+    /// Days a year at the recent daily pace; the ring is that pace's share of a 16-hour waking day.
+    static func paceRing(_ pace: TimeInterval?) -> BrickLifeRing {
+        guard let pace else { return BrickLifeRing(value: "–", label: "Days a year", fraction: 0, tint: BrickLook.paceTint) }
+        let d = pace * 365 / 86400
+        return BrickLifeRing(value: d >= 10 ? String(format: "%.0f", d) : String(format: "%.1f", d),
+                             label: "Days a year", fraction: pace / (16 * 3600), tint: BrickLook.paceTint)
+    }
+}
+
+/// Three rings under the device, the way Fitness shows its scores: life back so far, what it would
+/// have held, and the days a year at this pace. Each opens the history.
 struct BrickLifeStats: View {
     let store: BrickStore
+    var size: CGFloat = 100
 
     var body: some View {
         let total = store.lifetimeSeconds
-        if total < 60 {
-            Text("Time you take back adds up here")
-                .font(.subheadline).foregroundStyle(BrickLook.soft)
-                .frame(maxWidth: .infinity)
-        } else {
-            let worth = BrickLifeBack.worth(total)
-            HStack(alignment: .top, spacing: 0) {
-                item(BrickLifeBack.span(total), "of life back")
-                item(worth.value, worth.label)
-                item(store.dailyPace.map(BrickLifeBack.yearly) ?? "--", "a year at this pace")
-            }
+        HStack(alignment: .top, spacing: 0) {
+            ring(BrickLifeBack.backRing(total))
+            ring(BrickLifeBack.heldRing(total))
+            ring(BrickLifeBack.paceRing(total >= 60 ? store.dailyPace : nil))
         }
     }
 
-    private func item(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(BrickLook.ink)
-                .contentTransition(.numericText())
-            Text(label).font(.footnote).foregroundStyle(BrickLook.soft)
+    private func ring(_ r: BrickLifeRing) -> some View {
+        NavigationLink(value: BrickRoute.activity) {
+            VStack(spacing: 8) {
+                ScoreRing(value: r.value, fraction: r.fraction, tint: r.tint, size: size, weight: 0.09, glass: true)
+                Text(r.label).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
         }
-        .lineLimit(1).minimumScaleFactor(0.7)
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(r.value) \(r.label)")
     }
 }
 

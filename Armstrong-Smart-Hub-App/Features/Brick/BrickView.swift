@@ -177,9 +177,14 @@ private struct BrickSheet: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, HubLayout.sectionGap)
             }
-            if !Demo.isOn { BrickLifeStats(store: store).padding(.top, HubLayout.sectionGap) }
-            if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.sectionGap) }
-            Spacer(minLength: HubLayout.sectionGap)
+            if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.topInset) }
+            // The rings sit centred in the room between the device and the button.
+            Spacer(minLength: 8)
+            // Smaller when a line under the button or a lockdown chip needs the room; gone when both do.
+            if !Demo.isOn, store.activeLockdowns.isEmpty || !hasSubline {
+                BrickLifeStats(store: store, size: store.activeLockdowns.isEmpty && !hasSubline ? 100 : 72)
+                Spacer(minLength: 8)
+            }
             brickButton
         }
         .frame(height: HubLayout.deviceSheetHeight, alignment: .top)
@@ -266,6 +271,11 @@ private struct BrickSheet: View {
                 .glassGlare(.regular, in: .capsule)
             }
         }
+    }
+
+    /// True when a line shows under the button ("Allow Screen Time access" or "Unbrick without tag").
+    private var hasSubline: Bool {
+        !store.authorized || (store.isBlocking && store.blockingProfile?.strict == false && !Demo.isOn)
     }
 
     private var brickButton: some View {
