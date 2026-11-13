@@ -484,39 +484,41 @@ private struct MeditationFlood: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
+            // One full-screen frame for the flood, the disc and its text, so they all share the exact same centre.
             GeometryReader { geo in
+                let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
                 let diameter = hypot(geo.size.width, geo.size.height)
-                Circle()
-                    .fill(color)
-                    .frame(width: diameter, height: diameter)
-                    .scaleEffect(reduceMotion ? 1 : max(level, 0.05))
-                    .opacity(reduceMotion ? level : 1)
-                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                let d = min(geo.size.width - HubLayout.gutter * 2, 320)
+                ZStack {
+                    Circle()
+                        .fill(color)
+                        .frame(width: diameter, height: diameter)
+                        .scaleEffect(reduceMotion ? 1 : max(level, 0.05))
+                        .opacity(reduceMotion ? level : 1)
+                        .position(center)
+                        .accessibilityHidden(true)
+
+                    Group {
+                        if finished {
+                            VStack(spacing: 12) {
+                                Text("Well done").font(.largeTitle.weight(.light))
+                                Text("\(minutes) minutes of calm").font(.body).opacity(0.85)
+                                Button("Done", action: onClose)
+                                    .font(.headline)
+                                    .padding(.horizontal, 32)
+                                    .frame(minHeight: 52)
+                                    .glassGlare(.regular, in: .capsule)
+                                    .buttonStyle(.plain)
+                                    .padding(.top, 16)
+                            }
+                        } else {
+                            breathingCircle(diameter: d)
+                        }
+                    }
+                    .position(center)
+                }
             }
             .ignoresSafeArea()
-            .accessibilityHidden(true)
-
-            GeometryReader { geo in
-                let d = min(geo.size.width - HubLayout.gutter * 2, 320)
-                Group {
-                    if finished {
-                        VStack(spacing: 12) {
-                            Text("Well done").font(.largeTitle.weight(.light))
-                            Text("\(minutes) minutes of calm").font(.body).opacity(0.85)
-                            Button("Done", action: onClose)
-                                .font(.headline)
-                                .padding(.horizontal, 32)
-                                .frame(minHeight: 52)
-                                .glassGlare(.regular, in: .capsule)
-                                .buttonStyle(.plain)
-                                .padding(.top, 16)
-                        }
-                    } else {
-                        breathingCircle(diameter: d)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
             .foregroundStyle(.white)
 
             VStack {
@@ -534,11 +536,8 @@ private struct MeditationFlood: View {
                 }
                 Spacer()
                 if !finished {
-                    VStack(spacing: 4) {
-                        Text("Breath \(cycle) of \(cycles)").font(.subheadline).monospacedDigit()
-                        Text(pattern.title).font(.footnote).monospacedDigit().opacity(0.85)
-                    }
-                    .padding(.bottom, 24)
+                    Text(pattern.title).font(.footnote).monospacedDigit().opacity(0.7)
+                        .padding(.bottom, 24)
                 }
             }
             .foregroundStyle(.white)
@@ -551,30 +550,43 @@ private struct MeditationFlood: View {
         .task { await run() }
     }
 
-    /// The circle swells and shrinks with the flood; the phase text and countdown stay fixed at its centre.
+    /// A soft disc swells and shrinks with the flood. The countdown sits at its exact centre with the phase word just above,
+    /// and the breath counter just below, so the whole group reads as one centred object.
     private func breathingCircle(diameter d: CGFloat) -> some View {
         ZStack {
             Circle()
-                .fill(.white.opacity(0.14))
-                .overlay { Circle().stroke(.white.opacity(0.6), lineWidth: 2) }
+                .fill(
+                    RadialGradient(
+                        colors: [.white.opacity(0.16), .white.opacity(0.07)],
+                        center: .center, startRadius: 0, endRadius: d / 2
+                    )
+                )
                 .frame(width: d, height: d)
                 .scaleEffect(reduceMotion ? 0.8 : 0.62 + 0.38 * level)
                 .accessibilityHidden(true)
 
-            VStack(spacing: 6) {
-                Text(phase?.label ?? "Get ready")
-                    .font(.title2.weight(.light))
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                    .accessibilityAddTraits(.updatesFrequently)
-                TimelineView(.periodic(from: .now, by: 0.2)) { ctx in
-                    let left = phaseEnd.map { max(1, Int(ceil($0.timeIntervalSince(ctx.date)))) }
-                    Text(left.map { String($0) } ?? " ")
-                        .font(.system(size: 64, weight: .ultraLight))
-                        .monospacedDigit()
-                        .accessibilityHidden(true)
-                }
+            TimelineView(.periodic(from: .now, by: 0.2)) { ctx in
+                let left = phaseEnd.map { max(1, Int(ceil($0.timeIntervalSince(ctx.date)))) }
+                Text(left.map { String($0) } ?? " ")
+                    .font(.system(size: 64, weight: .ultraLight))
+                    .monospacedDigit()
+                    .accessibilityHidden(true)
             }
-            .frame(width: d * 0.5)
+            .overlay(alignment: .top) {
+                Text(phase?.label ?? "Get ready")
+                    .font(.title3.weight(.light))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .alignmentGuide(.top) { $0[.bottom] + 2 }
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
+            .overlay(alignment: .bottom) {
+                Text("Breath \(cycle) of \(cycles)")
+                    .font(.footnote).monospacedDigit()
+                    .opacity(0.75)
+                    .fixedSize()
+                    .alignmentGuide(.bottom) { $0[.top] - 6 }
+            }
         }
         .frame(width: d, height: d)
     }
