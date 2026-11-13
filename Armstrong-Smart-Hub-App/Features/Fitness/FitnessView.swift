@@ -275,6 +275,7 @@ struct FitnessView: View {
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens watch details")
                 .padding(.top, HubLayout.topInset)
+                Spacer(minLength: HubLayout.sectionGap)
                 TodayScores(store: store)
                     .hubAnimation(value: store.snapshot?.watch?.readiness?.score ?? store.snapshot?.metrics?.readiness.score)
                     .hubAnimation(value: store.snapshot?.watch?.sleep?.overall ?? store.lastNight?.score)
@@ -286,7 +287,6 @@ struct FitnessView: View {
                             transaction.disablesAnimations = true
                         }
                     }
-                    .padding(.top, HubLayout.sectionGap)
             } else {
                 welcome.padding(.top, HubLayout.sectionGap)
             }

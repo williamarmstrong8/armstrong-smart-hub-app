@@ -170,7 +170,7 @@ struct ReflectionView: View {
                 heroStat(value: "\(store.sessions.count)", label: "Sessions")
                 heroStat(value: totalTime(store.totalMinutes), label: "All time")
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 24)
+            .padding(.horizontal, 16).padding(.top, 8)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight, alignment: .top)

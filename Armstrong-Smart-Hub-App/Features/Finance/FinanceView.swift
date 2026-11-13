@@ -97,7 +97,7 @@ struct FinanceView: View {
             }
             CardStack(accounts: d.accounts)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.top, 20).padding(.bottom, 24)
+                .padding(.top, 20)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight, alignment: .top)
