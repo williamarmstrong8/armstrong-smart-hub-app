@@ -4,6 +4,7 @@ import SwiftUI
 /// exercises first, a picture on every row and an info button that opens the
 /// exercise's page. Pick several at once; they're added in the order tapped.
 struct ExercisePicker: View {
+    @Environment(AppSession.self) private var session
     @Environment(\.dismiss) private var dismiss
     var store: WorkoutStore
     /// Picks one exercise to swap in: a tap picks it and closes.
@@ -74,6 +75,7 @@ struct ExercisePicker: View {
                 .contentMargins(.bottom, picked.isEmpty ? 0 : 90, for: .scrollContent)
             }
             .overlay(alignment: .bottom) { addButton }
+            .task { if store.exercises.isEmpty { await store.load(api: session.api) } }
             .hubPageStyle()
             .presentationBackground { AmbientBackdrop() }
             .navigationTitle(replacing ? "Replace Exercise" : "Add Exercise")

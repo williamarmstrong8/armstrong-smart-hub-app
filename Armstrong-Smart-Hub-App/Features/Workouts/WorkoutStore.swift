@@ -15,6 +15,8 @@ final class WorkoutStore {
     static let shared = WorkoutStore()
 
     private(set) var home: WorkoutsHome?
+    /// The exercise library as of the last time the hub answered, kept on disk so it's there at once and offline.
+    private var libraryCache: [Exercise] = []
     private(set) var error: String?
     private(set) var pending: [ActiveWorkout] = []
     private(set) var isUploading = false
@@ -60,6 +62,7 @@ final class WorkoutStore {
         // Demo mode starts with no workout in progress, so every take matches.
         active = Demo.isOn ? nil : Self.read(ActiveWorkout.self, from: Self.activeURL)
         pending = Self.read([ActiveWorkout].self, from: Self.pendingURL) ?? []
+        libraryCache = Self.read([Exercise].self, from: Self.libraryURL) ?? []
     }
 
     /// Keeps the lock screen, Dynamic Island and home screen widget in step.
@@ -74,7 +77,12 @@ final class WorkoutStore {
     func load(api: APIClient) async {
         await upload(api: api)
         do {
-            home = try await api.get("/api/mobile/workouts")
+            let fetched: WorkoutsHome = try await api.get("/api/mobile/workouts")
+            home = fetched
+            if !fetched.exercises.isEmpty, fetched.exercises != libraryCache {
+                libraryCache = fetched.exercises
+                save(fetched.exercises, to: Self.libraryURL)
+            }
             error = nil
         } catch is CancellationError {
         } catch {
@@ -123,7 +131,7 @@ final class WorkoutStore {
         await load(api: api)
     }
 
-    var exercises: [Exercise] { home?.exercises ?? [] }
+    var exercises: [Exercise] { home?.exercises ?? libraryCache }
     var routines: [Routine] { home?.routines ?? [] }
     var workouts: [WorkoutSummary] { home?.workouts ?? [] }
 
@@ -488,6 +496,7 @@ final class WorkoutStore {
     }
     private static var activeURL: URL { folder.appending(path: "active.json") }
     private static var pendingURL: URL { folder.appending(path: "pending.json") }
+    private static var libraryURL: URL { folder.appending(path: "exercises.json") }
 
     private static func read<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
         guard let data = try? Data(contentsOf: url) else { return nil }
