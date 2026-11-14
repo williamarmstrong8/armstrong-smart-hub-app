@@ -407,6 +407,7 @@ struct BookDetailView: View {
     @State private var confirmRemove = false
     @State private var editingQuote: ReflectionQuote?
     @State private var scanning = false
+    @State private var typingQuote = false
     @FocusState private var notesFocused: Bool
 
     init(store: ReflectionStore, bookID: UUID) {
@@ -480,6 +481,9 @@ struct BookDetailView: View {
         }
         .fullScreenCover(isPresented: $scanning) {
             QuoteScanFlow(store: store, bookID: bookID) { scanning = false }
+        }
+        .sheet(isPresented: $typingQuote) {
+            ManualQuoteSheet(store: store, bookID: bookID)
         }
     }
 
@@ -662,6 +666,16 @@ struct BookDetailView: View {
             HStack {
                 Text("Quotes").font(.title2.weight(.regular)).accessibilityAddTraits(.isHeader)
                 Spacer()
+                Button { typingQuote = true } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(HubDesign.ink)
+                        .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                        .glassGlare(.regular, in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Type a quote from this book")
                 Button { scanning = true } label: {
                     Label("Scan", systemImage: "text.viewfinder")
                         .font(.subheadline.weight(.medium))
@@ -675,7 +689,7 @@ struct BookDetailView: View {
                 .accessibilityLabel("Scan a quote from this book")
             }
             if quotes.isEmpty {
-                Text("Quotes you scan from this book show up here.")
+                Text("Scan a page or type a quote to keep it here.")
                     .font(.subheadline).foregroundStyle(HubDesign.secondary)
                     .padding(.horizontal, 4)
             } else {

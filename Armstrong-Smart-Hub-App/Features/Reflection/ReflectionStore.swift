@@ -116,10 +116,12 @@ final class ReflectionStore {
 
     var totalMinutes: Int { sessions.reduce(0) { $0 + $1.minutes } }
 
-    func addQuote(text: String, author: String, bookID: UUID? = nil) {
+    func addQuote(text: String, author: String, bookID: UUID? = nil, note: String = "") {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        quotes.insert(ReflectionQuote(text: text, author: author.trimmingCharacters(in: .whitespacesAndNewlines), bookID: bookID), at: 0)
+        var quote = ReflectionQuote(text: text, author: author.trimmingCharacters(in: .whitespacesAndNewlines), bookID: bookID)
+        quote.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        quotes.insert(quote, at: 0)
         persist()
     }
 
