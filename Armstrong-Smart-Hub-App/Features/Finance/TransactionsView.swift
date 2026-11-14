@@ -38,7 +38,7 @@ private struct CashFlowChart: View {
                 .frame(height: 24)
             }
             ChartContainer(height: 150) { plotWidth in
-                let ticks = ChartTicks.fit(middles, width: plotWidth, labelWidth: 56)
+                let ticks = ChartTicks.fit(middles, width: plotWidth, labelWidth: 48)
                 let activeTick = ChartTicks.nearest(ticks, to: chosen.flatMap { c in
                     calendar.dateInterval(of: .month, for: c.date).map { $0.start.addingTimeInterval($0.duration / 2) }
                 })
@@ -52,17 +52,10 @@ private struct CashFlowChart: View {
                     }
                 }
                 .chartXSelection(value: $selected)
-                .chartXAxis {
-                    AxisMarks(values: ticks) { value in
-                        AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
-                            if let date = value.as(Date.self) {
-                                ChartTickLabel(text: date.formatted(.dateTime.month(.abbreviated)), active: date == activeTick)
-                            }
-                        }
-                    }
-                }
+                .glassXLabels(ticks, active: activeTick) { $0.formatted(.dateTime.month(.abbreviated)) }
                 .glassYAxis(scale) { Fmt.axis($0) }
             }
+            .padding(.bottom, 24)
         }
     }
 }

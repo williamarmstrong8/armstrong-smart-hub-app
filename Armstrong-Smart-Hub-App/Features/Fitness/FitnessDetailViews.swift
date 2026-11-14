@@ -104,7 +104,7 @@ struct TrendsView: View {
             if !steps.isEmpty {
                 FitSection(title: "Daily steps", trailing: average.map { "\($0.formatted()) average" }) {
                     PeriodPicker(days: $days)
-                    DailyBarChart(points: FitData.last(days, steps), tint: Fit.positive, goal: store.today?.stepGoal.map(Double.init))
+                    DailyBarChart(points: FitData.last(days, steps), tint: Fit.positive, goal: store.today?.stepGoal.map(Double.init), period: days)
                 }
             }
             dayTotals

@@ -23,6 +23,8 @@ struct ActiveWorkoutView: View {
     /// Exercises collapsed to one row each, to drag into a new order.
     @State private var reordering = false
     @State private var replacing: Replacing?
+    /// The simple view: one exercise blown up, big check. Remembered between workouts.
+    @AppStorage("workouts.simpleView") private var simpleView = false
 
     /// The watch's reading, if it's recent enough to trust.
     private var liveBpm: Int? {
@@ -107,6 +109,15 @@ struct ActiveWorkoutView: View {
             Text(store.active?.name ?? "Workout").font(.system(size: 20, weight: .regular)).lineLimit(1)
         }
         ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                Self.hideKeyboard()
+                withAnimation(.snappy) { reordering = false; simpleView.toggle() }
+            } label: {
+                Image(systemName: simpleView ? "list.bullet" : "rectangle.portrait")
+            }
+            .accessibilityLabel(simpleView ? "Full view" : "Simple view")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 if store.restEndsAt != nil {
                     Button("Skip rest", systemImage: "forward.end") { store.skipRest() }
@@ -125,15 +136,17 @@ struct ActiveWorkoutView: View {
             if reordering {
                 Button { withAnimation(.snappy) { reordering = false } } label: { WorkoutToolbarLabel(title: "Done") }
             } else {
-                Button {
-                    if store.active?.completedSets.isEmpty ?? true { confirmEmpty = true } else { finish() }
-                } label: { WorkoutToolbarLabel(title: "Finish") }
+                Button(action: tappedFinish) { WorkoutToolbarLabel(title: "Finish") }
             }
         }
     }
 
     static func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    private func tappedFinish() {
+        if store.active?.completedSets.isEmpty ?? true { confirmEmpty = true } else { finish() }
     }
 
     private func finish() {
@@ -149,7 +162,15 @@ struct ActiveWorkoutView: View {
 
     private func list(_ workout: ActiveWorkout) -> some View {
         Group {
-            if reordering { reorderList(workout) } else { fullList(workout) }
+            if reordering {
+                reorderList(workout)
+            } else if simpleView {
+                FocusWorkoutView(store: store, workout: workout, liveBpm: liveBpm,
+                                 onAddExercise: { picking = true }, onFinish: tappedFinish)
+                    .transition(.opacity)
+            } else {
+                fullList(workout)
+            }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             RepsProgress(done: workout.repProgress.done, total: workout.repProgress.total)

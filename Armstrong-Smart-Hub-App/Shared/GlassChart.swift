@@ -6,8 +6,8 @@ import SwiftUI
 // that lights up the label under the finger) in SwiftUI, with Liquid Glass
 // for the highlighted label and tooltip.
 
-/// A y axis whose gridlines are evenly spaced and whose ends bound the data,
-/// so nothing a chart draws can leave its range.
+/// A y axis that runs from the lowest to the highest value shown (no empty
+/// headroom), with evenly spaced gridlines on round numbers inside it.
 struct ChartScale {
     let domain: ClosedRange<Double>
     let ticks: [Double]
@@ -29,17 +29,17 @@ struct ChartScale {
             ticks = run
             return
         }
-        let raw = max((hi - lo) / 2, 1)
-        let magnitude = pow(10, floor(log10(raw)))
-        var step = magnitude
-        var lower = floor(lo / step) * step
-        for multiple in [1.0, 2.0, 5.0, 10.0] {
-            step = multiple * magnitude
-            lower = floor(lo / step) * step
-            if lower + 2 * step >= hi - step * 0.001 { break }
-        }
-        domain = lower...(lower + 2 * step)
-        ticks = [lower, lower + step, lower + 2 * step]
+        // The axis ends where the data does, so the tallest mark reaches the
+        // top; gridlines go on round numbers inside that range (2 to 5 of them).
+        var bottom = lo, top = hi
+        if top - bottom < 1e-9 { bottom -= max(abs(bottom) * 0.1, 1); top += max(abs(top) * 0.1, 1); if lo >= 0 { bottom = max(bottom, 0) } }
+        let magnitude = pow(10, floor(log10((top - bottom) / 4)))
+        let step = [1.0, 2.0, 5.0, 10.0].map { $0 * magnitude }.first { (top - bottom) / $0 <= 4 } ?? 10 * magnitude
+        var run: [Double] = []
+        var tick = (bottom / step).rounded(.up) * step
+        while tick <= top + step * 1e-6, run.count < 8 { run.append(tick); tick += step }
+        domain = bottom...top
+        ticks = run
     }
 
     func clamp(_ value: Double) -> Double { min(max(value, domain.lowerBound), domain.upperBound) }
@@ -134,6 +134,67 @@ extension View {
                         }
                     }
                 }
+            }
+    }
+}
+
+/// Lays out time labels centered on their x (nudged in at the edges so none
+/// spill past the chart) and skips any that would touch a label already
+/// placed: pinned ones first, then right to left, so the newest stays.
+struct TickLabelLayout: Layout {
+    var xs: [CGFloat]
+    var pinned: Set<Int> = []
+    var gap: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        CGSize(width: proposal.width ?? 0, height: subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var taken: [ClosedRange<CGFloat>] = []
+        let order = subviews.indices.filter { pinned.contains($0) } + subviews.indices.reversed().filter { !pinned.contains($0) }
+        for index in order {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let x = bounds.minX + (index < xs.count ? xs[index] : 0)
+            let center = max(min(x, bounds.maxX - size.width / 2), bounds.minX + size.width / 2)
+            let span = (center - size.width / 2 - gap / 2)...(center + size.width / 2 + gap / 2)
+            if taken.contains(where: { $0.overlaps(span) }) {
+                // Out of sight: a label that doesn't fit isn't drawn.
+                subviews[index].place(at: CGPoint(x: -10_000, y: -10_000), proposal: .unspecified)
+            } else {
+                taken.append(span)
+                subviews[index].place(at: CGPoint(x: center, y: bounds.midY), anchor: .center, proposal: .unspecified)
+            }
+        }
+    }
+}
+
+private struct PlacedTick: Identifiable {
+    var date: Date
+    var x: CGFloat
+    var id: Date { date }
+}
+
+extension View {
+    /// Time labels under the plot, each centered on its own date's x, never
+    /// overlapping. Leave about 24pt below the chart for them.
+    func glassXLabels(_ ticks: [Date], active: Date?, text: @escaping (Date) -> String) -> some View {
+        chartXAxis(.hidden)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    if let anchor = proxy.plotFrame {
+                        let plot = geo[anchor]
+                        let placed = ticks.sorted().compactMap { t in proxy.position(forX: t).map { PlacedTick(date: t, x: plot.minX + $0) } }
+                        TickLabelLayout(xs: placed.map(\.x), pinned: placed.isEmpty ? [] : [placed.count - 1]) {
+                            ForEach(placed) { tick in
+                                ChartTickLabel(text: text(tick.date), active: tick.date == active)
+                            }
+                        }
+                        .frame(width: geo.size.width, height: 20)
+                        .offset(y: plot.maxY + 4)
+                    }
+                }
+                .allowsHitTesting(false)
             }
     }
 }

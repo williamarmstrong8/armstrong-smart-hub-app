@@ -491,9 +491,9 @@ private func midday(_ date: Date) -> Date {
 /// Day labels for a run of days: every day up to a week, then a whole number
 /// of days apart counting back from the last, so they're evenly spaced in
 /// time even where days are missing. Each is at its day's middle.
-private func dayTicks(_ dates: [Date], maxLabels: Int = 7) -> [Date] {
+private func dayTicks(from first: Date, to last: Date, maxLabels: Int = 7) -> [Date] {
     let calendar = Calendar.current
-    guard let first = dates.min(), let last = dates.max() else { return [] }
+    let maxLabels = max(maxLabels, 1)
     let span = calendar.dateComponents([.day], from: calendar.startOfDay(for: first), to: calendar.startOfDay(for: last)).day ?? 0
     let step = max(1, Int((Double(span + 1) / Double(maxLabels)).rounded(.up)))
     return stride(from: 0, through: span, by: step).reversed()
@@ -527,6 +527,11 @@ struct DailyBarChart: View {
     var colorFor: ((Double) -> Color)?
     /// Bars a day wide, or a week wide for weekly totals.
     var unit: Calendar.Component = .day
+    /// How many days the chart covers, so days with nothing still take their
+    /// place and the bars and labels stay evenly spaced.
+    var period: Int?
+    /// Wide, squared-off blocks in one color, rather than thin capsules.
+    var blocks = false
 
     @State private var selected: Date?
 
@@ -545,17 +550,23 @@ struct DailyBarChart: View {
                         caption: calendar.isDateInToday(last.date) ? "Today" : last.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
             }
             let scale = ChartScale(low: 0, high: max(days.map(\.value).max() ?? 1, goal ?? 0, 1), domain: domain, fixedTicks: yTicks)
-            let allTicks = unit == .day ? dayTicks(days.map(\.date)) : weekTicks(days.map(\.date))
+            let lastDay = days.map(\.date).max() ?? calendar.startOfDay(for: .now)
+            let firstDay = min(days.map(\.date).min() ?? lastDay,
+                               period.flatMap { calendar.date(byAdding: .day, value: -($0 - 1), to: lastDay) } ?? lastDay)
+            let slots = unit == .day ? (calendar.dateComponents([.day], from: firstDay, to: lastDay).day ?? 0) + 1 : days.count
             ChartContainer(height: height) { plotWidth in
-                let ticks = ChartTicks.fit(allTicks, width: plotWidth, labelWidth: unit == .day && days.count <= 7 ? 52 : 68)
+                let labelWidth: CGFloat = unit == .day && slots <= 7 ? 44 : 64
+                let room = max(2, Int(plotWidth / labelWidth))
+                let ticks = unit == .day ? dayTicks(from: firstDay, to: lastDay, maxLabels: min(7, room))
+                                         : ChartTicks.fit(weekTicks(days.map(\.date)), width: plotWidth, labelWidth: labelWidth)
                 let activeTick = ChartTicks.nearest(ticks, to: chosen.map { unit == .day ? midday($0.date) : $0.date.addingTimeInterval(3.5 * 86400) })
+                let barWidth: MarkDimension = blocks ? .ratio(slots <= 8 ? 0.6 : 0.75)
+                    : .fixed(slots <= 8 ? 14 : slots <= 16 ? 10 : slots <= 35 ? 6 : 3)
                 Chart {
                     ForEach(days) { day in
-                        // Thin bars, as Oura draws them, however few days there are.
-                        BarMark(x: .value("Day", day.date, unit: unit), y: .value("Value", scale.clamp(day.value)),
-                                width: .fixed(days.count <= 8 ? 14 : days.count <= 16 ? 10 : days.count <= 35 ? 6 : 3))
-                            .foregroundStyle((colorFor?(day.value) ?? tint).opacity(chosen == nil || chosen?.date == day.date ? 1 : 0.35))
-                            .clipShape(Capsule())
+                        BarMark(x: .value("Day", day.date, unit: unit), y: .value("Value", scale.clamp(day.value)), width: barWidth)
+                            .foregroundStyle((blocks ? tint : colorFor?(day.value) ?? tint).opacity(chosen == nil || chosen?.date == day.date ? 1 : 0.35))
+                            .clipShape(blocks ? AnyShape(RoundedRectangle(cornerRadius: 3, style: .continuous)) : AnyShape(Capsule()))
                     }
                     if let goal {
                         RuleMark(y: .value("Goal", scale.clamp(goal)))
@@ -563,19 +574,17 @@ struct DailyBarChart: View {
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     }
                 }
+                .chartXScale(domain: firstDay...(calendar.date(byAdding: unit, value: 1, to: lastDay) ?? lastDay))
                 .chartXSelection(value: $selected)
-                .chartXAxis {
-                    AxisMarks(values: ticks) { value in
-                        // Ticks sit at the bars' middles; the label centers on its tick.
-                        AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
-                            if let date = value.as(Date.self) {
-                                ChartTickLabel(text: dayLabel(date, count: unit == .day ? days.count : 99), active: date == activeTick)
-                            }
-                        }
-                    }
+                // A tap picks a bar and it stays picked (the default selection
+                // lets go as soon as the finger lifts).
+                .chartGesture { proxy in
+                    SpatialTapGesture().onEnded { tap in proxy.selectXValue(at: tap.location.x) }
                 }
+                .glassXLabels(ticks, active: activeTick) { dayLabel($0, count: unit == .day ? slots : 99) }
                 .glassYAxis(scale, format: format)
             }
+            .padding(.bottom, 24)
         }
     }
 }
@@ -604,7 +613,7 @@ struct TrendLineChart: View {
                         caption: chosen == nil ? "Latest, \(point.date.formatted(.dateTime.month(.abbreviated).day()))" : point.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
             }
             ChartContainer(height: height) { plotWidth in
-                let ticks = ChartTicks.fit(allTicks, width: plotWidth - 60, labelWidth: 66)
+                let ticks = ChartTicks.fit(allTicks, width: plotWidth - 60, labelWidth: 60)
                 let activeTick = ChartTicks.nearest(ticks, to: chosen.map { midday($0.date) })
                 Chart {
                     if let band, let first = sorted.first?.date, let last = sorted.last?.date {
@@ -628,18 +637,10 @@ struct TrendLineChart: View {
                 }
                 .chartXSelection(value: $selected)
                 .chartXScale(range: .plotDimension(padding: 30))
-                .chartXAxis {
-                    AxisMarks(values: ticks) { value in
-                        // Points sit at their days' middles, and so do the ticks; the label centers on its tick.
-                        AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
-                            if let date = value.as(Date.self) {
-                                ChartTickLabel(text: date.formatted(.dateTime.month(.abbreviated).day()), active: date == activeTick)
-                            }
-                        }
-                    }
-                }
+                .glassXLabels(ticks, active: activeTick) { $0.formatted(.dateTime.month(.abbreviated).day()) }
                 .glassYAxis(scale, format: format)
             }
+            .padding(.bottom, 24)
         }
     }
 
@@ -680,14 +681,13 @@ struct IntradayChart: View {
         // Bars rise from zero, so their axis has to include it.
         let low = style == .bars ? 0 : (values.min() ?? 0), high = values.max() ?? 1
         let scale = ChartScale(low: low, high: high, domain: domain)
-        let allTicks = ticks()
         VStack(alignment: .leading, spacing: 10) {
             if let point = chosen ?? sorted.last {
                 Readout(value: format(point.value) + unit,
                         caption: chosen == nil ? "Latest, \(moment(point.date))" : moment(point.date))
             }
             ChartContainer(height: height) { plotWidth in
-                let tickDates = ChartTicks.fit(allTicks, width: plotWidth, labelWidth: to.timeIntervalSince(from) > 2 * 3600 ? 62 : 76)
+                let tickDates = ticks(width: plotWidth)
                 let activeTick = ChartTicks.nearest(tickDates, to: chosen?.date)
                 Chart {
                     ForEach(Array(sorted.enumerated()), id: \.element.id) { index, point in
@@ -696,16 +696,8 @@ struct IntradayChart: View {
                         case .bars:
                             BarMark(x: .value("Time", point.date, unit: .minute), y: .value("Value", scale.clamp(point.value)), width: .fixed(2))
                                 .foregroundStyle((point.color ?? tint).opacity(chosen == nil || chosen == point ? 1 : 0.4))
-                        case .area:
-                            AreaMark(x: .value("Time", point.date), yStart: .value("Floor", scale.domain.lowerBound), yEnd: .value("Value", scale.clamp(point.value)),
-                                     series: .value("Run", run))
-                                .interpolationMethod(.monotone)
-                                .foregroundStyle(LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
-                            LineMark(x: .value("Time", point.date), y: .value("Value", scale.clamp(point.value)), series: .value("Run", run))
-                                .interpolationMethod(.monotone)
-                                .foregroundStyle(tint)
-                                .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                        case .line:
+                        case .area, .line:
+                            // Just the line: no fill under it.
                             LineMark(x: .value("Time", point.date), y: .value("Value", scale.clamp(point.value)), series: .value("Run", run))
                                 .interpolationMethod(.monotone)
                                 .foregroundStyle(tint)
@@ -718,26 +710,7 @@ struct IntradayChart: View {
                 }
                 .chartXSelection(value: $selected)
                 .chartXScale(domain: from...to)
-                .chartXAxis {
-                    AxisMarks(values: tickDates) { _ in
-                        AxisTick(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Fit.hairline)
-                    }
-                }
-                // Time labels placed at the chart's own x for each tick, centered on its tick mark.
-                .chartOverlay { proxy in
-                    GeometryReader { geo in
-                        if let anchor = proxy.plotFrame {
-                            let plot = geo[anchor]
-                            ForEach(tickDates, id: \.self) { tick in
-                                if let x = proxy.position(forX: tick) {
-                                    ChartTickLabel(text: tick.formatted(tickFormat), active: tick == activeTick)
-                                        .position(x: plot.minX + x, y: plot.maxY + 14)
-                                }
-                            }
-                        }
-                    }
-                    .allowsHitTesting(false)
-                }
+                .glassXLabels(tickDates, active: activeTick) { $0.formatted(tickFormat) }
                 .glassYAxis(scale, format: format)
             }
             .padding(.bottom, 24)
@@ -755,12 +728,15 @@ struct IntradayChart: View {
         }
     }
 
-    /// Whole hours inside the window, every 6 (every 3 under half a day,
-    /// every hour under 4); under 2 hours, every 10 or 15 minutes. Kept off
-    /// the very edges so their labels don't clip.
-    private func ticks() -> [Date] {
+    /// Evenly spaced round times inside the window: the finest step (on the
+    /// hour, or :00/:15/:30 under 2 hours) whose labels all fit side by side.
+    /// Kept off the very edges so their labels don't clip.
+    private func ticks(width: CGFloat) -> [Date] {
         let span = to.timeIntervalSince(from)
-        let step: TimeInterval = span > 12 * 3600 ? 6 * 3600 : span > 4 * 3600 ? 3 * 3600 : span > 2 * 3600 ? 3600 : span > 3600 ? 900 : 600
+        let labelWidth: CGFloat = span > 2 * 3600 ? 56 : 70
+        let room = max(2, Double(width / labelWidth))
+        let steps: [TimeInterval] = span > 2 * 3600 ? [1, 2, 3, 4, 6, 12, 24].map { $0 * 3600 } : [5, 10, 15, 30, 60].map { $0 * 60 }
+        let step = steps.first { span / $0 <= room } ?? steps[steps.count - 1]
         // Multiples of the step in local time, so 6 AM, 12 PM... or :00, :15...
         let offset = TimeInterval(TimeZone.current.secondsFromGMT(for: from))
         var tick = ((from.timeIntervalSince1970 + offset) / step).rounded(.up) * step - offset
@@ -809,9 +785,6 @@ struct HypnogramView: View {
                 GeometryReader { geo in
                     let laneHeight = geo.size.height / CGFloat(lanes.count)
                     ZStack(alignment: .topLeading) {
-                        ForEach(0..<lanes.count, id: \.self) { lane in
-                            Rectangle().fill(Fit.hairline).frame(height: 1).offset(y: laneHeight * CGFloat(lane) + laneHeight / 2)
-                        }
                         ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                             let lane = lanes.firstIndex(of: segment.stage) ?? 0
                             let x = geo.size.width * CGFloat(segment.start.timeIntervalSince(start) / span)
@@ -828,25 +801,27 @@ struct HypnogramView: View {
             HStack(spacing: 10) {
                 Color.clear.frame(width: 40, height: 1)
                 GeometryReader { geo in
-                    ZStack(alignment: .topLeading) {
-                        ForEach(hourTicks(start: start, end: end), id: \.self) { tick in
-                            let x = geo.size.width * CGFloat(tick.timeIntervalSince(start) / span)
-                            Text(tick.formatted(.dateTime.hour())).font(Fit.axis).foregroundStyle(Fit.faint)
+                    // Bedtime and wake time pinned at the ends; hours between
+                    // only where they fit clear of them and of each other.
+                    let marks = [start] + hourTicks(start: start, end: end) + [end]
+                    TickLabelLayout(xs: marks.map { geo.size.width * CGFloat($0.timeIntervalSince(start) / span) },
+                                    pinned: [0, marks.count - 1], gap: 10) {
+                        ForEach(Array(marks.enumerated()), id: \.offset) { index, mark in
+                            let edge = index == 0 || index == marks.count - 1
+                            Text(edge ? mark.formatted(date: .omitted, time: .shortened) : mark.formatted(.dateTime.hour()))
+                                .font(edge ? Fit.axis.weight(.semibold) : Fit.axis)
+                                .foregroundStyle(edge ? Fit.muted : Fit.faint)
                                 .fixedSize()
-                                .position(x: x, y: 7)
                         }
-                        Text(start.formatted(date: .omitted, time: .shortened)).font(Fit.axis.weight(.semibold)).foregroundStyle(Fit.muted)
-                            .fixedSize().frame(maxWidth: .infinity, alignment: .leading)
-                        Text(end.formatted(date: .omitted, time: .shortened)).font(Fit.axis.weight(.semibold)).foregroundStyle(Fit.muted)
-                            .fixedSize().frame(maxWidth: .infinity, alignment: .trailing)
                     }
+                    .frame(width: geo.size.width, height: 14)
                 }
                 .frame(height: 14)
             }
         }
     }
 
-    /// Whole hours, every 2 on long nights, kept clear of the bedtime and wake labels.
+    /// Whole hours, every 2 on long nights.
     private func hourTicks(start: Date, end: Date) -> [Date] {
         let span = end.timeIntervalSince(start)
         let step: TimeInterval = span > 6 * 3600 ? 7200 : 3600
@@ -855,7 +830,7 @@ struct HypnogramView: View {
         while tick < end {
             let share = tick.timeIntervalSince(start) / span
             let hour = Calendar.current.component(.hour, from: tick)
-            if share > 0.2, share < 0.8, step == 3600 || hour % 2 == 0 { ticks.append(tick) }
+            if share > 0.05, share < 0.95, step == 3600 || hour % 2 == 0 { ticks.append(tick) }
             tick = tick.addingTimeInterval(3600)
         }
         return ticks

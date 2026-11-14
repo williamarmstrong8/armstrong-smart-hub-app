@@ -143,11 +143,8 @@ private struct FinanceChartView: View {
         case .line:
             let low = chart.points.map(\.value).min() ?? 0
             let high = chart.points.map(\.value).max() ?? 1
-            let pad = max((high - low) * 0.15, 1)
+            let pad = max((high - low) * 0.05, 0.5)
             Chart(chart.points) { p in
-                AreaMark(x: .value("Date", p.label), yStart: .value("Base", low - pad), yEnd: .value("Value", p.value))
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(LinearGradient(colors: [Color.accentColor.opacity(0.3), .clear], startPoint: .top, endPoint: .bottom))
                 LineMark(x: .value("Date", p.label), y: .value("Value", p.value))
                     .interpolationMethod(.catmullRom)
                     .lineStyle(StrokeStyle(lineWidth: 5, lineCap: .round))

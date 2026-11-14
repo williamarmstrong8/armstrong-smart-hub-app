@@ -591,7 +591,7 @@ struct SleepPage: View {
             FitSection(title: "Trend") {
                 PeriodPicker(days: $days, options: [7, 30])
                 DailyBarChart(points: FitData.last(days, scores), tint: Fit.sleep, domain: 0...100, yTicks: [0, 50, 100],
-                              colorFor: { accent(Int($0), Fit.sleep) })
+                              period: days, blocks: true)
             }
         }
     }
