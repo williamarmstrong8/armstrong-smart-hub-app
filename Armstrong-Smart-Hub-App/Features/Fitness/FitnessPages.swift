@@ -110,11 +110,16 @@ struct TodayScores: View {
         let sleep = watch?.sleep?.overall ?? store.lastNight?.score
         let energy = store.currentBodyBattery ?? metrics?.bodyBattery?.current ?? store.snapshot?.insights?.stress.bodyBattery?.current
         HStack(alignment: .top, spacing: 0) {
-            ring(.readiness, readiness, Fit.readiness, "Readiness")
-            ring(.sleep, sleep, Fit.sleep, "Sleep")
-            ring(.energy, energy, Fit.energy, "Energy")
+            ring(.readiness, readiness, Self.faceRed, "Readiness")
+            ring(.sleep, sleep, Self.faceBlue, "Sleep")
+            ring(.energy, energy, Self.faceGreen, "Energy")
         }
     }
+
+    // The watch face's red, blue and green (watch/shared/Draw.mc, Apple system colors).
+    private static let faceRed = Color(red: 1.0, green: 0.27, blue: 0.23)
+    private static let faceBlue = Color(red: 0.04, green: 0.52, blue: 1.0)
+    private static let faceGreen = Color(red: 0.20, green: 0.78, blue: 0.35)
 
     private func ring(_ page: FitnessPage, _ score: Int?, _ tint: Color, _ label: String) -> some View {
         NavigationLink(value: page) {
