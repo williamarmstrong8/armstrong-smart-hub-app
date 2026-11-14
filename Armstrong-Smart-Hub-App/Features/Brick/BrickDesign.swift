@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 #if os(iOS)
@@ -199,70 +200,48 @@ struct HeroRing: View {
 
 // MARK: Charts
 
-/// Brick's week chart: dashed hour lines, labels at the right, one slate bar per day.
+/// Brick's week chart: three even hour lines, labels at the right, one slate bar per day.
+/// Touch a day to light its label and see its time.
 struct BrickWeekChart: View {
     var days: [DayValue]   // value in seconds
-    var height: CGFloat = 200
+    var height: CGFloat = 240
 
-    private var scaleHours: Int {
-        let top = (days.map(\.value).max() ?? 0) / 3600
-        return max(4, Int((top / 2).rounded(.up)) * 2)
-    }
+    @State private var selected: Date?
 
     var body: some View {
-        let hours = scaleHours
-        VStack(spacing: 14) {
-            ZStack(alignment: .topLeading) {
-                // Hour lines, top one is the scale's top.
-                VStack(spacing: 0) {
-                    ForEach(0...hours, id: \.self) { i in
-                        let h = hours - i
-                        ZStack(alignment: .topTrailing) {
-                            Line().stroke(BrickLook.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3])).frame(height: 1)
-                            if h > 0 && h % 2 == 0 {
-                                Text("\(h)h").font(.system(size: 13)).foregroundStyle(BrickLook.soft)
-                                    .padding(.top, 6).padding(.trailing, Fit.gutter)
-                            }
+        let calendar = Calendar.current
+        let hours = days.map { DayValue(date: calendar.startOfDay(for: $0.date), value: $0.value / 3600) }
+        let scale = ChartScale(low: 0, high: max(hours.map(\.value).max() ?? 0, 4))
+        let chosen = selected.flatMap { s in hours.first { calendar.isDate($0.date, inSameDayAs: s) } }
+        let middays = hours.map { calendar.date(byAdding: .hour, value: 12, to: $0.date) ?? $0.date }
+        let activeTick = ChartTicks.nearest(middays, to: chosen.flatMap { c in calendar.date(byAdding: .hour, value: 12, to: c.date) })
+        ChartContainer(height: height) { _ in
+            Chart {
+                ForEach(hours) { d in
+                    BarMark(x: .value("Day", d.date, unit: .day), y: .value("Hours", scale.clamp(d.value)), width: .fixed(26))
+                        .foregroundStyle(BrickLook.bar.opacity(chosen == nil || chosen?.date == d.date ? 1 : 0.35))
+                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        .annotation(position: .top, spacing: 4) {
+                            if chosen?.date == d.date { ChartTooltip(text: brickDuration(d.value * 3600)) }
                         }
-                        .frame(height: 1, alignment: .top)
-                        if i < hours { Spacer(minLength: 0) }
-                    }
-                }
-                HStack(alignment: .bottom, spacing: 0) {
-                    ForEach(days) { d in
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(BrickLook.bar)
-                            .frame(width: 26, height: max(0, CGFloat(d.value / 3600 / Double(hours)) * height))
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .frame(height: height, alignment: .bottom)
-                .padding(.leading, Fit.gutter).padding(.trailing, 52)
-            }
-            .frame(height: height)
-            HStack(spacing: 0) {
-                ForEach(days) { d in
-                    let today = Calendar.current.isDateInToday(d.date)
-                    VStack(spacing: 2) {
-                        Text(d.date.formatted(.dateTime.weekday(.abbreviated)).uppercased())
-                        Text(d.date.formatted(.dateTime.day()))
-                    }
-                    .font(.system(size: 14, weight: today ? .medium : .regular))
-                    .foregroundStyle(today ? BrickLook.ink : BrickLook.soft)
-                    .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.leading, Fit.gutter).padding(.trailing, 52)
+            .chartXSelection(value: $selected)
+            .chartXAxis {
+                AxisMarks(values: middays) { value in
+                    AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
+                        if let date = value.as(Date.self) {
+                            ChartTickLabel(
+                                text: date.formatted(.dateTime.weekday(.abbreviated)).uppercased() + "\n" + date.formatted(.dateTime.day()),
+                                active: date == activeTick, strong: calendar.isDateInToday(date), inset: 4)
+                        }
+                    }
+                }
+            }
+            .glassYAxis(scale) { "\(Int($0.rounded()))h" }
         }
-    }
-}
-
-private struct Line: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.minX, y: rect.midY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-        return p
+        .padding(.horizontal, Fit.gutter)
+        .padding(.top, 24)
     }
 }
 

@@ -482,52 +482,6 @@ private struct Readout: View {
     }
 }
 
-/// Axis labels shared by every chart: small, muted.
-private extension View {
-    func fitYAxis(_ values: [Double]? = nil, format: @escaping (Double) -> String = { String(Int($0.rounded())) }) -> some View {
-        chartYAxis {
-            if let values {
-                AxisMarks(position: .trailing, values: values) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3])).foregroundStyle(Fit.hairline)
-                    AxisValueLabel { if let v = value.as(Double.self) { Text(axisText(v, format)).font(Fit.axis).foregroundStyle(Fit.muted) } }
-                }
-            } else {
-                AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3])).foregroundStyle(Fit.hairline)
-                    AxisValueLabel { if let v = value.as(Double.self) { Text(axisText(v, format)).font(Fit.axis).foregroundStyle(Fit.muted) } }
-                }
-            }
-        }
-    }
-}
-
-/// A y range with three evenly spaced round values (bottom, middle, top) that
-/// contains low...high, so the axis labels and gridlines are always even.
-private func niceAxis(_ low: Double, _ high: Double) -> (domain: ClosedRange<Double>, ticks: [Double]) {
-    let raw = max((high - low) / 2, 1)
-    let magnitude = pow(10, floor(log10(raw)))
-    var step = magnitude
-    var lower = floor(low / step) * step
-    for multiple in [1.0, 2.0, 5.0, 10.0] {
-        step = multiple * magnitude
-        lower = floor(low / step) * step
-        if lower + 2 * step >= high - step * 0.001 { break }
-    }
-    return (lower...(lower + 2 * step), [lower, lower + step, lower + 2 * step])
-}
-
-/// The tick closest to where the finger is, so its label can light up.
-private func nearestTick(_ ticks: [Date], to date: Date?) -> Date? {
-    guard let date else { return nil }
-    return ticks.min { abs($0.timeIntervalSince(date)) < abs($1.timeIntervalSince(date)) }
-}
-
-/// Whole axis values without a decimal ("18", not "18.0").
-private func axisText(_ value: Double, _ format: (Double) -> String) -> String {
-    let text = format(value)
-    return value == value.rounded() && text.contains(".") ? String(Int(value)) : text
-}
-
 /// The middle of a day: where a day-wide bar or a day's point is drawn, so
 /// a label centered here sits right under it.
 private func midday(_ date: Date) -> Date {
@@ -590,39 +544,38 @@ struct DailyBarChart: View {
                 Readout(value: format(last.value),
                         caption: calendar.isDateInToday(last.date) ? "Today" : last.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
             }
-            let axis = niceAxis(0, max(days.map(\.value).max() ?? 1, goal ?? 0, 1))
-            let ticks = unit == .day ? dayTicks(days.map(\.date)) : weekTicks(days.map(\.date))
-            let activeTick = nearestTick(ticks, to: chosen.map { unit == .day ? midday($0.date) : $0.date.addingTimeInterval(3.5 * 86400) })
-            Chart {
-                ForEach(days) { day in
-                    // Thin bars, as Oura draws them, however few days there are.
-                    BarMark(x: .value("Day", day.date, unit: unit), y: .value("Value", day.value),
-                            width: .fixed(days.count <= 8 ? 14 : days.count <= 16 ? 10 : days.count <= 35 ? 6 : 3))
-                        .foregroundStyle((colorFor?(day.value) ?? tint).opacity(chosen == nil || chosen?.date == day.date ? 1 : 0.35))
-                        .clipShape(Capsule())
+            let scale = ChartScale(low: 0, high: max(days.map(\.value).max() ?? 1, goal ?? 0, 1), domain: domain, fixedTicks: yTicks)
+            let allTicks = unit == .day ? dayTicks(days.map(\.date)) : weekTicks(days.map(\.date))
+            ChartContainer(height: height) { plotWidth in
+                let ticks = ChartTicks.fit(allTicks, width: plotWidth, labelWidth: unit == .day && days.count <= 7 ? 52 : 68)
+                let activeTick = ChartTicks.nearest(ticks, to: chosen.map { unit == .day ? midday($0.date) : $0.date.addingTimeInterval(3.5 * 86400) })
+                Chart {
+                    ForEach(days) { day in
+                        // Thin bars, as Oura draws them, however few days there are.
+                        BarMark(x: .value("Day", day.date, unit: unit), y: .value("Value", scale.clamp(day.value)),
+                                width: .fixed(days.count <= 8 ? 14 : days.count <= 16 ? 10 : days.count <= 35 ? 6 : 3))
+                            .foregroundStyle((colorFor?(day.value) ?? tint).opacity(chosen == nil || chosen?.date == day.date ? 1 : 0.35))
+                            .clipShape(Capsule())
+                    }
+                    if let goal {
+                        RuleMark(y: .value("Goal", scale.clamp(goal)))
+                            .foregroundStyle(Fit.muted)
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    }
                 }
-                if let goal {
-                    RuleMark(y: .value("Goal", goal))
-                        .foregroundStyle(Fit.muted)
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                }
-            }
-            .chartXSelection(value: $selected)
-            .chartXAxis {
-                AxisMarks(values: ticks) { value in
-                    // Ticks sit at the bars' middles; the label centers on its tick.
-                    AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
-                        if let date = value.as(Date.self) {
-                            let active = date == activeTick
-                            Text(dayLabel(date, count: unit == .day ? days.count : 99)).font(Fit.axis.weight(active ? .bold : .regular))
-                                .foregroundStyle(active ? Color.primary : Fit.muted)
+                .chartXSelection(value: $selected)
+                .chartXAxis {
+                    AxisMarks(values: ticks) { value in
+                        // Ticks sit at the bars' middles; the label centers on its tick.
+                        AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
+                            if let date = value.as(Date.self) {
+                                ChartTickLabel(text: dayLabel(date, count: unit == .day ? days.count : 99), active: date == activeTick)
+                            }
                         }
                     }
                 }
+                .glassYAxis(scale, format: format)
             }
-            .fitYAxis(yTicks ?? (domain == nil ? axis.ticks : nil), format: format)
-            .chartYScale(domain: domain ?? axis.domain)
-            .frame(height: height)
         }
     }
 }
@@ -643,51 +596,50 @@ struct TrendLineChart: View {
         let chosen = selected.flatMap { s in sorted.min { abs($0.date.timeIntervalSince(s)) < abs($1.date.timeIntervalSince(s)) } }
         let values = sorted.map(\.value) + (band.map { [$0.lowerBound, $0.upperBound] } ?? [])
         let low = values.min() ?? 0, high = values.max() ?? 1
-        let axis = niceAxis(low, high)
-        let ticks = evenDates(sorted.map(\.date))
-        let activeTick = nearestTick(ticks, to: chosen.map { midday($0.date) })
+        let scale = ChartScale(low: low, high: high, domain: domain)
+        let allTicks = evenDates(sorted.map(\.date))
         VStack(alignment: .leading, spacing: 10) {
             if let point = chosen ?? sorted.last {
                 Readout(value: format(point.value),
                         caption: chosen == nil ? "Latest, \(point.date.formatted(.dateTime.month(.abbreviated).day()))" : point.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
             }
-            Chart {
-                if let band, let first = sorted.first?.date, let last = sorted.last?.date {
-                    RectangleMark(xStart: .value("From", first, unit: .day), xEnd: .value("To", last, unit: .day),
-                                  yStart: .value("Low", band.lowerBound), yEnd: .value("High", band.upperBound))
-                        .foregroundStyle(tint.opacity(0.1))
-                }
-                ForEach(sorted) { point in
-                    LineMark(x: .value("Day", midday(point.date)), y: .value("Value", point.value))
-                        .interpolationMethod(.monotone)
-                        .foregroundStyle(tint)
-                        .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                }
-                if let point = chosen ?? sorted.last {
-                    PointMark(x: .value("Day", midday(point.date)), y: .value("Value", point.value))
-                        .foregroundStyle(tint).symbolSize(44)
-                    if chosen != nil {
-                        RuleMark(x: .value("Day", midday(point.date))).foregroundStyle(Fit.hairline).lineStyle(StrokeStyle(lineWidth: 1))
+            ChartContainer(height: height) { plotWidth in
+                let ticks = ChartTicks.fit(allTicks, width: plotWidth - 60, labelWidth: 66)
+                let activeTick = ChartTicks.nearest(ticks, to: chosen.map { midday($0.date) })
+                Chart {
+                    if let band, let first = sorted.first?.date, let last = sorted.last?.date {
+                        RectangleMark(xStart: .value("From", first, unit: .day), xEnd: .value("To", last, unit: .day),
+                                      yStart: .value("Low", scale.clamp(band.lowerBound)), yEnd: .value("High", scale.clamp(band.upperBound)))
+                            .foregroundStyle(tint.opacity(0.1))
                     }
-                }
-            }
-            .chartXSelection(value: $selected)
-            .chartXScale(range: .plotDimension(padding: 18))
-            .chartXAxis {
-                AxisMarks(values: ticks) { value in
-                    // Points sit at their days' middles, and so do the ticks; the label centers on its tick.
-                    AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
-                        if let date = value.as(Date.self) {
-                            let active = date == activeTick
-                            Text(date.formatted(.dateTime.month(.abbreviated).day())).font(Fit.axis.weight(active ? .bold : .regular))
-                                .foregroundStyle(active ? Color.primary : Fit.muted)
+                    ForEach(sorted) { point in
+                        LineMark(x: .value("Day", midday(point.date)), y: .value("Value", scale.clamp(point.value)))
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(tint)
+                            .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    }
+                    if let point = chosen ?? sorted.last {
+                        PointMark(x: .value("Day", midday(point.date)), y: .value("Value", scale.clamp(point.value)))
+                            .foregroundStyle(tint).symbolSize(44)
+                        if chosen != nil {
+                            RuleMark(x: .value("Day", midday(point.date))).foregroundStyle(Fit.hairline).lineStyle(StrokeStyle(lineWidth: 1))
                         }
                     }
                 }
+                .chartXSelection(value: $selected)
+                .chartXScale(range: .plotDimension(padding: 30))
+                .chartXAxis {
+                    AxisMarks(values: ticks) { value in
+                        // Points sit at their days' middles, and so do the ticks; the label centers on its tick.
+                        AxisValueLabel(anchor: .top, collisionResolution: .disabled) {
+                            if let date = value.as(Date.self) {
+                                ChartTickLabel(text: date.formatted(.dateTime.month(.abbreviated).day()), active: date == activeTick)
+                            }
+                        }
+                    }
+                }
+                .glassYAxis(scale, format: format)
             }
-            .fitYAxis(domain == nil ? axis.ticks : nil, format: format)
-            .chartYScale(domain: domain ?? axis.domain)
-            .frame(height: height)
         }
     }
 
@@ -725,70 +677,70 @@ struct IntradayChart: View {
         let runs = Self.runs(sorted)
         let chosen = selected.flatMap { s in sorted.min { abs($0.date.timeIntervalSince(s)) < abs($1.date.timeIntervalSince(s)) } }
         let values = sorted.map(\.value)
-        let low = values.min() ?? 0, high = values.max() ?? 1
-        let axis = niceAxis(low, high)
-        let tickDates = ticks()
-        let activeTick = nearestTick(tickDates, to: chosen?.date)
+        // Bars rise from zero, so their axis has to include it.
+        let low = style == .bars ? 0 : (values.min() ?? 0), high = values.max() ?? 1
+        let scale = ChartScale(low: low, high: high, domain: domain)
+        let allTicks = ticks()
         VStack(alignment: .leading, spacing: 10) {
             if let point = chosen ?? sorted.last {
                 Readout(value: format(point.value) + unit,
                         caption: chosen == nil ? "Latest, \(moment(point.date))" : moment(point.date))
             }
-            Chart {
-                ForEach(Array(sorted.enumerated()), id: \.element.id) { index, point in
-                    let run = runs[index]
-                    switch style {
-                    case .bars:
-                        BarMark(x: .value("Time", point.date, unit: .minute), y: .value("Value", point.value), width: .fixed(2))
-                            .foregroundStyle((point.color ?? tint).opacity(chosen == nil || chosen == point ? 1 : 0.4))
-                    case .area:
-                        AreaMark(x: .value("Time", point.date), yStart: .value("Floor", domain?.lowerBound ?? axis.domain.lowerBound), yEnd: .value("Value", point.value),
-                                 series: .value("Run", run))
-                            .interpolationMethod(.monotone)
-                            .foregroundStyle(LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
-                        LineMark(x: .value("Time", point.date), y: .value("Value", point.value), series: .value("Run", run))
-                            .interpolationMethod(.monotone)
-                            .foregroundStyle(tint)
-                            .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-                    case .line:
-                        LineMark(x: .value("Time", point.date), y: .value("Value", point.value), series: .value("Run", run))
-                            .interpolationMethod(.monotone)
-                            .foregroundStyle(tint)
-                            .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            ChartContainer(height: height) { plotWidth in
+                let tickDates = ChartTicks.fit(allTicks, width: plotWidth, labelWidth: to.timeIntervalSince(from) > 2 * 3600 ? 62 : 76)
+                let activeTick = ChartTicks.nearest(tickDates, to: chosen?.date)
+                Chart {
+                    ForEach(Array(sorted.enumerated()), id: \.element.id) { index, point in
+                        let run = runs[index]
+                        switch style {
+                        case .bars:
+                            BarMark(x: .value("Time", point.date, unit: .minute), y: .value("Value", scale.clamp(point.value)), width: .fixed(2))
+                                .foregroundStyle((point.color ?? tint).opacity(chosen == nil || chosen == point ? 1 : 0.4))
+                        case .area:
+                            AreaMark(x: .value("Time", point.date), yStart: .value("Floor", scale.domain.lowerBound), yEnd: .value("Value", scale.clamp(point.value)),
+                                     series: .value("Run", run))
+                                .interpolationMethod(.monotone)
+                                .foregroundStyle(LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0)], startPoint: .top, endPoint: .bottom))
+                            LineMark(x: .value("Time", point.date), y: .value("Value", scale.clamp(point.value)), series: .value("Run", run))
+                                .interpolationMethod(.monotone)
+                                .foregroundStyle(tint)
+                                .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                        case .line:
+                            LineMark(x: .value("Time", point.date), y: .value("Value", scale.clamp(point.value)), series: .value("Run", run))
+                                .interpolationMethod(.monotone)
+                                .foregroundStyle(tint)
+                                .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                        }
+                    }
+                    if let chosen {
+                        RuleMark(x: .value("Time", chosen.date)).foregroundStyle(Fit.faint).lineStyle(StrokeStyle(lineWidth: 1))
                     }
                 }
-                if let chosen {
-                    RuleMark(x: .value("Time", chosen.date)).foregroundStyle(Fit.faint).lineStyle(StrokeStyle(lineWidth: 1))
+                .chartXSelection(value: $selected)
+                .chartXScale(domain: from...to)
+                .chartXAxis {
+                    AxisMarks(values: tickDates) { _ in
+                        AxisTick(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Fit.hairline)
+                    }
                 }
-            }
-            .chartXSelection(value: $selected)
-            .chartXScale(domain: from...to)
-            .chartXAxis {
-                AxisMarks(values: tickDates) { _ in
-                    AxisTick(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Fit.hairline)
-                }
-            }
-            // Time labels placed at the chart's own x for each tick, centered on its gridline.
-            .chartOverlay { proxy in
-                GeometryReader { geo in
-                    if let anchor = proxy.plotFrame {
-                        let plot = geo[anchor]
-                        ForEach(tickDates, id: \.self) { tick in
-                            if let x = proxy.position(forX: tick) {
-                                let active = tick == activeTick
-                                Text(tick.formatted(tickFormat)).font(Fit.axis.weight(active ? .bold : .regular))
-                                    .foregroundStyle(active ? Color.primary : Fit.muted).fixedSize()
-                                    .position(x: plot.minX + x, y: plot.maxY + 12)
+                // Time labels placed at the chart's own x for each tick, centered on its tick mark.
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        if let anchor = proxy.plotFrame {
+                            let plot = geo[anchor]
+                            ForEach(tickDates, id: \.self) { tick in
+                                if let x = proxy.position(forX: tick) {
+                                    ChartTickLabel(text: tick.formatted(tickFormat), active: tick == activeTick)
+                                        .position(x: plot.minX + x, y: plot.maxY + 14)
+                                }
                             }
                         }
                     }
+                    .allowsHitTesting(false)
                 }
-                .allowsHitTesting(false)
+                .glassYAxis(scale, format: format)
             }
-            .fitYAxis(domain == nil ? axis.ticks : nil, format: format)
-            .chartYScale(domain: domain ?? axis.domain)
-            .frame(height: height)
-            .padding(.bottom, 20)
+            .padding(.bottom, 24)
         }
     }
 
