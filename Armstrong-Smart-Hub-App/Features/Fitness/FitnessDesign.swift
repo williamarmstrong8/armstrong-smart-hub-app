@@ -804,8 +804,9 @@ struct HypnogramView: View {
                     // Bedtime and wake time pinned at the ends; hours between
                     // only where they fit clear of them and of each other.
                     let marks = [start] + hourTicks(start: start, end: end) + [end]
-                    TickLabelLayout(xs: marks.map { geo.size.width * CGFloat($0.timeIntervalSince(start) / span) },
-                                    pinned: [0, marks.count - 1], gap: 10) {
+                    let layout = TickLabelLayout(xs: marks.map { geo.size.width * CGFloat($0.timeIntervalSince(start) / span) },
+                                                 pinned: [0, marks.count - 1], gap: 10)
+                    layout {
                         ForEach(Array(marks.enumerated()), id: \.offset) { index, mark in
                             let edge = index == 0 || index == marks.count - 1
                             Text(edge ? mark.formatted(date: .omitted, time: .shortened) : mark.formatted(.dateTime.hour()))

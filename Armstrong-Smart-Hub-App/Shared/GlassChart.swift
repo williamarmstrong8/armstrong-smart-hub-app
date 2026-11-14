@@ -185,7 +185,8 @@ extension View {
                     if let anchor = proxy.plotFrame {
                         let plot = geo[anchor]
                         let placed = ticks.sorted().compactMap { t in proxy.position(forX: t).map { PlacedTick(date: t, x: plot.minX + $0) } }
-                        TickLabelLayout(xs: placed.map(\.x), pinned: placed.isEmpty ? [] : [placed.count - 1]) {
+                        let layout = TickLabelLayout(xs: placed.map(\.x), pinned: placed.isEmpty ? [] : [placed.count - 1])
+                        layout {
                             ForEach(placed) { tick in
                                 ChartTickLabel(text: text(tick.date), active: tick.date == active)
                             }
