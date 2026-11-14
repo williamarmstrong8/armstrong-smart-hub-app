@@ -144,6 +144,20 @@ final class ReflectionStore {
         Task { await lookUpChapters(book.id) }
     }
 
+    func addManualBook(title: String, author: String, year: String, pages: Int?, publisher: String, coverURL: String) {
+        func clean(_ s: String) -> String? {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        guard let title = clean(title) else { return }
+        let book = Book(sourceKey: "/manual/\(UUID().uuidString)", title: title,
+                        author: clean(author) ?? "Unknown author", coverURL: clean(coverURL),
+                        year: clean(year), pages: pages.flatMap { $0 > 0 ? $0 : nil }, publisher: clean(publisher))
+        books.insert(book, at: 0)
+        persist()
+        Task { await lookUpChapters(book.id) }
+    }
+
     /// Books whose chapters are being looked up right now.
     private(set) var lookingUp: Set<UUID> = []
 

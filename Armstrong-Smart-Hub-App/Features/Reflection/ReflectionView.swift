@@ -69,6 +69,7 @@ struct ReflectionView: View {
     @State private var journal: JournalTarget?
     @State private var searchingBooks = false
     @State private var openBookID: UUID?
+    @State private var addingBookManually = false
 
     var body: some View {
         NavigationStack {
@@ -97,6 +98,9 @@ struct ReflectionView: View {
             }
             .navigationDestination(item: $openBookID) { id in
                 BookDetailView(store: store, bookID: id)
+            }
+            .sheet(isPresented: $addingBookManually) {
+                ManualBookSheet(store: store)
             }
             .sheet(isPresented: $addingQuote) {
                 NewQuoteCard { text, author in store.addQuote(text: text, author: author) }
@@ -219,7 +223,21 @@ struct ReflectionView: View {
     /// The movie catalog's look: a search bar, then a shelf of covers.
     private var booksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            heading("Books")
+            HStack {
+                heading("Books")
+                Spacer()
+                Button { addingBookManually = true } label: {
+                    Label("Add manually", systemImage: "square.and.pencil")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: HubLayout.minHitTarget)
+                        .glassGlare(.regular, in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add a book manually")
+            }
             MediaSearchBar(prompt: "Search books") { searchingBooks = true }
                 .opacity(searchingBooks ? 0 : 1)
                 .accessibilityHidden(searchingBooks)
@@ -248,7 +266,7 @@ struct ReflectionView: View {
                 ForEach(looseQuotes) { q in
                     BrickCard {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("\u{201C}\(q.text)\u{201D}").font(.body)
+                            Text("\u{201C}\(q.text)\u{201D}").font(.title3)
                             if !q.author.isEmpty {
                                 Text("\u{2014} \(q.author)").font(.subheadline).foregroundStyle(HubDesign.secondary)
                             }

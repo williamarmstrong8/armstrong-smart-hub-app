@@ -335,6 +335,59 @@ struct BookSearchView: View {
     }
 }
 
+/// A form for typing in a book's details instead of finding it in search.
+struct ManualBookSheet: View {
+    let store: ReflectionStore
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var author = ""
+    @State private var year = ""
+    @State private var pages = ""
+    @State private var publisher = ""
+    @State private var coverURL = ""
+    @FocusState private var titleFocused: Bool
+
+    private var canSave: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Title", text: $title).focused($titleFocused)
+                    TextField("Author", text: $author)
+                }
+                Section("Optional") {
+                    TextField("Year first published", text: $year).keyboardType(.numberPad)
+                    TextField("Number of pages", text: $pages).keyboardType(.numberPad)
+                    TextField("Publisher", text: $publisher)
+                    TextField("Cover image link", text: $coverURL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+            }
+            .hubListStyle()
+            .navigationTitle("Add a book")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        store.addManualBook(title: title, author: author, year: year,
+                                            pages: Int(pages.trimmingCharacters(in: .whitespacesAndNewlines)),
+                                            publisher: publisher, coverURL: coverURL)
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .onAppear { titleFocused = true }
+    }
+}
+
 // MARK: Detail
 
 /// A book in full: its cover and details, a bookmark to move after reading, notes, and the
@@ -630,7 +683,7 @@ struct BookDetailView: View {
                     Button { editingQuote = q } label: {
                         BrickCard {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("\u{201C}\(q.text)\u{201D}").font(.body).multilineTextAlignment(.leading)
+                                Text("\u{201C}\(q.text)\u{201D}").font(.title3).multilineTextAlignment(.leading)
                                 if q.note.isEmpty {
                                     Label("Add a note", systemImage: "square.and.pencil")
                                         .font(.footnote).foregroundStyle(HubDesign.action)
@@ -739,7 +792,7 @@ private struct QuoteNoteSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("\u{201C}\(quote.text)\u{201D}").font(.title3)
+                    Text("\u{201C}\(quote.text)\u{201D}").font(.title2)
                     Text("Your note").font(.headline)
                     TextEditor(text: $note)
                         .scrollContentBackground(.hidden)
