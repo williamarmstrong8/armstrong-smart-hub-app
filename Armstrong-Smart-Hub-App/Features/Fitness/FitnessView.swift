@@ -292,7 +292,7 @@ struct FitnessView: View {
             if watch.savedWatchID != nil {
                 Button { showingWatch = true } label: {
                     Text(watchTitle)
-                        .font(.largeTitle.weight(.bold))
+                        .font(.largeTitle.weight(.regular))
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
                         .contentShape(.rect)
