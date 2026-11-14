@@ -292,14 +292,14 @@ struct FitnessView: View {
             if watch.savedWatchID != nil {
                 Button { showingWatch = true } label: {
                     Text(watchTitle)
-                        .font(.largeTitle.weight(.light))
+                        .font(.largeTitle.weight(.bold))
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens watch details")
-                .padding(.top, HubLayout.topInset)
+                .padding(.top, HubLayout.topInset + 14)
                 Spacer(minLength: HubLayout.sectionGap)
                 TodayScores(store: store)
                     .hubAnimation(value: store.snapshot?.watch?.readiness?.score ?? store.snapshot?.metrics?.readiness.score)
