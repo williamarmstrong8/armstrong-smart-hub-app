@@ -93,20 +93,6 @@ struct DrinkEntry: Codable, Identifiable, Equatable {
     var slot: DrinkTime { time ?? .of(date) }
 }
 
-/// What to ask about on the Fitness screen.
-enum AlcoholPrompt: Equatable {
-    /// A night that's over: asked the morning after a rough sleep or a weekend night.
-    case lastNight(night: String, reason: String)
-    /// A Friday or Saturday evening that hasn't been logged yet.
-    case tonight(night: String)
-
-    var night: String {
-        switch self {
-        case let .lastNight(night, _), let .tonight(night): night
-        }
-    }
-}
-
 // MARK: Store
 
 /// Drinks, logged on the phone next to the check-in data. A "night" is named for
@@ -125,6 +111,8 @@ final class AlcoholStore {
     private(set) var entries: [DrinkEntry] = []
     /// Nights answered "No drinks".
     private(set) var dryNights: Set<String> = []
+    /// Nights answered "Drank", with no idea how much.
+    private(set) var drankNights: Set<String> = []
     /// The morning Body Battery by day, which the hub only keeps for the last day: saved as it passes.
     private(set) var battery: [String: Int] = [:]
 
@@ -132,6 +120,8 @@ final class AlcoholStore {
         var entries: [DrinkEntry]
         var dry: [String]
         var battery: [String: Int]
+        /// Missing from files saved before "Drank" was an answer.
+        var drank: [String]?
     }
 
     private static let url = URL.applicationSupportDirectory.appending(path: "Fitness/alcohol.json")
@@ -140,6 +130,7 @@ final class AlcoholStore {
         if !Demo.isOn, let data = try? Data(contentsOf: Self.url), let saved = try? JSONDecoder().decode(Saved.self, from: data) {
             entries = saved.entries
             dryNights = Set(saved.dry)
+            drankNights = Set(saved.drank ?? [])
             battery = saved.battery
         }
         if !Demo.isOn, let data = try? Data(contentsOf: Self.queueURL), let saved = try? JSONDecoder().decode(Queue.self, from: data) {
@@ -151,7 +142,7 @@ final class AlcoholStore {
     private func persist() {
         if Demo.isOn { return }
         try? FileManager.default.createDirectory(at: Self.url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let saved = Saved(entries: entries, dry: dryNights.sorted(), battery: battery)
+        let saved = Saved(entries: entries, dry: dryNights.sorted(), battery: battery, drank: drankNights.sorted())
         if let data = try? JSONEncoder().encode(saved) { try? data.write(to: Self.url, options: .atomic) }
     }
 
@@ -182,7 +173,10 @@ final class AlcoholStore {
 
     func drinks(on night: String) -> Int { entries(on: night).reduce(0) { $0 + $1.count } }
 
-    func isAnswered(_ night: String) -> Bool { dryNights.contains(night) || drinks(on: night) > 0 }
+    func isAnswered(_ night: String) -> Bool { dryNights.contains(night) || drankNights.contains(night) || drinks(on: night) > 0 }
+
+    /// Drank that night but didn't say how much.
+    func amountUnknown(_ night: String) -> Bool { drankNights.contains(night) && drinks(on: night) == 0 }
 
     /// "2 Beer · 1 Wine", or nil with nothing logged.
     func summary(_ night: String) -> String? {
@@ -193,16 +187,16 @@ final class AlcoholStore {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// "2 Beer · 1 Wine · Evening".
+    /// "2 Beer · 1 Wine · Evening", or "Drank, amount unknown".
     func detail(_ night: String) -> String? {
-        guard let summary = summary(night) else { return nil }
+        guard let summary = summary(night) else { return amountUnknown(night) ? "Drank, amount unknown" : nil }
         let times = times(night).map(\.title).joined(separator: ", ")
         return times.isEmpty ? summary : "\(summary) · \(times)"
     }
 
     /// Nights with something logged, newest first.
     var loggedNights: [String] {
-        Set(entries.map { Self.night(of: $0.date) }).union(dryNights).sorted(by: >)
+        Set(entries.map { Self.night(of: $0.date) }).union(dryNights).union(drankNights).sorted(by: >)
     }
 
     /// The first night he used the log; nights before it say nothing about dry ones.
@@ -239,6 +233,7 @@ final class AlcoholStore {
         }
         if entries(on: night).isEmpty { return }
         dryNights.remove(night)
+        drankNights.remove(night)
         persist()
         sync()
     }
@@ -279,9 +274,23 @@ final class AlcoholStore {
     func markDry(_ night: String) {
         guard drinks(on: night) == 0 else { return }
         dryNights.insert(night)
+        drankNights.remove(night)
         enqueue(.dry(night: night, dry: true))
         persist()
         sync()
+    }
+
+    /// "Drank that night", amount not known. Logging drinks for the night later replaces it.
+    func markDrank(_ night: String) {
+        guard drinks(on: night) == 0 else { return }
+        drankNights.insert(night)
+        dryNights.remove(night)
+        persist()
+    }
+
+    func clearDrank(_ night: String) {
+        drankNights.remove(night)
+        persist()
     }
 
     func clearDry(_ night: String) {
@@ -442,30 +451,15 @@ final class AlcoholStore {
 
     // MARK: Prompts
 
-    /// What to ask now: last night's drinks after a bad sleep or a weekend night,
-    /// else tonight's on a Friday or Saturday evening. Nothing once it's answered.
-    func prompt(_ fitness: FitnessStore, now: Date = .now) -> AlcoholPrompt? {
+    /// The night to ask about: on Friday, Saturday and Sunday from 5 am, the night
+    /// before (Thursday, Friday, Saturday), until it's answered.
+    func promptNight(now: Date = .now) -> String? {
         let calendar = Calendar.current
-        if let night = fitness.lastNight, let start = night.startDate, let end = night.endDate, calendar.isDate(end, inSameDayAs: now) {
-            let last = Self.night(of: start)
-            if !isAnswered(last) {
-                let hrv = fitness.snapshot?.hrv?.first { $0.day == localDay(end) }
-                if let reason = Self.badSleep(night, hrv: hrv) { return .lastNight(night: last, reason: reason) }
-                if Self.isWeekend(last) { return .lastNight(night: last, reason: "Weekend night") }
-            }
-        }
-        let tonight = Self.night(of: now)
-        let hour = calendar.component(.hour, from: now)
-        if !isAnswered(tonight), Self.isWeekend(tonight), hour >= 17 || hour < 5 { return .tonight(night: tonight) }
-        return nil
-    }
-
-    /// Why the sleep counts as bad, when it does: a low score, under 6 hours, or HRV under the balanced range.
-    static func badSleep(_ night: SleepNight, hrv: FitnessHrv?) -> String? {
-        if let score = night.score, score < 70 { return "Sleep scored \(score)" }
-        if night.asleepSeconds > 0, night.asleepSeconds < 6 * 3600 { return "Only \(FitnessFormat.duration(Double(night.asleepSeconds))) of sleep" }
-        if let low = hrv?.baselineBalancedLower, let last = hrv?.lastNightAverage, last < low { return "HRV was low" }
-        return nil
+        guard calendar.component(.hour, from: now) >= 5 else { return nil }
+        let weekday = calendar.component(.weekday, from: now)
+        guard weekday == 6 || weekday == 7 || weekday == 1 else { return nil }
+        let night = addDays(localDay(now), -1)
+        return isAnswered(night) ? nil : night
     }
 }
 
@@ -545,7 +539,7 @@ struct AlcoholInsights {
         var counts = [Int](repeating: 0, count: 3)
         for (day, value) in values[metric] ?? [:] {
             let night = addDays(day, -1)
-            guard let since, night >= since else { continue }
+            guard let since, night >= since, !store.amountUnknown(night) else { continue }
             let n = store.drinks(on: night)
             let index = n == 0 ? 0 : n <= 2 ? 1 : 2
             sums[index] += value
@@ -562,7 +556,7 @@ struct AlcoholInsights {
         var counts = [Int](repeating: 0, count: Self.timingLabels.count)
         for (day, value) in values[metric] ?? [:] {
             let night = addDays(day, -1)
-            guard let since, night >= since else { continue }
+            guard let since, night >= since, !store.amountUnknown(night) else { continue }
             let index: Int = switch store.timing(night) {
             case nil: 0
             case .morning, .afternoon: 1

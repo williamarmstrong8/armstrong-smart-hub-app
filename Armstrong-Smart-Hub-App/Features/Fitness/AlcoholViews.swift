@@ -7,105 +7,69 @@ struct NightRef: Identifiable {
     var kind: DrinkKind?
 }
 
-// MARK: Quick log
+// MARK: Weekend card
 
-/// Drinks on the Fitness screen: a big tile per drink opens the log with one of
-/// it already counted, so a drink is tap, (pick the time), Log. "No drinks"
-/// answers the night in one tap. On a rough morning or a weekend evening it asks.
+/// On Friday, Saturday and Sunday mornings: did you drink last night? Three
+/// big answers, and once one is given the card goes away for the day.
 struct AlcoholCard: View {
     var fitness: FitnessStore
     @State private var store = AlcoholStore.shared
     @State private var sheet: NightRef?
 
     var body: some View {
-        let tonight = store.tonight
-        let logged = store.drinks(on: tonight) > 0
-        let dry = store.dryNights.contains(tonight)
-        BrickCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Drinks").font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
-                        Text(store.detail(tonight).map { "Tonight · \($0)" } ?? (dry ? "No drinks tonight" : "Nothing logged tonight"))
-                            .font(.subheadline).foregroundStyle(BrickLook.soft)
-                    }
-                    Spacer(minLength: 8)
-                    NavigationLink(value: FitnessPage.alcohol) {
-                        Text("Insights").font(.footnote).foregroundStyle(BrickLook.soft)
-                            .frame(minHeight: HubLayout.minHitTarget).contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                }
-                if let prompt = store.prompt(fitness) {
-                    promptView(prompt)
-                    BrickDivider()
-                }
-                HStack(spacing: 10) {
-                    ForEach(DrinkKind.allCases) { kind in
-                        Button { sheet = NightRef(id: tonight, kind: kind) } label: {
-                            VStack(spacing: 4) {
-                                Text(kind.emoji).font(.system(size: 28))
-                                Text(kind.title).font(.subheadline.weight(.semibold)).foregroundStyle(BrickLook.ink)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 76)
-                            .glassGlare(.regular.interactive(), in: .rect(cornerRadius: 18, style: .continuous))
+        if let night = store.promptNight() {
+            let weekday = MorningCheckin.date(night)?.formatted(.dateTime.weekday(.wide)) ?? "Last"
+            BrickCard {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 10) {
+                        Text("🍻").font(.system(size: 26))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Drinks last night?").font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
+                            Text("\(weekday) night").font(.subheadline).foregroundStyle(BrickLook.soft)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Log \(kind.longTitle)")
                     }
-                }
-                HStack(spacing: 10) {
-                    if logged {
-                        wideButton("Edit tonight", symbol: "pencil") { sheet = NightRef(id: tonight) }
-                    } else if dry {
-                        wideButton("Undo no drinks", symbol: "arrow.uturn.backward") { store.clearDry(tonight) }
-                    } else {
-                        wideButton("No drinks tonight", symbol: "checkmark") { store.markDry(tonight) }
+                    HStack(spacing: 10) {
+                        answer("No drinks", primary: true) { store.markDry(night) }
+                        answer("Log drinks", primary: false) { sheet = NightRef(id: night) }
                     }
+                    answer("Drank, not sure how much", primary: false) { store.markDrank(night) }
                 }
             }
-        }
-        .sensoryFeedback(.success, trigger: store.dryNights.count)
-        .task(id: fitness.updatedAt) { store.recordBattery(fitness.series(.bodyBattery)) }
-        .sheet(item: $sheet) { AlcoholSheet(night: $0.id, start: $0.kind) }
-    }
-
-    private func promptView(_ prompt: AlcoholPrompt) -> some View {
-        let weekday = MorningCheckin.date(prompt.night)?.formatted(.dateTime.weekday(.wide)) ?? "Tonight"
-        let night = prompt.night
-        return VStack(alignment: .leading, spacing: 12) {
-            switch prompt {
-            case let .lastNight(_, reason):
-                Text("\(reason). Did you have any drinks \(weekday) night?").font(.subheadline).foregroundStyle(BrickLook.ink)
-            case .tonight:
-                Text("It's \(weekday) night. Any drinks?").font(.subheadline).foregroundStyle(BrickLook.ink)
-            }
-            if case .lastNight = prompt {
-                HStack(spacing: 10) {
-                    Button { store.markDry(night) } label: {
-                        Text("No drinks").font(.body.weight(.semibold)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .glassGlare(.regular.tint(Fit.action.opacity(0.55)).interactive(), in: .capsule)
-                    }
-                    .buttonStyle(.plain)
-                    Button { sheet = NightRef(id: night) } label: {
-                        Text("Log drinks").font(.body.weight(.semibold)).foregroundStyle(BrickLook.ink)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .glassGlare(.regular.interactive(), in: .capsule)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            .sensoryFeedback(.success, trigger: store.isAnswered(night))
+            .sheet(item: $sheet) { AlcoholSheet(night: $0.id, start: $0.kind) }
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
     }
 
-    private func wideButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol).font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .glassGlare(.regular.interactive(), in: .capsule)
+    private func answer(_ title: String, primary: Bool, action: @escaping () -> Void) -> some View {
+        Button { withAnimation(HubMotion.standard) { action() } } label: {
+            Text(title).font(.body.weight(.semibold))
+                .foregroundStyle(primary ? .white : BrickLook.ink)
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .glassGlare(primary ? .regular.tint(Fit.action.opacity(0.7)).interactive() : .regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Drinks among the Fitness stats: this week's count and the last two weeks, opening the drinks page.
+struct DrinksOverviewRow: View {
+    var fitness: FitnessStore
+    @State private var store = AlcoholStore.shared
+
+    var body: some View {
+        let nights = (0..<7).map { addDays(store.tonight, -$0) }
+        let week = nights.reduce(0) { $0 + store.drinks(on: $1) }
+        let drinking = nights.filter { store.drinks(on: $0) > 0 || store.amountUnknown($0) }.count
+        let last = store.loggedNights.first { store.drinks(on: $0) > 0 || store.amountUnknown($0) }
+        let caption = drinking == 0 ? (store.loggedNights.isEmpty ? "Not tracked yet" : "No drinking nights this week")
+                                    : "\(drinking) drinking \(drinking == 1 ? "night" : "nights") this week"
+        OverviewRow(title: "Drinks", value: "\(week)", unit: "last 7 nights", caption: caption,
+                    detail: last.map { "Last: \(AlcoholSheet.short($0))" }, tint: drinking == 0 ? Fit.positive : Fit.health) {
+            MiniTrend(values: (0..<14).reversed().map { Double(store.drinks(on: addDays(store.tonight, -$0))) }, tint: Fit.health, bars: true)
+        }
+        .task(id: fitness.updatedAt) { store.recordBattery(fitness.series(.bodyBattery)) }
     }
 }
 
@@ -121,6 +85,13 @@ struct AlcoholSheet: View {
     @State private var counts: [DrinkKind: Int]
     @State private var time: DrinkTime
     @State private var otherDay = false
+
+    /// Opens on the night most likely meant: last night in the morning and afternoon, tonight from 5 pm.
+    static var likelyNight: String {
+        let tonight = AlcoholStore.night(of: .now)
+        let hour = Calendar.current.component(.hour, from: .now)
+        return hour >= 5 && hour < 17 ? addDays(tonight, -1) : tonight
+    }
 
     init(night: String, start: DrinkKind? = nil) {
         let tonight = AlcoholStore.night(of: .now)
@@ -160,11 +131,14 @@ struct AlcoholSheet: View {
                 .padding(.horizontal, HubLayout.gutter)
                 .padding(.top, 8).padding(.bottom, HubLayout.bottomInset)
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .hubPageStyle(backdrop: true)
             .navigationTitle("Log drinks")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
         }
         .presentationDetents([.large])
+        .presentationBackground { AmbientBackdrop() }
         .sensoryFeedback(.selection, trigger: counts)
         .sensoryFeedback(.selection, trigger: time)
     }
@@ -266,19 +240,22 @@ struct AlcoholSheet: View {
     @ViewBuilder private var logged: some View {
         let entries = store.entries(on: night)
         let dry = store.dryNights.contains(night)
+        let unknown = store.amountUnknown(night)
         section("Logged for \(Self.title(night))") {
-            VStack(spacing: 0) {
+            VStack(spacing: 10) {
                 if entries.isEmpty {
-                    Text(dry ? "Marked as no drinks." : "Nothing yet.")
+                    Text(dry ? "Marked as no drinks." : unknown ? "Marked as drank, amount unknown. Log drinks above if you remember." : "Nothing yet.")
                         .font(.subheadline).foregroundStyle(BrickLook.soft)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
-                    if !dry {
-                        Button { store.markDry(night) } label: {
-                            Label("No drinks this night", systemImage: "checkmark").font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
-                                .frame(maxWidth: .infinity, minHeight: 50)
-                                .glassGlare(.regular.interactive(), in: .capsule)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                    HStack(spacing: 10) {
+                        if dry {
+                            plainButton("Undo no drinks", symbol: "arrow.uturn.backward") { store.clearDry(night) }
+                        } else if unknown {
+                            plainButton("Undo", symbol: "arrow.uturn.backward") { store.clearDrank(night) }
+                        } else {
+                            plainButton("No drinks", symbol: "checkmark") { store.markDry(night); dismiss() }
+                            plainButton("Drank, unsure", symbol: "questionmark") { store.markDrank(night); dismiss() }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 ForEach(entries) { entry in
@@ -296,15 +273,31 @@ struct AlcoholSheet: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Delete \(entry.count) \(entry.kind.title)")
                     }
-                    .padding(.vertical, 6)
                     if entry.id != entries.last?.id { BrickDivider() }
                 }
             }
         }
     }
 
+    private func plainButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol).font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .glassGlare(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+    }
+
     static func title(_ night: String) -> String {
         MorningCheckin.date(night)?.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()) ?? night
+    }
+
+    /// "Sat", or "Sat, Nov 7" past the last week.
+    static func short(_ night: String) -> String {
+        guard let date = MorningCheckin.date(night) else { return night }
+        return night >= addDays(localDay(), -6) ? date.formatted(.dateTime.weekday(.abbreviated)) + " night"
+                                               : date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
 }
 
@@ -340,15 +333,19 @@ struct AlcoholPage: View {
     var body: some View {
         let insights = AlcoholInsights(store: alcohol, fitness: store)
         FitPage(title: "Alcohol") {
-            Button { sheet = NightRef(id: alcohol.tonight) } label: {
-                Label("Log drinks", systemImage: "plus").blueButton()
+            Button { sheet = NightRef(id: AlcoholSheet.likelyNight) } label: {
+                Label("Log or backfill a night", systemImage: "plus").blueButton()
             }
             .buttonStyle(.plain)
             .padding(.top, 12).padding(.bottom, 24)
             if alcohol.loggedNights.isEmpty {
-                Takeaway(text: "Log your drinks from the Fitness screen. After a few nights this page shows how sleep, HRV, resting heart rate, Body Battery and readiness changed the morning after one, two or more drinks.")
+                Takeaway(text: "Log a night above, or answer the weekend-morning card on Fitness. After a few nights this page shows how sleep, HRV, resting heart rate, Body Battery and readiness changed the morning after one, two or more drinks.")
                     .padding(.bottom, 24)
             } else {
+                FitSection(title: "Last 30 nights") { totals }
+                FitSection(title: "Calendar", trailing: "Last 12 weeks") {
+                    DrinkCalendar(store: alcohol) { sheet = NightRef(id: $0) }
+                }
                 FitSection(title: "Drinks per night", trailing: "Last 14 days") {
                     DailyBarChart(points: recent, tint: Fit.health, height: 140, period: 14)
                 }
@@ -358,7 +355,7 @@ struct AlcoholPage: View {
                 timing(insights)
                 FitSection(title: "Nights") {
                     VStack(spacing: 0) {
-                        let nights = Array(alcohol.loggedNights.prefix(10))
+                        let nights = Array(alcohol.loggedNights.prefix(30))
                         ForEach(nights, id: \.self) { night in
                             Button { sheet = NightRef(id: night) } label: {
                                 DetailRow(label: AlcoholSheet.title(night), value: alcohol.detail(night) ?? "No drinks", last: night == nights.last)
@@ -372,6 +369,30 @@ struct AlcoholPage: View {
         }
         .task { alcohol.recordBattery(store.series(.bodyBattery)) }
         .sheet(item: $sheet) { AlcoholSheet(night: $0.id) }
+    }
+
+    /// Totals over the last 30 nights. Amount-unknown nights count as drinking nights, not as drinks.
+    private var totals: some View {
+        let nights = (0..<30).map { addDays(alcohol.tonight, -$0) }
+        let drinks = nights.reduce(0) { $0 + alcohol.drinks(on: $1) }
+        let counted = nights.filter { alcohol.drinks(on: $0) > 0 }
+        let drinking = nights.filter { alcohol.drinks(on: $0) > 0 || alcohol.amountUnknown($0) }.count
+        let heavy = counted.filter { alcohol.drinks(on: $0) >= 5 }.count
+        let perNight = counted.isEmpty ? nil : Double(drinks) / Double(counted.count)
+        return HStack(spacing: 0) {
+            stat("\(drinks)", "drinks")
+            stat("\(drinking)", drinking == 1 ? "drinking night" : "drinking nights")
+            stat(perNight.map { String(format: "%.1f", $0) } ?? "–", "per drinking night")
+            stat("\(heavy)", "nights of 5+")
+        }
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value).font(.title2.weight(.semibold).monospacedDigit()).foregroundStyle(.primary)
+            Text(label).font(.caption).foregroundStyle(Fit.muted).multilineTextAlignment(.center).lineLimit(2)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var recent: [DayValue] {
@@ -442,5 +463,78 @@ private struct AlcoholBucketChart: View {
             }
         }
         .frame(height: 150)
+    }
+}
+
+/// Nights as a habit grid: a column per week, Monday at the top. Darker is more
+/// drinks; a ring is "drank, amount unknown"; dry nights are a pale fill. Tap a night to edit it.
+private struct DrinkCalendar: View {
+    var store: AlcoholStore
+    var open: (String) -> Void
+    private let weeks = 12
+
+    var body: some View {
+        let start = Self.monday(weeksBack: weeks - 1, from: store.tonight)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 4) {
+                ForEach(0..<weeks, id: \.self) { week in
+                    VStack(spacing: 4) {
+                        ForEach(0..<7, id: \.self) { day in
+                            let night = addDays(start, week * 7 + day)
+                            cell(night)
+                        }
+                    }
+                }
+            }
+            HStack(spacing: 14) {
+                legend(Fit.health.opacity(0.18), "Dry")
+                legend(Fit.health.opacity(0.55), "1–2")
+                legend(Fit.health, "3+")
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 3).strokeBorder(Fit.health, lineWidth: 1.5).frame(width: 11, height: 11)
+                    Text("Unsure").font(.caption2).foregroundStyle(Fit.muted)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func cell(_ night: String) -> some View {
+        let future = night > store.tonight
+        let n = store.drinks(on: night)
+        let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
+        Button { open(night) } label: {
+            shape
+                .fill(fill(night, n))
+                .overlay { if store.amountUnknown(night) { shape.strokeBorder(Fit.health, lineWidth: 1.5) } }
+                .aspectRatio(1, contentMode: .fit)
+                .opacity(future ? 0 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(future)
+        .accessibilityLabel("\(AlcoholSheet.title(night)): \(store.detail(night) ?? (store.dryNights.contains(night) ? "no drinks" : "not logged"))")
+    }
+
+    private func fill(_ night: String, _ n: Int) -> Color {
+        if n >= 3 { return Fit.health }
+        if n > 0 { return Fit.health.opacity(0.55) }
+        if store.dryNights.contains(night) { return Fit.health.opacity(0.18) }
+        return Fit.muted.opacity(0.1)
+    }
+
+    private func legend(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 11, height: 11)
+            Text(label).font(.caption2).foregroundStyle(Fit.muted)
+        }
+    }
+
+    /// The Monday that starts the week some weeks before the one holding `day`.
+    static func monday(weeksBack: Int, from day: String) -> String {
+        guard let date = DayFormat.parse(day) else { return day }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        let weekday = calendar.component(.weekday, from: date)
+        let sinceMonday = (weekday + 5) % 7
+        return addDays(day, -sinceMonday - weeksBack * 7)
     }
 }

@@ -149,6 +149,7 @@ struct OverviewList: View {
             endurance
             recovery
             age
+            row(.alcohol) { DrinksOverviewRow(fitness: store) }
             NavigationLink { TrendsView(store: store) } label: { LiveStepsRow(store: store) }
                 .buttonStyle(.plain)
         }
