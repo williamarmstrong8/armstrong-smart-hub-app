@@ -1,4 +1,5 @@
 import SwiftUI
+import LocalAuthentication
 
 private let durations = [1, 3, 5, 10]
 
@@ -58,6 +59,82 @@ private enum JournalTarget: Identifiable {
     }
 }
 
+/// Keeps the journal behind Face ID (or the passcode if Face ID fails or isn't set up). It locks
+/// again whenever the app goes to the background. A phone with no passcode can't lock, so the
+/// journal stays open there.
+@MainActor
+@Observable
+final class JournalLock {
+    private(set) var isLocked = true
+    private(set) var unlocking = false
+
+    /// "Face ID", "Touch ID" or "Passcode", for the unlock button.
+    var methodName: String {
+        let ctx = LAContext()
+        _ = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        switch ctx.biometryType {
+        case .faceID: return "Face ID"
+        case .touchID: return "Touch ID"
+        case .opticID: return "Optic ID"
+        default: return "Passcode"
+        }
+    }
+
+    var methodIcon: String {
+        switch methodName {
+        case "Face ID": "faceid"
+        case "Touch ID": "touchid"
+        case "Optic ID": "opticid"
+        default: "lock.open"
+        }
+    }
+
+    func lock() { isLocked = true }
+
+    func unlock() async {
+        guard isLocked, !unlocking else { return }
+        let ctx = LAContext()
+        var error: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            isLocked = false
+            return
+        }
+        unlocking = true
+        defer { unlocking = false }
+        if (try? await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock your journal")) == true {
+            isLocked = false
+        }
+    }
+}
+
+/// What shows in place of journal text while it's locked: a lock and an unlock button.
+private struct JournalLockedCard: View {
+    let lock: JournalLock
+
+    var body: some View {
+        BrickCard {
+            VStack(spacing: 14) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(HubDesign.secondary)
+                Text("Your journal is locked.")
+                    .font(.subheadline).foregroundStyle(HubDesign.secondary)
+                Button { Task { await lock.unlock() } } label: {
+                    Label("Unlock with \(lock.methodName)", systemImage: lock.methodIcon)
+                        .font(.headline)
+                        .foregroundStyle(HubDesign.ink)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)), in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .disabled(lock.unlocking)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
 /// Reflection: guided breathing that floods the screen with colour, quotes worth keeping, and a journal.
 struct ReflectionView: View {
     @State private var store = ReflectionStore()
@@ -69,6 +146,8 @@ struct ReflectionView: View {
     @State private var searchingBooks = false
     @State private var openBookID: UUID?
     @State private var addingBookManually = false
+    @State private var journalLock = JournalLock()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var heroQuoteIndex = Int.random(in: 0..<1000)
 
     var body: some View {
@@ -113,10 +192,14 @@ struct ReflectionView: View {
             .sheet(item: $journal) { target in
                 switch target {
                 case .new:
-                    JournalEditor(entry: nil, onSave: { store.saveEntry(id: nil, text: $0) }, onDelete: nil)
+                    JournalEditor(entry: nil, lock: journalLock, onSave: { store.saveEntry(id: nil, text: $0) }, onDelete: nil)
                 case .entry(let e):
-                    JournalEditor(entry: e, onSave: { store.saveEntry(id: e.id, text: $0) }, onDelete: { store.deleteEntry(e.id) })
+                    JournalEditor(entry: e, lock: journalLock, onSave: { store.saveEntry(id: e.id, text: $0) }, onDelete: { store.deleteEntry(e.id) })
                 }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                // Only on background: the Face ID prompt itself makes the scene inactive.
+                if phase == .background { journalLock.lock() }
             }
             .confirmationDialog("Delete this quote?", isPresented: $confirmQuoteDelete, titleVisibility: .visible, presenting: quoteToDelete) { q in
                 Button("Delete", role: .destructive) { store.deleteQuote(q.id) }
@@ -329,7 +412,25 @@ struct ReflectionView: View {
             HStack {
                 heading("Journal")
                 Spacer()
-                Button { journal = .new } label: {
+                if !journalLock.isLocked {
+                    Button { journalLock.lock() } label: {
+                        Image(systemName: "lock")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(HubDesign.ink)
+                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                            .glassGlare(.regular, in: .circle)
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Lock journal")
+                }
+                Button {
+                    if journalLock.isLocked {
+                        Task { await journalLock.unlock(); if !journalLock.isLocked { journal = .new } }
+                    } else {
+                        journal = .new
+                    }
+                } label: {
                     Label("New entry", systemImage: "square.and.pencil")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(HubDesign.ink)
@@ -341,7 +442,9 @@ struct ReflectionView: View {
                 .buttonStyle(.plain)
             }
 
-            if store.entries.isEmpty {
+            if journalLock.isLocked && !store.entries.isEmpty {
+                JournalLockedCard(lock: journalLock)
+            } else if store.entries.isEmpty {
                 Text("Write your first entry. It's saved on this phone.")
                     .font(.subheadline).foregroundStyle(HubDesign.secondary)
                     .padding(.horizontal, 4)
@@ -422,6 +525,7 @@ private struct FieldBackground: ViewModifier {
 
 private struct JournalEditor: View {
     let entry: JournalEntry?
+    let lock: JournalLock
     let onSave: (String) -> Void
     let onDelete: (() -> Void)?
 
@@ -431,8 +535,9 @@ private struct JournalEditor: View {
     @State private var editing: Bool
     @FocusState private var focused: Bool
 
-    init(entry: JournalEntry?, onSave: @escaping (String) -> Void, onDelete: (() -> Void)?) {
+    init(entry: JournalEntry?, lock: JournalLock, onSave: @escaping (String) -> Void, onDelete: (() -> Void)?) {
         self.entry = entry
+        self.lock = lock
         self.onSave = onSave
         self.onDelete = onDelete
         _text = State(initialValue: entry?.text ?? "")
@@ -465,6 +570,14 @@ private struct JournalEditor: View {
     var body: some View {
         NavigationStack {
             content
+                // Locked while open (the app went to the background): keep the draft, hide the text.
+                .opacity(lock.isLocked ? 0 : 1)
+                .overlay {
+                    if lock.isLocked {
+                        JournalLockedCard(lock: lock).padding(20)
+                    }
+                }
+                .onChange(of: lock.isLocked) { _, locked in focused = !locked && editing }
                 .navigationTitle(entry == nil ? "New entry" : "Entry")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -472,13 +585,14 @@ private struct JournalEditor: View {
                     if onDelete != nil {
                         ToolbarItem(placement: .destructiveAction) {
                             Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                                .disabled(lock.isLocked)
                         }
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         if editing {
-                            Button("Save") { onSave(text); dismiss() }.disabled(empty)
+                            Button("Save") { onSave(text); dismiss() }.disabled(empty || lock.isLocked)
                         } else {
-                            Button("Edit") { editing = true; focused = true }
+                            Button("Edit") { editing = true; focused = true }.disabled(lock.isLocked)
                         }
                     }
                 }
