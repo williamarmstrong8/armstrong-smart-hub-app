@@ -392,7 +392,7 @@ struct QuoteScanFlow: View {
     }
 }
 
-/// The page's paragraphs as cards. Tap one to open it for trimming and saving.
+/// The photo with every paragraph it found outlined on top. Tap one to open it for trimming.
 private struct ParagraphPickView: View {
     let store: ReflectionStore
     let bookID: UUID?
@@ -407,97 +407,113 @@ private struct ParagraphPickView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle("Pick a paragraph")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onClose) }
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: onRetake) { Label("Retake", systemImage: "camera") }
-                    }
+            VStack(spacing: 12) {
+                page
+                hint
+            }
+            .padding(.horizontal, HubLayout.gutter)
+            .padding(.bottom, 12)
+            .navigationTitle("Pick a paragraph")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onClose) }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: onRetake) { Label("Retake", systemImage: "camera") }
                 }
-                .hubPageStyle()
-                .navigationDestination(item: $picked) { p in
-                    QuoteTrimView(store: store, bookID: bookID, paragraphs: paragraphs ?? [], first: p, onSaved: onClose)
-                }
+            }
+            .hubPageStyle()
+            .navigationDestination(item: $picked) { p in
+                QuoteTrimView(store: store, bookID: bookID, paragraphs: paragraphs ?? [], first: p, onSaved: onClose)
+            }
         }
         .sheet(isPresented: $typing) {
             ManualQuoteSheet(store: store, bookID: bookID, onSaved: onClose)
         }
-        .onChange(of: paragraphs) { _, found in
-            // One paragraph on the page: skip straight to it.
-            if let found, found.count == 1 { picked = found[0] }
+    }
+
+    private var page: some View {
+        GeometryReader { geo in
+            let fit = fittedRect(photo.size, in: geo.size)
+            ZStack(alignment: .topLeading) {
+                Image(uiImage: photo)
+                    .resizable().scaledToFit()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .opacity(paragraphs == nil ? 0.6 : 1)
+                ForEach(paragraphs ?? []) { p in
+                    let r = CGRect(x: fit.minX + p.box.minX * fit.width, y: fit.minY + p.box.minY * fit.height,
+                                   width: p.box.width * fit.width, height: p.box.height * fit.height)
+                        .insetBy(dx: -5, dy: -4)
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        picked = p
+                    } label: {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(HubDesign.action.opacity(0.14))
+                            .strokeBorder(HubDesign.action.opacity(0.85), lineWidth: 1.5)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(ParagraphBoxStyle())
+                    .frame(width: r.width, height: r.height)
+                    .position(x: r.midX, y: r.midY)
+                    .accessibilityLabel(p.text)
+                    .accessibilityHint("Opens this paragraph to save it as a quote")
+                    .transition(.opacity)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .animation(HubMotion.standard, value: paragraphs == nil)
+            .overlay {
+                if paragraphs == nil {
+                    ProgressView("Reading the page")
+                        .padding(16)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                }
+            }
         }
     }
 
     @ViewBuilder
-    private var content: some View {
+    private var hint: some View {
         if let paragraphs {
             if paragraphs.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "doc.text.magnifyingglass").font(.largeTitle).foregroundStyle(HubDesign.secondary)
-                    Text("No text found on that photo.").font(.headline)
-                    HStack(spacing: 12) {
-                        pill("Retake", systemImage: "camera", action: onRetake)
-                        pill("Type it", systemImage: "square.and.pencil") { typing = true }
-                    }
+                HStack(spacing: 12) {
+                    Text("No text found").font(.subheadline).foregroundStyle(HubDesign.secondary)
+                    Spacer()
+                    pill("Type it", systemImage: "square.and.pencil") { typing = true }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(paragraphs) { p in
-                            Button {
-                                UISelectionFeedbackGenerator().selectionChanged()
-                                picked = p
-                            } label: {
-                                Text(p.text)
-                                    .font(.system(.body, design: .serif))
-                                    .lineSpacing(3)
-                                    .lineLimit(9)
-                                    .multilineTextAlignment(.leading)
-                                    .foregroundStyle(HubDesign.ink)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(HubLayout.cardPadding - 4)
-                                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: HubLayout.cardRadius - 4))
-                                    .contentShape(.rect(cornerRadius: HubLayout.cardRadius - 4))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Opens this paragraph to save it as a quote")
-                        }
-                        Button { typing = true } label: {
-                            Label("Type it instead", systemImage: "square.and.pencil")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(HubDesign.action)
-                                .frame(minHeight: HubLayout.minHitTarget)
-                        }
-                        .buttonStyle(.plain)
+                HStack {
+                    Text("Tap the paragraph to save")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(HubDesign.secondary)
+                    Spacer()
+                    Button { typing = true } label: {
+                        Image(systemName: "square.and.pencil")
+                            .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                            .contentShape(.rect)
                     }
-                    .padding(.horizontal, HubLayout.gutter)
-                    .padding(.vertical, 12)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(HubDesign.action)
+                    .accessibilityLabel("Type the quote instead")
                 }
             }
-        } else {
-            ZStack {
-                Image(uiImage: photo)
-                    .resizable().scaledToFit()
-                    .clipShape(.rect(cornerRadius: HubLayout.controlRadius))
-                    .padding(HubLayout.gutter)
-                    .opacity(0.6)
-                ProgressView("Reading the page")
-                    .padding(16)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    /// Where an aspect-fit image sits inside its container.
+    private func fittedRect(_ size: CGSize, in container: CGSize) -> CGRect {
+        guard size.width > 0, size.height > 0 else { return .zero }
+        let scale = min(container.width / size.width, container.height / size.height)
+        let w = size.width * scale, h = size.height * scale
+        return CGRect(x: (container.width - w) / 2, y: (container.height - h) / 2, width: w, height: h)
     }
 
     private func pill(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.headline)
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(HubDesign.ink)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
                 .frame(minHeight: HubLayout.minHitTarget)
                 .glassGlare(.regular, in: .capsule)
                 .contentShape(.capsule)
@@ -506,10 +522,22 @@ private struct ParagraphPickView: View {
     }
 }
 
+/// A paragraph box darkens while it's pressed.
+private struct ParagraphBoxStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(HubDesign.action.opacity(configuration.isPressed ? 0.25 : 0))
+            }
+            .animation(HubMotion.quick, value: configuration.isPressed)
+    }
+}
+
 // MARK: - Trimming
 
-/// The chosen paragraph, word by word, all highlighted. Tap a word to move the nearer end of the
-/// highlight there, or drag the handles. Save keeps what's highlighted.
+/// The chosen paragraph, word by word, all highlighted. Drag across words to pick the part to keep,
+/// or drag the handles to nudge either end. Save keeps what's highlighted.
 private struct QuoteTrimView: View {
     let store: ReflectionStore
     let bookID: UUID?
@@ -553,26 +581,37 @@ private struct QuoteTrimView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if editing {
+        Group {
+            if editing {
+                ScrollView {
                     TextField("Quote", text: $editedText, axis: .vertical)
                         .font(.system(.title3, design: .serif))
                         .lineSpacing(4)
                         .focused($editorFocused)
                         .padding(14)
                         .background(HubDesign.track.opacity(0.5), in: .rect(cornerRadius: HubLayout.controlRadius))
-                } else {
-                    Text(trimmed ? "Tap or drag the handles to trim" : "Tap where the quote starts or ends to trim")
+                        .padding(.horizontal, HubLayout.gutter)
+                        .padding(.vertical, 16)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Drag across the words to keep")
                         .font(.footnote)
                         .foregroundStyle(HubDesign.secondary)
-                    wordsView
+                    // Shrinks the type until the paragraph fits, so dragging never fights scrolling.
+                    ViewThatFits(in: .vertical) {
+                        wordsView(.title3, draggable: true)
+                        wordsView(.body, draggable: true)
+                        wordsView(.subheadline, draggable: true)
+                        ScrollView { wordsView(.subheadline, draggable: false) }
+                    }
                 }
+                .padding(.horizontal, HubLayout.gutter)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .padding(.horizontal, HubLayout.gutter)
-            .padding(.vertical, 16)
         }
-        .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) { bottomBar }
         .navigationTitle(editing ? "Edit quote" : "Trim quote")
         .navigationBarTitleDisplayMode(.inline)
@@ -586,21 +625,31 @@ private struct QuoteTrimView: View {
 
     // MARK: Words
 
-    private var wordsView: some View {
+    /// The words at one type size. `draggable` is off only for the scrolling fallback, where a
+    /// drag scrolls and the handles do the trimming.
+    private func wordsView(_ style: Font.TextStyle, draggable: Bool) -> some View {
         WordFlow(lineSpacing: 6) {
             ForEach(words.indices, id: \.self) { i in
                 let on = i >= start && i <= end
                 Text(words[i])
-                    .font(.system(.title3, design: .serif))
+                    .font(.system(style, design: .serif))
                     .foregroundStyle(on ? HubDesign.ink : HubDesign.secondary.opacity(0.55))
                     .padding(.horizontal, 3)
                     .padding(.vertical, 3)
                     .background(on ? Color.yellow.opacity(0.42) : .clear)
-                    .contentShape(.rect)
-                    .onTapGesture { tap(i) }
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames[i] = $0 }
             }
         }
+        .contentShape(.rect)
+        .gesture(
+            DragGesture(minimumDistance: 6, coordinateSpace: .named(Self.space))
+                .onChanged { v in
+                    guard let a = nearestWord(to: v.startLocation), let b = nearestWord(to: v.location) else { return }
+                    start = min(a, b)
+                    end = max(a, b)
+                },
+            isEnabled: draggable
+        )
         .overlay { handles }
         .coordinateSpace(.named(Self.space))
         .animation(HubMotion.quick, value: start)
@@ -650,21 +699,13 @@ private struct QuoteTrimView: View {
         return frames.filter { $0.key < words.count }.min { score($0.value) < score($1.value) }?.key
     }
 
-    /// Moves whichever end of the highlight is nearer to the tapped word.
-    private func tap(_ i: Int) {
-        if i < start { start = i }
-        else if i > end { end = i }
-        else if i - start <= end - i { start = i }
-        else { end = i }
-    }
-
     // MARK: Bottom bar
 
     private var bottomBar: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 if trimmed && !editing {
-                    smallButton("Whole paragraph", systemImage: "arrow.left.and.right") {
+                    smallButton("Select all", systemImage: "arrow.left.and.right") {
                         start = 0
                         end = words.count - 1
                     }

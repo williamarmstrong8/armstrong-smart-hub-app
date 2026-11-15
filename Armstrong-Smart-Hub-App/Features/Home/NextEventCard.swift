@@ -101,7 +101,7 @@ struct NextEventCard: View {
     }
 
     private static let placeholder: CalendarEvent = {
-        let json = #"{"id":"p","title":"Something coming up","start":"2026-01-01T15:00:00Z","end":"2026-01-01T16:00:00Z","allDay":false,"calendar":"p","color":"#6b7280"}"#
+        let json = ##"{"id":"p","title":"Something coming up","start":"2026-01-01T15:00:00Z","end":"2026-01-01T16:00:00Z","allDay":false,"calendar":"p","color":"#6b7280"}"##
         return try! APIClient.decoder.decode(CalendarEvent.self, from: Data(json.utf8))
     }()
 }
