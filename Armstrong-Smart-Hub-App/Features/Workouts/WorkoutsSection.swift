@@ -111,7 +111,7 @@ struct LastWorkoutCard: View {
     var body: some View {
         let muscles = workout.exercises.compactMap { name in store.exercises.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.muscle }
         let type = WorkoutType.classify(name: workout.name, muscles: muscles)
-        let place = places.place(workout.id)
+        let place = places.place(workout.id) ?? workout.place
         BrickCard {
             NavigationLink(value: WorkoutRoute(id: workout.id)) {
                 VStack(alignment: .leading, spacing: 20) {

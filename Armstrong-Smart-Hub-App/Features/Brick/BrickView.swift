@@ -39,9 +39,10 @@ struct BrickView: View {
             .hubPageStyle(backdrop: true)
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { store.check() }
-            // Last night's sleep comes with Fitness's data; fetch it so today's time leaves it out.
+            // Every past night from the hub, and last night with Fitness's data, so Brick time leaves sleep out.
             .task {
                 guard !Demo.isOn else { return }
+                await store.loadSleep(api: session.api)
                 await FitnessStore().load(api: session.api)
                 store.check()
             }

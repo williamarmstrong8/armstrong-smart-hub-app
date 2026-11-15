@@ -70,6 +70,8 @@ struct WorkoutSummary: Decodable, Identifiable, Hashable {
     var volumeKg: Double
     var avgHr: Int?
     var maxHr: Int?
+    /// Where it started, as the hub has it. Missing from older hubs.
+    var place: WorkoutPlace?
 
     var start: Date? { ISO.parse(startedAt) }
     var duration: TimeInterval? {
@@ -113,6 +115,7 @@ struct WorkoutDetail: Decodable, Identifiable {
     var activityId: String?
     /// [seconds from start, bpm]
     var heartRate: [[Double]]
+    var place: WorkoutPlace?
     var exercises: [Group]
 
     struct Group: Decodable, Identifiable {
@@ -272,6 +275,8 @@ struct WorkoutUpload: Encodable {
     var notes: String?
     var heartRate: [[Double]]
     var exercises: [Item]
+    /// Where it started, when the phone found it in time; sent later otherwise (WorkoutStore.syncPlaces).
+    var place: WorkoutPlace?
 
     struct Item: Encodable {
         var exerciseId: String
@@ -289,7 +294,8 @@ struct WorkoutUpload: Encodable {
         var liveHr: Int?
     }
 
-    init(_ workout: ActiveWorkout) {
+    init(_ workout: ActiveWorkout, place: WorkoutPlace? = nil) {
+        self.place = place
         let iso = ISO8601DateFormatter()
         id = workout.id.uuidString.lowercased()
         name = workout.name

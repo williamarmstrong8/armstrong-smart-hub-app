@@ -96,7 +96,7 @@ struct WorkoutDetailPage: View {
             }
             .padding(.bottom, 28)
 
-            if let place = WorkoutPlaces.shared.place(detail.id) {
+            if let place = WorkoutPlaces.shared.place(detail.id) ?? detail.place {
                 FitSection(title: "Where", trailing: place.name) {
                     Button { place.openInMaps() } label: {
                         Map(initialPosition: .region(MKCoordinateRegion(center: place.coordinate, latitudinalMeters: 600, longitudinalMeters: 600)),

@@ -391,6 +391,24 @@ final class BrickStore: NSObject {
         defaults.set(true, forKey: lockdownKey)
     }
 
+    // MARK: Sleep
+
+    private struct HubSleep: Decodable {
+        var sleep: [Night]
+        struct Night: Decodable { var start: String; var end: String }
+    }
+
+    /// Every night the hub has (the Fitness snapshot only carries the newest 30), so past days leave sleep out too.
+    /// An older hub without the endpoint just leaves what's kept.
+    func loadSleep(api: APIClient) async {
+        guard let r = try? await api.get("/api/mobile/fitness/sleep", as: HubSleep.self) else { return }
+        BrickEngine.saveSleep(r.sleep.compactMap { n in
+            guard let s = ISO.parse(n.start), let e = ISO.parse(n.end), e > s else { return nil }
+            return BrickSleep(start: s, end: e)
+        })
+        reload()
+    }
+
     // MARK: Blocking
 
     /// Starts a mode: a lockdown in its own store, or the Brick. `until` overrides the mode's timer (a schedule's end).

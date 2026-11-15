@@ -79,6 +79,7 @@ final class WorkoutStore {
         do {
             let fetched: WorkoutsHome = try await api.get("/api/mobile/workouts")
             home = fetched
+            await syncPlaces(fetched.workouts, api: api)
             if !fetched.exercises.isEmpty, fetched.exercises != libraryCache {
                 libraryCache = fetched.exercises
                 save(fetched.exercises, to: Self.libraryURL)
@@ -87,6 +88,16 @@ final class WorkoutStore {
         } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Sends the hub any place the phone has for a workout the hub has none for: one found
+    /// after the upload, or kept from before places synced. No queue needed: the list is the to-do.
+    private func syncPlaces(_ workouts: [WorkoutSummary], api: APIClient) async {
+        struct Body: Encodable { var id: String; var place: WorkoutPlace }
+        for workout in workouts where workout.place == nil {
+            guard let place = WorkoutPlaces.shared.place(workout.id) else { continue }
+            _ = try? await api.data(api.request("/api/mobile/workouts/place", method: "PUT", body: Body(id: workout.id, place: place)))
         }
     }
 
@@ -478,7 +489,7 @@ final class WorkoutStore {
         defer { isUploading = false }
         for workout in pending {
             do {
-                let detail: WorkoutDetail = try await api.post("/api/mobile/workouts", body: WorkoutUpload(workout))
+                let detail: WorkoutDetail = try await api.post("/api/mobile/workouts", body: WorkoutUpload(workout, place: WorkoutPlaces.shared.place(workout.id.uuidString)))
                 details[detail.id] = detail
                 pending.removeAll { $0.id == workout.id }
                 save(pending, to: Self.pendingURL)
