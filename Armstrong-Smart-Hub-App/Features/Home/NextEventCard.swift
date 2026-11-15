@@ -33,23 +33,45 @@ struct NextEventCard: View {
         }
     }
 
-    /// One line: what, then when.
+    /// The name, when (how soon, then start to end), and where, all in full: lines wrap
+    /// rather than cut off.
     private func card(_ event: CalendarEvent, start: Date, now: Date) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(event.title)
                 .font(.title3.weight(.medium))
                 .foregroundStyle(HubDesign.ink)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(when(start, now: now))
-                .font(.title3)
+            Text(timeLine(event, start: start, now: now))
+                .font(.body)
                 .foregroundStyle(BrickLook.soft)
                 .monospacedDigit()
-                .lineLimit(1)
-                .layoutPriority(1)
+            if let place = event.location?.trimmingCharacters(in: .whitespacesAndNewlines), !place.isEmpty {
+                Text(place)
+                    .font(.body)
+                    .foregroundStyle(BrickLook.soft)
+            }
         }
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(Shell())
         .accessibilityElement(children: .combine)
+    }
+
+    /// "In 40 min · 3 – 4 PM", "Tomorrow · 9 – 10:30 AM", or just "3 – 4 PM" later today.
+    private func timeLine(_ event: CalendarEvent, start: Date, now: Date) -> String {
+        var range = clock(start)
+        if let end = ISO.parse(event.end) { range += " – \(clock(end))" }
+        return [when(start, now: now), range].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func clock(_ d: Date) -> String {
+        let tz = agenda.data.flatMap { TimeZone(identifier: $0.timeZone) } ?? .current
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = tz
+        var style = Date.FormatStyle.dateTime.hour()
+        if cal.component(.minute, from: d) != 0 { style = style.minute() }
+        style.timeZone = tz
+        return d.formatted(style)
     }
 
     private var empty: some View {
@@ -66,6 +88,7 @@ struct NextEventCard: View {
         func body(content: Content) -> some View {
             content
                 .padding(.horizontal, 20)
+                .padding(.vertical, 14)
                 .frame(maxWidth: .infinity, minHeight: NextEventCard.height, alignment: .leading)
                 .glassGlare(interactive ? .regular.interactive() : .regular, in: .rect(cornerRadius: HubLayout.cardRadius))
                 .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
@@ -81,8 +104,7 @@ struct NextEventCard: View {
                 Text(agenda.connectError ?? (first ? "Connect Google Calendar" : "Reconnect Google Calendar"))
                     .font(.title3)
                     .foregroundStyle(agenda.connectError == nil ? HubDesign.ink : BrickLook.soft)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 if connecting {
                     ProgressView()
@@ -112,23 +134,19 @@ struct NextEventCard: View {
 
     static let height: CGFloat = 60
 
-    /// "Now", "In 40 min", "3 PM", "Tomorrow 9 AM" or "Tue 9 AM", in the calendar's time zone.
-    private func when(_ start: Date, now: Date) -> String {
+    /// "Now", "In 40 min", "Tomorrow" or "Tue"; nil later today (the time says it).
+    private func when(_ start: Date, now: Date) -> String? {
         let minutes = Int(start.timeIntervalSince(now) / 60)
         if minutes <= 0 { return "Now" }
         if minutes < 60 { return "In \(minutes) min" }
         let tz = agenda.data.flatMap { TimeZone(identifier: $0.timeZone) } ?? .current
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = tz
-        var style = Date.FormatStyle.dateTime.hour()
-        if cal.component(.minute, from: start) != 0 { style = style.minute() }
-        style.timeZone = tz
-        let time = start.formatted(style)
-        if cal.isDate(start, inSameDayAs: now) { return time }
-        if let tomorrow = cal.date(byAdding: .day, value: 1, to: now), cal.isDate(start, inSameDayAs: tomorrow) { return "Tomorrow \(time)" }
-        var day = Date.FormatStyle.dateTime.weekday(.abbreviated)
+        if cal.isDate(start, inSameDayAs: now) { return nil }
+        if let tomorrow = cal.date(byAdding: .day, value: 1, to: now), cal.isDate(start, inSameDayAs: tomorrow) { return "Tomorrow" }
+        var day = Date.FormatStyle.dateTime.weekday(.wide)
         day.timeZone = tz
-        return "\(start.formatted(day)) \(time)"
+        return start.formatted(day)
     }
 
     private static let placeholder: CalendarEvent = {
