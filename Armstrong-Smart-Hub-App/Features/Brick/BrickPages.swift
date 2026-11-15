@@ -103,7 +103,7 @@ struct BrickModePage: View {
                     Toggle(isOn: Binding(get: { p.strict }, set: { var q = p; q.strict = $0; store.update(q) })) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Strict").font(.system(size: 18))
-                            Text("Only your Brick, or an emergency unbrick, ends it.")
+                            Text("Only your Brick, or an emergency unbrick, ends it. A lockdown ignores emergency unbricks.")
                                 .font(.system(size: 15)).foregroundStyle(BrickLook.soft)
                         }
                     }
@@ -537,15 +537,15 @@ struct BrickEmergencyPage: View {
                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
             }
             .buttonStyle(.plain)
-            .disabled(!store.anyOn || store.emergencyLeft == 0)
-            .opacity(store.anyOn && store.emergencyLeft > 0 ? 1 : 0.5)
+            .disabled(!store.isBlocking || store.emergencyLeft == 0)
+            .opacity(store.isBlocking && store.emergencyLeft > 0 ? 1 : 0.5)
             .confirmationDialog("Use one of your \(store.emergencyLeft) emergency unbricks?", isPresented: $confirming,
                                 titleVisibility: .visible) {
                 Button("Unbrick", role: .destructive) { store.emergencyUnbrick() }
             }
-            Takeaway(text: store.anyOn
-                     ? "Ends this Brick and any lockdowns without the tag. They don't come back, so save them for when you really need your phone."
-                     : "For when you're bricked and away from your Brick. Ends the session without the tag. They don't come back.")
+            Takeaway(text: store.isBlocking
+                     ? "Ends this Brick without the tag. Lockdowns stay on: only their own tag ends them. They don't come back, so save them for when you really need your phone."
+                     : "For when you're bricked and away from your Brick. Ends the session without the tag, never a lockdown. They don't come back.")
                 .padding(.horizontal, 4).padding(.top, 8)
         }
     }

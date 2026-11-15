@@ -64,6 +64,7 @@ final class BrickStore: NSObject {
         pairLockdowns()
         authorized = AuthorizationCenter.shared.authorizationStatus == .approved
         if authorized { BrickEngine.syncSchedules() }
+        repairEmergencyLockdowns()
         startTicker()
         check()
     }
@@ -359,13 +360,26 @@ final class BrickStore: NSObject {
         end(id)
     }
 
-    /// Ends everything without a tag, from the small allowance.
+    /// Ends the Brick without a tag, from the small allowance. Lockdowns stay on: only their own tag ends them.
     func emergencyUnbrick() {
-        guard anyOn, emergencyLeft > 0 else { return }
+        guard let id = blockingProfileID, emergencyLeft > 0 else { return }
         emergencyLeft -= 1
         defaults.set(emergencyLeft, forKey: "brick.emergencyLeft")
-        if let id = blockingProfileID { end(id) }
-        for l in lockdowns { end(l.profileID) }
+        end(id)
+    }
+
+    /// One-off fix for 2026-11-15: an emergency unbrick used to end lockdowns too. Gives the allowance back
+    /// and turns each lockdown that's off back on, keyed to its paired tag. Waits for Screen Time access.
+    private func repairEmergencyLockdowns() {
+        let key = "brick.repair.emergencyLockdown"
+        guard authorized, !defaults.bool(forKey: key) else { return }
+        emergencyLeft = BrickStore.emergencyAllowance
+        defaults.set(emergencyLeft, forKey: "brick.emergencyLeft")
+        for p in profiles where p.lockdown && !p.isEmpty && !isOn(p.id) {
+            guard let tag = pairedTag(p.id) else { continue }
+            start(p, tagID: tag.id)
+        }
+        defaults.set(true, forKey: key)
     }
 
     // MARK: Blocking

@@ -26,15 +26,22 @@ final class WeatherStore {
 @MainActor
 @Observable
 final class PiStore {
-    private(set) var status: PiStatus?
+    /// The last answer is kept on the phone, so Home paints the Pi's badge and card straight away.
+    private(set) var status: PiStatus? = DiskCache.read(PiStore.cacheName)
     private(set) var error: String?
     /// The container being changed right now.
     private(set) var busy: String?
+    /// Whether `status` came from the hub this session (otherwise it's the copy on the phone).
+    private(set) var fresh = false
+
+    private static let cacheName = "pi"
 
     func load(api: APIClient) async {
         do {
-            let next: PiStatus = try await api.send(api.request("/api/mobile/pi", timeout: 20))
-            status = next
+            let raw = try await api.data(api.request("/api/mobile/pi", timeout: 20))
+            status = try APIClient.decoder.decode(PiStatus.self, from: raw)
+            DiskCache.write(raw, Self.cacheName)
+            fresh = true
             error = nil
         } catch is CancellationError {
         } catch {

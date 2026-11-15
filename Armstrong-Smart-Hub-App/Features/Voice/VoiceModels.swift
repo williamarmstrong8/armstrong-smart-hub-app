@@ -233,6 +233,12 @@ struct PiStatus: Decodable, Equatable, Sendable {
 
     var running: Int { containers?.filter(\.running).count ?? 0 }
     var troubled: [PiContainer] { containers?.filter(\.troubled) ?? [] }
+
+    /// Plausible numbers for a redacted card while nothing has loaded yet.
+    static let placeholder: PiStatus = {
+        let json = #"{"available":true,"temperature":48,"load":[0.4],"cores":4,"memory":{"usedMB":900,"totalMB":4000},"disk":{"usedGB":20,"totalGB":64},"services":[]}"#
+        return try! APIClient.decoder.decode(PiStatus.self, from: Data(json.utf8))
+    }()
 }
 
 /// One to-do item (lib/todos.ts).
