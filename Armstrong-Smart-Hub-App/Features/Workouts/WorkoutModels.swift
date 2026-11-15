@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: Hub (lib/workouts on the hub)
 
 /// GET /api/mobile/workouts
-struct WorkoutsHome: Decodable {
+struct WorkoutsHome: Codable {
     var exercises: [Exercise]
     var routines: [Routine]
     var workouts: [WorkoutSummary]
@@ -12,14 +12,14 @@ struct WorkoutsHome: Decodable {
     /// Best estimated one-rep max per exercise.
     var bests: [String: Best]
 
-    struct PreviousSet: Decodable {
+    struct PreviousSet: Codable {
         var kind: String
         var weightKg: Double?
         var reps: Int?
         var durationSeconds: Double?
     }
 
-    struct Best: Decodable {
+    struct Best: Codable {
         var e1rmKg: Double?
         var weightKg: Double?
         var reps: Int?
@@ -60,7 +60,7 @@ struct Routine: Codable, Identifiable, Hashable {
     }
 }
 
-struct WorkoutSummary: Decodable, Identifiable, Hashable {
+struct WorkoutSummary: Codable, Identifiable, Hashable {
     var id: String
     var name: String
     var startedAt: String
@@ -100,7 +100,7 @@ struct ExerciseHistory: Decodable {
 }
 
 /// GET /api/mobile/workouts/detail: a workout with heart rate mapped onto every set.
-struct WorkoutDetail: Decodable, Identifiable {
+struct WorkoutDetail: Codable, Identifiable {
     var id: String
     var name: String
     var routineId: String?
@@ -118,7 +118,7 @@ struct WorkoutDetail: Decodable, Identifiable {
     var place: WorkoutPlace?
     var exercises: [Group]
 
-    struct Group: Decodable, Identifiable {
+    struct Group: Codable, Identifiable {
         var exerciseId: String
         var name: String
         var superset: Int?
@@ -126,7 +126,7 @@ struct WorkoutDetail: Decodable, Identifiable {
         var id: String { exerciseId + name }
     }
 
-    struct LoggedSet: Decodable {
+    struct LoggedSet: Codable {
         var kind: String
         var weightKg: Double?
         var reps: Int?

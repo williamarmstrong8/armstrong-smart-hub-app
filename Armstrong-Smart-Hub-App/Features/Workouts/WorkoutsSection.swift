@@ -53,7 +53,10 @@ struct WorkoutsSection: View {
                 }
                 .buttonStyle(.plain)
             }
-            if let error = store.error, store.home == nil || !store.pending.isEmpty {
+            if store.unsynced > 0 {
+                Label("\(store.unsynced) saved on your phone. It goes to the hub when it's reachable.", systemImage: "iphone.and.arrow.forward")
+                    .font(.footnote).foregroundStyle(BrickLook.soft)
+            } else if let error = store.error, store.home == nil {
                 Text(error).font(.footnote).foregroundStyle(Fit.attention)
             }
         }
@@ -132,8 +135,8 @@ struct LastWorkoutCard: View {
                         stat(WorkoutFormat.volumeNumber(workout.volumeKg, unit: unit), "Volume (\(unit.rawValue))")
                         stat("\(workout.sets)", "Sets")
                     }
-                    if !store.pending.isEmpty {
-                        Text("\(store.pending.count) waiting to upload").font(.footnote).foregroundStyle(BrickLook.soft)
+                    if store.pending.contains(where: { $0.id.uuidString.lowercased() == workout.id }) {
+                        Text("Saved on your phone, not on the hub yet").font(.footnote).foregroundStyle(BrickLook.soft)
                     }
                 }
                 .contentShape(.rect)

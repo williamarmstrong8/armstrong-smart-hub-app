@@ -1,12 +1,16 @@
 import Foundation
+import Network
 import Observation
 // For MutableCollection.move(fromOffsets:toOffset:).
 import SwiftUI
 import UserNotifications
 
-/// The workout logger. The workout in progress is written to disk on every
-/// change, so a crash or a gym with no signal never loses it; finished
-/// workouts wait on the phone until the hub takes them.
+/// The workout logger, offline first. Everything it needs lives on the phone:
+/// the exercise library, routines, recent workouts, last sets and bests (the
+/// hub's last answer, on disk), the workout in progress (written on every
+/// change), finished workouts and routine edits (queued until the hub takes
+/// them). The queues send when the hub answers: on load, on finish, when the
+/// network comes back.
 @MainActor
 @Observable
 final class WorkoutStore {
@@ -19,8 +23,29 @@ final class WorkoutStore {
     private var libraryCache: [Exercise] = []
     private(set) var error: String?
     private(set) var pending: [ActiveWorkout] = []
+    /// Routine saves and deletes the hub hasn't taken yet, oldest first.
+    private(set) var routineOps: [RoutineOp] = []
     private(set) var isUploading = false
     private var details: [String: WorkoutDetail] = [:]
+    /// The last client used, so a returning network can send what's waiting.
+    @ObservationIgnored private var api: APIClient?
+    @ObservationIgnored private let network = NWPathMonitor()
+    @ObservationIgnored private var sendingRoutines = false
+
+    enum RoutineOp: Codable, Equatable {
+        case save(Routine)
+        case delete(String)
+
+        var routineId: String {
+            switch self {
+            case let .save(r): r.id
+            case let .delete(id): id
+            }
+        }
+    }
+
+    /// Changes not on the hub yet: finished workouts and routine edits.
+    var unsynced: Int { pending.count + routineOps.count }
     private var histories: [String: ExerciseHistory] = [:]
 
     var active: ActiveWorkout? {
@@ -63,6 +88,20 @@ final class WorkoutStore {
         active = Demo.isOn ? nil : Self.read(ActiveWorkout.self, from: Self.activeURL)
         pending = Self.read([ActiveWorkout].self, from: Self.pendingURL) ?? []
         libraryCache = Self.read([Exercise].self, from: Self.libraryURL) ?? []
+        if !Demo.isOn {
+            home = Self.read(WorkoutsHome.self, from: Self.homeURL)
+            routineOps = Self.read([RoutineOp].self, from: Self.routineOpsURL) ?? []
+            details = Self.read([String: WorkoutDetail].self, from: Self.detailsURL) ?? [:]
+        }
+        // Back online with something waiting: send it.
+        network.pathUpdateHandler = { path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor in
+                let store = WorkoutStore.shared
+                if store.unsynced > 0, let api = store.api { await store.load(api: api) }
+            }
+        }
+        network.start(queue: DispatchQueue(label: "workouts.network"))
     }
 
     /// Keeps the lock screen, Dynamic Island and home screen widget in step.
@@ -75,10 +114,17 @@ final class WorkoutStore {
     // MARK: Hub
 
     func load(api: APIClient) async {
+        self.api = api
         await upload(api: api)
+        await sendRoutineOps(api: api)
         do {
-            let fetched: WorkoutsHome = try await api.get("/api/mobile/workouts")
+            var fetched: WorkoutsHome = try await api.get("/api/mobile/workouts")
+            // Edits still waiting stay on top of what the hub sent.
+            fetched.routines = Self.apply(routineOps, to: fetched.routines)
+            // Last sets from workouts still waiting beat the hub's older ones.
+            for workout in pending { Self.remember(workout, in: &fetched) }
             home = fetched
+            saveHome()
             await syncPlaces(fetched.workouts, api: api)
             if !fetched.exercises.isEmpty, fetched.exercises != libraryCache {
                 libraryCache = fetched.exercises
@@ -104,9 +150,13 @@ final class WorkoutStore {
     func cachedDetail(_ id: String) -> WorkoutDetail? { details[id] }
 
     func detail(_ id: String, api: APIClient, refresh: Bool = false) async -> WorkoutDetail? {
+        if let waiting = pending.first(where: { $0.id.uuidString.lowercased() == id.lowercased() }) { return Self.localDetail(waiting) }
         if !refresh, let cached = details[id] { return cached }
         let detail: WorkoutDetail? = try? await api.get("/api/mobile/workouts/detail?id=\(id)")
-        if let detail { details[id] = detail }
+        if let detail {
+            details[id] = detail
+            saveDetails()
+        }
         return detail ?? details[id]
     }
 
@@ -136,6 +186,13 @@ final class WorkoutStore {
     }
 
     func delete(_ id: String, api: APIClient) async {
+        // Still on the phone: it never reached the hub, so deleting it here is the whole job.
+        if pending.contains(where: { $0.id.uuidString.lowercased() == id.lowercased() }) {
+            pending.removeAll { $0.id.uuidString.lowercased() == id.lowercased() }
+            save(pending, to: Self.pendingURL)
+            WorkoutPlaces.shared.remove(id)
+            return
+        }
         struct Deleted: Decodable { var deleted: Bool }
         let _: Deleted? = try? await api.send(api.request("/api/mobile/workouts/detail?id=\(id)", method: "DELETE"))
         details[id] = nil
@@ -144,21 +201,74 @@ final class WorkoutStore {
 
     var exercises: [Exercise] { home?.exercises ?? libraryCache }
     var routines: [Routine] { home?.routines ?? [] }
-    var workouts: [WorkoutSummary] { home?.workouts ?? [] }
+    /// Finished workouts still on the phone first, then the hub's.
+    var workouts: [WorkoutSummary] {
+        let waiting = pending.sorted { $0.startedAt > $1.startedAt }.map(Self.localSummary)
+        let ids = Set(waiting.map(\.id))
+        return waiting + (home?.workouts ?? []).filter { !ids.contains($0.id) }
+    }
 
     func exercise(_ id: String) -> Exercise? { exercises.first { $0.id == id } }
 
+    /// Saves on the phone at once and queues it for the hub, so routines work offline.
     func saveRoutine(_ routine: Routine, api: APIClient) async throws {
-        struct OK: Decodable {}
-        let _: OK = try await api.post("/api/mobile/workouts/routines",
-                                       body: RoutineUpload(id: routine.id, name: routine.name, position: routine.position, exercises: routine.exercises))
-        await load(api: api)
+        queueRoutine(.save(routine))
+        Task { await load(api: api) }
     }
 
     func deleteRoutine(_ id: String, api: APIClient) async {
-        struct Deleted: Decodable { var deleted: Bool }
-        let _: Deleted? = try? await api.send(api.request("/api/mobile/workouts/routines?id=\(id)", method: "DELETE"))
-        await load(api: api)
+        queueRoutine(.delete(id))
+        Task { await load(api: api) }
+    }
+
+    private func queueRoutine(_ op: RoutineOp) {
+        // The newest change to a routine is the only one that matters.
+        routineOps.removeAll { $0.routineId == op.routineId }
+        routineOps.append(op)
+        save(routineOps, to: Self.routineOpsURL)
+        var updated = home ?? WorkoutsHome(exercises: libraryCache, routines: [], workouts: [], previous: [:], bests: [:])
+        updated.routines = Self.apply([op], to: updated.routines)
+        home = updated
+        saveHome()
+    }
+
+    static func apply(_ ops: [RoutineOp], to routines: [Routine]) -> [Routine] {
+        var result = routines
+        for op in ops {
+            switch op {
+            case let .save(routine):
+                if let i = result.firstIndex(where: { $0.id == routine.id }) { result[i] = routine } else { result.append(routine) }
+            case let .delete(id):
+                result.removeAll { $0.id == id }
+            }
+        }
+        return result.sorted { ($0.position, $0.name) < ($1.position, $1.name) }
+    }
+
+    /// Sends queued routine edits in order, stopping at the first the hub can't take now.
+    private func sendRoutineOps(api: APIClient) async {
+        guard !sendingRoutines else { return }
+        sendingRoutines = true
+        defer { sendingRoutines = false }
+        while let op = routineOps.first {
+            do {
+                switch op {
+                case let .save(routine):
+                    struct OK: Decodable {}
+                    let _: OK = try await api.post("/api/mobile/workouts/routines",
+                                                   body: RoutineUpload(id: routine.id, name: routine.name, position: routine.position, exercises: routine.exercises))
+                case let .delete(id):
+                    _ = try await api.data(api.request("/api/mobile/workouts/routines?id=\(id)", method: "DELETE"))
+                }
+            } catch {
+                // Offline, signed out or cancelled: keep it for next time. (A refusal, a 400 or 404,
+                // comes back as an answer, not an error, so it's dropped below rather than retried forever.)
+                return
+            }
+            // A newer edit of the same routine may have replaced it while this one was sending.
+            if routineOps.first == op { routineOps.removeFirst() }
+            save(routineOps, to: Self.routineOpsURL)
+        }
     }
 
     func createExercise(name: String, muscle: String, equipment: String, kind: String, api: APIClient) async throws -> Exercise {
@@ -454,6 +564,12 @@ final class WorkoutStore {
         rememberNotes(workout)
         pending.append(workout)
         save(pending, to: Self.pendingURL)
+        // So the next workout fills in from this one, even offline.
+        if var updated = home {
+            Self.remember(workout, in: &updated)
+            home = updated
+            saveHome()
+        }
         await load(api: api)
         justFinished = FinishedWorkout(id: workout.id.uuidString.lowercased(), name: workout.name)
     }
@@ -491,6 +607,7 @@ final class WorkoutStore {
             do {
                 let detail: WorkoutDetail = try await api.post("/api/mobile/workouts", body: WorkoutUpload(workout, place: WorkoutPlaces.shared.place(workout.id.uuidString)))
                 details[detail.id] = detail
+                saveDetails()
                 pending.removeAll { $0.id == workout.id }
                 save(pending, to: Self.pendingURL)
             } catch {
@@ -500,7 +617,59 @@ final class WorkoutStore {
         }
     }
 
+    // MARK: Finished workouts on the phone
+
+    /// The last sets of each exercise in a finished workout, for the next one's "previous" column.
+    static func remember(_ workout: ActiveWorkout, in home: inout WorkoutsHome) {
+        for item in WorkoutUpload(workout).exercises {
+            home.previous[item.exerciseId] = item.sets.map {
+                WorkoutsHome.PreviousSet(kind: $0.kind, weightKg: $0.weightKg, reps: $0.reps, durationSeconds: $0.durationSeconds)
+            }
+        }
+    }
+
+    /// A finished workout that hasn't reached the hub, as the list shows one.
+    static func localSummary(_ workout: ActiveWorkout) -> WorkoutSummary {
+        let upload = WorkoutUpload(workout)
+        let sets = upload.exercises.flatMap(\.sets)
+        let bpm = workout.heartRate.compactMap { $0.count == 2 ? Int($0[1]) : nil }
+        return WorkoutSummary(id: upload.id, name: upload.name, startedAt: upload.startedAt, endedAt: upload.endedAt,
+                              exercises: upload.exercises.map(\.name),
+                              sets: sets.filter { $0.kind != SetKind.warmup.rawValue }.count,
+                              volumeKg: sets.reduce(0) { $0 + ($1.kind == SetKind.warmup.rawValue ? 0 : ($1.weightKg ?? 0) * Double($1.reps ?? 0)) },
+                              avgHr: bpm.isEmpty ? nil : bpm.reduce(0, +) / bpm.count, maxHr: bpm.max(), place: nil)
+    }
+
+    /// Its page, built on the phone: the sets and live heart rate, without the hub's per-set analysis.
+    static func localDetail(_ workout: ActiveWorkout) -> WorkoutDetail {
+        let upload = WorkoutUpload(workout)
+        let summary = localSummary(workout)
+        return WorkoutDetail(
+            id: upload.id, name: upload.name, routineId: upload.routineId, startedAt: upload.startedAt, endedAt: upload.endedAt,
+            notes: upload.notes, volumeKg: summary.volumeKg, avgHr: summary.avgHr, maxHr: summary.maxHr,
+            hrSource: workout.heartRate.isEmpty ? nil : "live", activityId: nil, heartRate: workout.heartRate, place: nil,
+            exercises: upload.exercises.map { item in
+                WorkoutDetail.Group(exerciseId: item.exerciseId, name: item.name, superset: item.superset, sets: item.sets.map { set in
+                    WorkoutDetail.LoggedSet(kind: set.kind, weightKg: set.weightKg, reps: set.reps, durationSeconds: set.durationSeconds,
+                                            rpe: nil, completedAt: set.completedAt, startedAt: nil, liveHr: set.liveHr,
+                                            avgHr: nil, peakHr: nil, endHr: nil, recoveryBpm: nil, restSeconds: nil, e1rmKg: nil, pr: false)
+                })
+            })
+    }
+
     // MARK: Disk
+
+    private func saveHome() {
+        if Demo.isOn { return }
+        save(home, to: Self.homeURL)
+    }
+
+    /// Keeps the pages of the workouts in the list, so they open offline.
+    private func saveDetails() {
+        if Demo.isOn { return }
+        let keep = Set(workouts.map(\.id))
+        save(details.filter { keep.contains($0.key) }, to: Self.detailsURL)
+    }
 
     private static var folder: URL {
         let url = URL.applicationSupportDirectory.appending(path: "Workouts", directoryHint: .isDirectory)
@@ -510,6 +679,9 @@ final class WorkoutStore {
     private static var activeURL: URL { folder.appending(path: "active.json") }
     private static var pendingURL: URL { folder.appending(path: "pending.json") }
     private static var libraryURL: URL { folder.appending(path: "exercises.json") }
+    private static var homeURL: URL { folder.appending(path: "home.json") }
+    private static var routineOpsURL: URL { folder.appending(path: "routine-ops.json") }
+    private static var detailsURL: URL { folder.appending(path: "details.json") }
 
     private static func read<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
         guard let data = try? Data(contentsOf: url) else { return nil }
