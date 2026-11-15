@@ -117,6 +117,12 @@ struct BrickSchedule: Codable, Identifiable, Hashable {
     var lastFired: Date?
 }
 
+/// A night's sleep from Fitness, start to end. Brick time while asleep isn't counted.
+struct BrickSleep: Codable, Hashable {
+    var start: Date
+    var end: Date
+}
+
 /// A lockdown mode that's on, and when it ends by itself.
 struct BrickLockdown: Codable, Hashable {
     var profileID: UUID

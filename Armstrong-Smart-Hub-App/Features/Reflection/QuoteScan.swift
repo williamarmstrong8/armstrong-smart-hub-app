@@ -222,7 +222,12 @@ private struct PageCameraView: View {
 nonisolated struct ScanParagraph: Identifiable, Hashable, Sendable {
     let id: Int
     let text: String
+    /// Where it sits on the photo, as fractions of the image (origin top-left).
+    let box: CGRect
     var words: [String] { text.split(whereSeparator: \.isWhitespace).map(String.init) }
+
+    static func == (a: Self, b: Self) -> Bool { a.id == b.id && a.text == b.text }
+    func hash(into h: inout Hasher) { h.combine(id); h.combine(text) }
 }
 
 nonisolated private enum QuoteOCR {
@@ -273,10 +278,14 @@ nonisolated private enum QuoteOCR {
             }
         }
 
-        return groups.map { join($0.map(\.text)) }
-            .filter { $0.count > 3 }
+        return groups.compactMap { group -> (String, CGRect)? in
+                let text = join(group.map(\.text))
+                guard text.count > 3 else { return nil }
+                let r = group.dropFirst().reduce(group[0].rect) { $0.union($1.rect) }
+                return (text, CGRect(x: r.minX / w, y: r.minY / h, width: r.width / w, height: r.height / h))
+            }
             .enumerated()
-            .map { ScanParagraph(id: $0.offset, text: $0.element) }
+            .map { ScanParagraph(id: $0.offset, text: $0.element.0, box: $0.element.1) }
     }
 
     /// Vision sometimes splits one printed line into pieces; put them back together, top to bottom.

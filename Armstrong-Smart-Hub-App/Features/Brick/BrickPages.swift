@@ -329,7 +329,8 @@ struct BrickActivityPage: View {
                 allTime.padding(.horizontal, Fit.gutter).padding(.top, 16)
                 VStack(spacing: 16) {
                     ForEach(Array(shown)) { d in
-                        BrickDayCard(day: d.date, seconds: d.value, sessions: store.sessions(on: d.date))
+                        BrickDayCard(day: d.date, seconds: d.value, sessions: store.sessions(on: d.date),
+                                     sleep: store.sleep(on: d.date), slept: store.sleptWhileBricked(on: d.date))
                     }
                 }
                 .padding(.horizontal, Fit.gutter).padding(.top, 16)

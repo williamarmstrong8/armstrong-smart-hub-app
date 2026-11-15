@@ -6,7 +6,7 @@ import Observation
 @Observable
 final class FitnessStore {
     private(set) var snapshot: FitnessSnapshot? {
-        didSet { seriesCache = [:] }
+        didSet { seriesCache = [:]; shareSleep() }
     }
     private(set) var error: String?
     /// When the snapshot came from the hub; older than this session when the
@@ -29,6 +29,19 @@ final class FitnessStore {
             snapshot = cached
             updatedAt = (try? Self.cacheURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         }
+        // didSet doesn't run in init.
+        shareSleep()
+    }
+
+    /// Hands the nights to Brick, which leaves time asleep out of its totals.
+    private func shareSleep() {
+        #if os(iOS)
+        guard !Demo.isOn, let nights = snapshot?.sleep else { return }
+        BrickEngine.saveSleep(nights.compactMap { n in
+            guard let s = n.startDate, let e = n.endDate, e > s else { return nil }
+            return BrickSleep(start: s, end: e)
+        })
+        #endif
     }
 
     func load(api: APIClient) async {

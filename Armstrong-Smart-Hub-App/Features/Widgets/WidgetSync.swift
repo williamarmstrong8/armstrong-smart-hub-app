@@ -93,10 +93,9 @@ enum WidgetSync {
     static func brick(_ store: BrickStore) {
         let now = Date()
         let startOfDay = Calendar.current.startOfDay(for: now)
-        let finished = store.sessions.reduce(0.0) { total, s in
-            guard let end = s.end, end > startOfDay else { return total }
-            return total + end.timeIntervalSince(max(s.start, startOfDay))
-        }
+        // Today less time asleep. The widget adds the running session from its start, so that part is taken off here.
+        let running = store.current.map { now.timeIntervalSince(max($0.start, startOfDay)) } ?? 0
+        let finished = store.seconds(on: now) - running
         let next = BrickGlance(
             isBlocking: store.isBlocking,
             profileName: store.blockingProfile?.name,

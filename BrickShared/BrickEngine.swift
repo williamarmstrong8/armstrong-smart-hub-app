@@ -42,6 +42,46 @@ enum BrickEngine {
 
     static func isOn(_ id: UUID) -> Bool { blockingProfileID == id || lockdowns.contains { $0.profileID == id } }
 
+    // MARK: Sleep
+
+    /// Nights from Fitness, oldest first. Fitness writes them each time it gets the hub's data.
+    static var sleep: [BrickSleep] { load([BrickSleep].self, "brick.sleep") ?? [] }
+
+    /// Adds Fitness's nights. Ones already kept stay unless a new night overlaps them, so days past
+    /// the hub's window keep their sleep. A little over a year is kept.
+    static func saveSleep(_ nights: [BrickSleep]) {
+        let old = sleep
+        let cutoff = Date().addingTimeInterval(-400 * 86400)
+        let kept = old.filter { o in !nights.contains { $0.start < o.end && $0.end > o.start } }
+        let all = (kept + nights).filter { $0.end > $0.start && $0.end > cutoff }.sorted { $0.start < $1.start }
+        guard all != old else { return }
+        save(all, "brick.sleep")
+    }
+
+    /// Spans sorted and joined where they touch, so overlaps count once.
+    static func merge(_ spans: [(Date, Date)]) -> [(Date, Date)] {
+        var out: [(Date, Date)] = []
+        for s in spans.filter({ $0.1 > $0.0 }).sorted(by: { $0.0 < $1.0 }) {
+            if let last = out.last, s.0 <= last.1 { out[out.count - 1].1 = max(last.1, s.1) } else { out.append(s) }
+        }
+        return out
+    }
+
+    /// Time the spans cover between `from` and `to`, overlaps counted once, less any of it spent asleep.
+    static func awakeSeconds(_ spans: [(Date, Date)], from: Date = .distantPast, to: Date = .distantFuture,
+                             sleep: [BrickSleep]) -> TimeInterval {
+        let on = merge(spans.map { (max(from, $0.0), min(to, $0.1)) })
+        let asleep = merge(sleep.map { ($0.start, $0.end) })
+        var total: TimeInterval = 0
+        for s in on {
+            total += s.1.timeIntervalSince(s.0)
+            for z in asleep where z.0 < s.1 && z.1 > s.0 {
+                total -= min(s.1, z.1).timeIntervalSince(max(s.0, z.0))
+            }
+        }
+        return max(0, total)
+    }
+
     /// When a schedule ends on a day, if it has an end time; past midnight if it ends before it starts.
     static func endDate(of s: BrickSchedule, on day: Date) -> Date? {
         let cal = Calendar.current

@@ -29,6 +29,8 @@ final class BrickStore: NSObject {
     private(set) var authorized = false
     private(set) var sessions: [BrickSession] = []
     private(set) var emergencyLeft = BrickStore.emergencyAllowance
+    /// Nights from Fitness. Brick time while asleep doesn't count.
+    private(set) var sleep: [BrickSleep] = []
     var message: String?
     /// The time the pages count a running session up to. Ticks while bricked, so totals grow live.
     private(set) var now = Date()
@@ -98,6 +100,8 @@ final class BrickStore: NSObject {
         if s != sessions { sessions = s }
         let sc = BrickEngine.schedules
         if sc != schedules { schedules = sc }
+        let sl = BrickEngine.sleep
+        if sl != sleep { sleep = sl }
     }
 
     // MARK: Modes

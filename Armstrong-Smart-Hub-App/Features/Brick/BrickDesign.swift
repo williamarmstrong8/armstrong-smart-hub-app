@@ -14,6 +14,8 @@ enum BrickLook {
     static let bar = HubDesign.adaptive(0x43505C, 0xA9B7C4)
     static let track = HubDesign.track
     static let live = HubDesign.positive
+    /// Time asleep on the day track: Fitness's sleep violet.
+    static let sleep = Fit.sleep
     /// The grey of the "Brick" pressed into the device; the picture is the same in dark mode, so this is too.
     static let wordmark = HubDesign.adaptive(0x9B9692, 0x9B9692)
 
@@ -245,28 +247,35 @@ struct BrickWeekChart: View {
     }
 }
 
-/// A day's 24 hours as a thin track, with each session drawn where it fell.
+/// A day's 24 hours as a Liquid Glass track, with each session drawn where it fell and
+/// the night's sleep (which doesn't count) over it in its own color.
 struct BrickDayTrack: View {
     var day: Date
     var sessions: [BrickSession]
+    var sleep: [BrickSleep] = []
     /// Where a running session ends for now; set at each redraw so the bar grows.
     var now = Date()
 
     var body: some View {
         GeometryReader { geo in
-            let start = Calendar.current.startOfDay(for: day)
             ZStack(alignment: .leading) {
-                Capsule().fill(BrickLook.track)
-                ForEach(sessions) { s in
-                    let a = max(0, s.start.timeIntervalSince(start)) / 86400
-                    let b = min(86400, (s.end ?? now).timeIntervalSince(start)) / 86400
-                    Capsule().fill(BrickLook.bar)
-                        .frame(width: max(8, CGFloat(b - a) * geo.size.width))
-                        .offset(x: CGFloat(a) * geo.size.width)
-                }
+                ForEach(sessions) { s in bar(s.start, s.end ?? now, BrickLook.bar, geo.size.width) }
+                ForEach(sleep, id: \.self) { s in bar(s.start, s.end, BrickLook.sleep, geo.size.width) }
             }
         }
-        .frame(height: 9)
+        .frame(height: 8)
+        .padding(3)
+        .glassGlare(.regular, in: .capsule)
+        .accessibilityHidden(true)
+    }
+
+    private func bar(_ from: Date, _ to: Date, _ color: Color, _ width: CGFloat) -> some View {
+        let start = Calendar.current.startOfDay(for: day)
+        let a = max(0, from.timeIntervalSince(start)) / 86400
+        let b = min(86400, to.timeIntervalSince(start)) / 86400
+        return Capsule().fill(color)
+            .frame(width: max(8, CGFloat(max(0, b - a)) * width))
+            .offset(x: CGFloat(a) * width)
     }
 }
 
@@ -275,6 +284,9 @@ struct BrickDayCard: View {
     var day: Date
     var seconds: TimeInterval
     var sessions: [BrickSession]
+    var sleep: [BrickSleep] = []
+    /// Bricked time spent asleep, left out of `seconds`.
+    var slept: TimeInterval = 0
     /// Shown when the card opens the history page.
     var chevron = false
 
@@ -293,11 +305,12 @@ struct BrickDayCard: View {
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(brickDuration(seconds)).font(.system(size: 34, weight: .regular).monospacedDigit())
-                    Text(sessions.count == 1 ? "1 session" : "\(sessions.count) sessions")
+                    Text((sessions.count == 1 ? "1 session" : "\(sessions.count) sessions")
+                         + (slept >= 60 ? " · \(brickDuration(slept)) asleep" : ""))
                         .font(.system(size: 17)).foregroundStyle(BrickLook.soft)
                 }
                 Spacer(minLength: 24)
-                BrickDayTrack(day: day, sessions: sessions).frame(width: 140).padding(.bottom, 8)
+                BrickDayTrack(day: day, sessions: sessions, sleep: sleep).frame(width: 140).padding(.bottom, 8)
             }
             .padding(.top, 10)
         }
@@ -423,22 +436,27 @@ extension BrickStore {
         return sessions.filter { $0.start < end && ($0.end ?? now) > start && !lockdownNames.contains($0.profileName) }
     }
 
-    /// Bricked time within this day, splitting sessions that cross midnight. Overlapping sessions count once.
+    /// Bricked time within this day, splitting sessions that cross midnight. Overlapping sessions count once,
+    /// and time asleep (from Fitness) doesn't count.
     func seconds(on day: Date) -> TimeInterval {
         let start = cal.startOfDay(for: day)
+        return BrickEngine.awakeSeconds(sessions(on: day).map { ($0.start, $0.end ?? now) },
+                                        from: start, to: start.addingTimeInterval(86400), sleep: sleep)
+    }
+
+    /// Nights that touch this day.
+    func sleep(on day: Date) -> [BrickSleep] {
+        let start = cal.startOfDay(for: day)
         let end = start.addingTimeInterval(86400)
-        let spans = sessions(on: day)
-            .map { (max(start, $0.start), min(end, $0.end ?? now)) }
-            .filter { $0.1 > $0.0 }
-            .sorted { $0.0 < $1.0 }
-        var total: TimeInterval = 0
-        var cur: (Date, Date)?
-        for s in spans {
-            if let c = cur, s.0 <= c.1 { cur = (c.0, max(c.1, s.1)) }
-            else { if let c = cur { total += c.1.timeIntervalSince(c.0) }; cur = s }
-        }
-        if let c = cur { total += c.1.timeIntervalSince(c.0) }
-        return total
+        return sleep.filter { $0.start < end && $0.end > start }
+    }
+
+    /// Bricked time this day that was spent asleep, so left out of its total.
+    func sleptWhileBricked(on day: Date) -> TimeInterval {
+        let start = cal.startOfDay(for: day)
+        let spans = sessions(on: day).map { ($0.start, $0.end ?? now) }
+        let all = BrickEngine.awakeSeconds(spans, from: start, to: start.addingTimeInterval(86400), sleep: [])
+        return max(0, all - seconds(on: day))
     }
 
     /// The seven days of a week, `offset` weeks back from this one.
@@ -460,22 +478,11 @@ extension BrickStore {
         return done.reduce(0) { $0 + $1.value } / Double(done.count)
     }
 
-    /// Every span of Brick time ever, overlaps counted once and lockdowns left out. Runs to now while bricked.
+    /// Every span of Brick time ever, overlaps counted once, lockdowns and sleep left out. Runs to now while bricked.
     var lifetimeSeconds: TimeInterval {
         let lockdownNames = Set(profiles.filter(\.lockdown).map(\.name))
-        let spans = sessions
-            .filter { !lockdownNames.contains($0.profileName) }
-            .map { ($0.start, $0.end ?? now) }
-            .filter { $0.1 > $0.0 }
-            .sorted { $0.0 < $1.0 }
-        var total: TimeInterval = 0
-        var cur: (Date, Date)?
-        for s in spans {
-            if let c = cur, s.0 <= c.1 { cur = (c.0, max(c.1, s.1)) }
-            else { if let c = cur { total += c.1.timeIntervalSince(c.0) }; cur = s }
-        }
-        if let c = cur { total += c.1.timeIntervalSince(c.0) }
-        return total
+        let spans = sessions.filter { !lockdownNames.contains($0.profileName) }.map { ($0.start, $0.end ?? now) }
+        return BrickEngine.awakeSeconds(spans, sleep: sleep)
     }
 
     /// The first day with Brick time, if any.
@@ -498,11 +505,11 @@ extension BrickStore {
         return total / Double(days)
     }
 
-    /// The longest single session, lockdowns left out.
+    /// The longest single session, lockdowns and sleep left out.
     var longestSession: TimeInterval {
         let lockdownNames = Set(profiles.filter(\.lockdown).map(\.name))
         return sessions.filter { !lockdownNames.contains($0.profileName) }
-            .map { ($0.end ?? now).timeIntervalSince($0.start) }.max() ?? 0
+            .map { BrickEngine.awakeSeconds([($0.start, $0.end ?? now)], sleep: sleep) }.max() ?? 0
     }
 
     /// The day with the most Brick time since the first one.

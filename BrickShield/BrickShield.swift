@@ -34,15 +34,14 @@ class BrickShield: ShieldConfigurationDataSource {
             primaryButtonBackgroundColor: .white)
     }
 
-    /// Today's Brick time, the running session included. Lockdowns don't count as Brick time,
-    /// so during only a lockdown this says so instead of a number.
+    /// Today's Brick time, the running session included, less time asleep. Lockdowns don't count as
+    /// Brick time, so during only a lockdown this says so instead of a number.
     private func headline() -> String {
-        let start = Calendar.current.startOfDay(for: Date())
-        let seconds = BrickEngine.sessions.reduce(0.0) { total, s in
-            let end = s.end ?? Date()
-            guard end > start else { return total }
-            return total + end.timeIntervalSince(max(s.start, start))
-        }
+        let now = Date()
+        let start = Calendar.current.startOfDay(for: now)
+        let lockdownNames = Set(BrickEngine.profiles.filter(\.lockdown).map(\.name))
+        let spans = BrickEngine.sessions.filter { !lockdownNames.contains($0.profileName) }.map { ($0.start, $0.end ?? now) }
+        let seconds = BrickEngine.awakeSeconds(spans, from: start, to: now, sleep: BrickEngine.sleep)
         if seconds < 60 && BrickEngine.blockingProfileID == nil { return "Locked down" }
         let minutes = Int(seconds / 60)
         let text = minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"

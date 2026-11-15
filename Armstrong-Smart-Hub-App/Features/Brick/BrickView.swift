@@ -12,6 +12,7 @@ enum BrickRoute: Hashable {
 /// Each section shows its picture here and opens a page for the rest.
 struct BrickView: View {
     private let store = BrickStore.shared
+    @Environment(AppSession.self) private var session
     @State private var path: [BrickRoute] = []
 
     var body: some View {
@@ -22,7 +23,8 @@ struct BrickView: View {
                     LazyVStack(spacing: HubLayout.sectionGap) {
                         pageButtons
                         NavigationLink(value: BrickRoute.activity) {
-                            BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()), chevron: true)
+                            BrickDayCard(day: Date(), seconds: store.seconds(on: Date()), sessions: store.sessions(on: Date()),
+                                         sleep: store.sleep(on: Date()), slept: store.sleptWhileBricked(on: Date()), chevron: true)
                         }
                         .buttonStyle(.plain)
                         settings
@@ -37,6 +39,12 @@ struct BrickView: View {
             .hubPageStyle(backdrop: true)
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { store.check() }
+            // Last night's sleep comes with Fitness's data; fetch it so today's time leaves it out.
+            .task {
+                guard !Demo.isOn else { return }
+                await FitnessStore().load(api: session.api)
+                store.check()
+            }
             #if DEBUG
             .onAppear {
                 DemoCue.on("focus") { store.tapTag() }
