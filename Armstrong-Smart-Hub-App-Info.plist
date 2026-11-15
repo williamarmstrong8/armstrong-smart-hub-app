@@ -22,6 +22,8 @@
 	<string>Rings your wake-up alarm, even when the app is closed or the iPad is on silent.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scans a page from a book so you can save a quote from it.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Saves where you start a workout, so each workout shows the gym or place you trained.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Reads the video part of a Live Photo you pick so it can play as the app's background.</string>
 	<key>NSSupportsLiveActivities</key>

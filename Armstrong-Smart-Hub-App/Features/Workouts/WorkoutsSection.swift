@@ -100,45 +100,37 @@ struct RoutineCarousel: View {
     private static func middle(_ count: Int) -> Int { count * (laps / 2) }
 }
 
-/// The newest workout at a glance, straight on the page: name and day, three numbers, its volume
-/// against the workouts before it, and what was in it. Opens the workout.
+/// The newest workout at a glance: what kind of session it was, where and when,
+/// a bar of the muscles it worked, and three plain numbers. Opens the workout.
 struct LastWorkoutCard: View {
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
     var store: WorkoutStore
     var workout: WorkoutSummary
+    @State private var places = WorkoutPlaces.shared
 
     var body: some View {
+        let muscles = workout.exercises.compactMap { name in store.exercises.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.muscle }
+        let type = WorkoutType.classify(name: workout.name, muscles: muscles)
+        let place = places.place(workout.id)
         BrickCard {
             NavigationLink(value: WorkoutRoute(id: workout.id)) {
                 VStack(alignment: .leading, spacing: 20) {
-                    HStack(alignment: .center, spacing: 12) {
+                    HStack(alignment: .center, spacing: 14) {
+                        Image(systemName: type.symbol).font(.system(size: 22, weight: .medium)).foregroundStyle(BrickLook.ink)
+                            .frame(width: 52, height: 52)
+                            .glassGlare(.regular, in: .circle)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(workout.name).font(.system(size: 22, weight: .regular)).lineLimit(1)
-                            if let start = workout.start {
-                                Text(start.formatted(.relative(presentation: .named)).capitalizedFirst)
-                                    .font(.subheadline).foregroundStyle(BrickLook.soft)
-                            }
+                            Text(type.title).font(.system(size: 24, weight: .regular)).foregroundStyle(BrickLook.ink).lineLimit(1)
+                            Text(subtitle(type, place)).font(.subheadline).foregroundStyle(BrickLook.soft).lineLimit(1)
                         }
                         Spacer(minLength: 8)
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Fit.faint)
                     }
-                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 18) {
-                        GridRow {
-                            stat(FitnessFormat.duration(workout.duration), "Time")
-                            stat(WorkoutFormat.volumeNumber(workout.volumeKg, unit: unit), "Volume (\(unit.rawValue))")
-                            stat("\(workout.sets)", "Sets")
-                        }
-                        if workout.avgHr != nil || workout.maxHr != nil {
-                            GridRow {
-                                stat(workout.avgHr.map(String.init) ?? "–", "Avg HR", tint: Fit.heart)
-                                stat(workout.maxHr.map(String.init) ?? "–", "Max HR", tint: Fit.heart)
-                                stat("\(workout.exercises.count)", "Exercises")
-                            }
-                        }
-                    }
-                    if !workout.exercises.isEmpty {
-                        Text(workout.exercises.joined(separator: " · "))
-                            .font(.footnote).foregroundStyle(BrickLook.soft).lineLimit(2)
+                    if !muscles.isEmpty { MuscleSplit(muscles: muscles) }
+                    HStack(spacing: 12) {
+                        stat(FitnessFormat.duration(workout.duration), "Time")
+                        stat(WorkoutFormat.volumeNumber(workout.volumeKg, unit: unit), "Volume (\(unit.rawValue))")
+                        stat("\(workout.sets)", "Sets")
                     }
                     if !store.pending.isEmpty {
                         Text("\(store.pending.count) waiting to upload").font(.footnote).foregroundStyle(BrickLook.soft)
@@ -150,13 +142,59 @@ struct LastWorkoutCard: View {
         }
     }
 
-    private func stat(_ value: String, _ label: String, tint: Color? = nil) -> some View {
+    /// "Upper A · Yesterday · Equinox": the routine's name only when the type doesn't already say it.
+    private func subtitle(_ type: WorkoutType, _ place: WorkoutPlace?) -> String {
+        let named = workout.name.lowercased().contains(type.title.lowercased()) || workout.name.hasSuffix(" workout")
+        return [named ? nil : workout.name,
+                workout.start.map { $0.formatted(.relative(presentation: .named)).capitalizedFirst },
+                place?.name].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(value).font(Fit.value).foregroundStyle(tint ?? BrickLook.ink).lineLimit(1).minimumScaleFactor(0.6)
+            Text(value).font(Fit.value).foregroundStyle(BrickLook.ink).lineLimit(1).minimumScaleFactor(0.6)
             Text(label).font(.caption).foregroundStyle(BrickLook.soft)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+/// The muscles a workout worked, as one bar split by exercise count, biggest first, with a short key under it.
+struct MuscleSplit: View {
+    var muscles: [String]
+
+    var body: some View {
+        let counts = Dictionary(grouping: muscles, by: { $0 }).mapValues(\.count)
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+        let top = Array(counts.prefix(4))
+        let rest = counts.dropFirst(4).reduce(0) { $0 + $1.value }
+        let parts = top.map { (WorkoutFormat.label($0.key), $0.value) } + (rest > 0 ? [("Other", rest)] : [])
+        let total = Double(muscles.count)
+        VStack(alignment: .leading, spacing: 10) {
+            GeometryReader { geo in
+                HStack(spacing: 3) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
+                        Capsule().fill(Self.shade(index))
+                            .frame(width: max(8, (geo.size.width - CGFloat(parts.count - 1) * 3) * Double(part.1) / total))
+                    }
+                }
+            }
+            .frame(height: 12)
+            HStack(spacing: 12) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
+                    HStack(spacing: 5) {
+                        Circle().fill(Self.shade(index)).frame(width: 8, height: 8)
+                        Text(part.0).font(.caption).foregroundStyle(BrickLook.soft).lineLimit(1)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Muscles: " + parts.map { "\($0.0) \($0.1)" }.joined(separator: ", "))
+    }
+
+    /// One blue, lighter for each smaller share.
+    static func shade(_ index: Int) -> Color { Fit.action.opacity([1, 0.7, 0.48, 0.32, 0.2][min(index, 4)]) }
 }
 
 /// Every routine and the full workout history, at the bottom of the Fitness page.

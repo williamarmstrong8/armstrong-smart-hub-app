@@ -185,6 +185,7 @@ final class WorkoutStore {
         }
         active = workout
         requestNotifications()
+        WorkoutPlaces.shared.capture(for: workout.id.uuidString)
     }
 
     /// "Morning workout", "Evening workout"...
@@ -465,6 +466,7 @@ final class WorkoutStore {
     }
 
     func discard() {
+        if let id = active?.id.uuidString { WorkoutPlaces.shared.remove(id) }
         skipRest()
         setTimer = nil
         active = nil

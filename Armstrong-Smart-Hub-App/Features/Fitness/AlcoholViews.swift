@@ -53,7 +53,7 @@ struct AlcoholCard: View {
     }
 }
 
-/// Drinks among the Fitness stats: this week's count and the last two weeks, opening the drinks page.
+/// Drinks among the Fitness stats: this week's count, how many nights, and two weeks of bars. Opens the drinks page.
 struct DrinksOverviewRow: View {
     var fitness: FitnessStore
     @State private var store = AlcoholStore.shared
@@ -62,11 +62,10 @@ struct DrinksOverviewRow: View {
         let nights = (0..<7).map { addDays(store.tonight, -$0) }
         let week = nights.reduce(0) { $0 + store.drinks(on: $1) }
         let drinking = nights.filter { store.drinks(on: $0) > 0 || store.amountUnknown($0) }.count
-        let last = store.loggedNights.first { store.drinks(on: $0) > 0 || store.amountUnknown($0) }
-        let caption = drinking == 0 ? (store.loggedNights.isEmpty ? "Not tracked yet" : "No drinking nights this week")
-                                    : "\(drinking) drinking \(drinking == 1 ? "night" : "nights") this week"
-        OverviewRow(title: "Drinks", value: "\(week)", unit: "last 7 nights", caption: caption,
-                    detail: last.map { "Last: \(AlcoholSheet.short($0))" }, tint: drinking == 0 ? Fit.positive : Fit.health) {
+        let caption = store.loggedNights.isEmpty ? "Not tracked yet"
+                    : drinking == 0 ? "No drinking nights" : "\(drinking) \(drinking == 1 ? "night" : "nights") this week"
+        OverviewRow(title: "Drinks", value: "\(week)", unit: "this week", caption: caption,
+                    tint: drinking == 0 ? Fit.positive : Fit.health) {
             MiniTrend(values: (0..<14).reversed().map { Double(store.drinks(on: addDays(store.tonight, -$0))) }, tint: Fit.health, bars: true)
         }
         .task(id: fitness.updatedAt) { store.recordBattery(fitness.series(.bodyBattery)) }

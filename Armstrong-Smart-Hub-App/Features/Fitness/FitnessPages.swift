@@ -180,26 +180,21 @@ struct OverviewList: View {
         }
     }
 
-    /// Endurance Score, VO2 max and the 5K prediction in one row: they move together.
-    /// Without an Endurance Score from the watch, VO2 max leads.
+    /// Endurance Score, or VO2 max without one. The rest is on the Fitness page it opens.
     private var endurance: some View {
         let watch = store.snapshot?.watch
         let vo2 = store.snapshot?.metrics?.vo2max?.value ?? watch?.vo2max?.value
         let endurance = watch?.endurance
-        let races = watch?.races
-        let parts = [endurance == nil ? nil : vo2.map { String(format: "VO2 max %.0f", $0) },
-                     races?.fiveK.map { "5K \(WatchFormat.raceTime($0))" },
-                     races?.half.map { "Half \(WatchFormat.raceTime($0))" }].compactMap { $0 }
         return row(.training) {
             if let endurance {
                 OverviewRow(title: "Endurance", value: endurance.score.formatted(), unit: nil, caption: endurance.level.capitalized,
-                            detail: parts.isEmpty ? nil : parts.joined(separator: " · "), tint: Fit.positive) {
+                            tint: Fit.positive) {
                     MiniTrend(values: endurance.history.map(\.value), tint: Fit.positive)
                 }
             } else {
                 OverviewRow(title: "VO2 max", value: vo2.map { String(format: "%.0f", $0) } ?? "–", unit: "ml/kg/min",
                             caption: store.snapshot?.insights?.age?.cardioFitness.map { $0.level.capitalized },
-                            detail: parts.isEmpty ? nil : parts.joined(separator: " · "), tint: Fit.activity) {
+                            tint: Fit.activity) {
                     MiniTrend(values: watch?.vo2max?.history.suffix(12).map(\.value) ?? [], tint: Fit.activity)
                 }
             }

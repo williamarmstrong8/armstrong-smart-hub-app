@@ -1,4 +1,5 @@
 import Charts
+import MapKit
 import SwiftUI
 
 /// A logged workout with heart rate mapped onto every set: the curve with each
@@ -94,6 +95,27 @@ struct WorkoutDetailPage: View {
             }
             }
             .padding(.bottom, 28)
+
+            if let place = WorkoutPlaces.shared.place(detail.id) {
+                FitSection(title: "Where", trailing: place.name) {
+                    Button { place.openInMaps() } label: {
+                        Map(initialPosition: .region(MKCoordinateRegion(center: place.coordinate, latitudinalMeters: 600, longitudinalMeters: 600)),
+                            interactionModes: []) {
+                            Marker(place.title, systemImage: "dumbbell.fill", coordinate: place.coordinate).tint(Fit.action)
+                        }
+                        .frame(height: 170)
+                        .clipShape(.rect(cornerRadius: 16, style: .continuous))
+                        .overlay(alignment: .bottomTrailing) {
+                            Label("Open in Maps", systemImage: "map").font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .glassGlare(.regular, in: .capsule)
+                                .padding(10)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(place.title), open in Maps")
+                }
+            }
 
             FitSection(title: "Heart rate", trailing: source(detail)) {
                 if detail.points.isEmpty {
