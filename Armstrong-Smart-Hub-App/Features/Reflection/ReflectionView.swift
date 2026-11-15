@@ -209,34 +209,13 @@ struct ReflectionView: View {
 
     // MARK: Hero
 
-    /// A breathing orb over still water — the page in one picture — with the quotes kept here
-    /// (from books and typed in) turning over beneath it. Tap the quote for the next one.
+    /// The quotes kept here, from books and typed in, turning over one at a time and filling the
+    /// hero. Tap the quote for the next one.
     private var hero: some View {
-        VStack(spacing: 0) {
-            ReflectionPond()
-                .frame(height: 230)
-                .padding(.top, 8)
-            HStack(spacing: 18) {
-                ForEach(heroPillars, id: \.0) { label, icon in
-                    Label(label, systemImage: icon)
-                        .labelStyle(.titleAndIcon)
-                        .font(.footnote)
-                        .foregroundStyle(HubDesign.secondary)
-                }
-            }
-            .padding(.top, 2)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Breathe, read, keep quotes and write")
-            heroQuote
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 24)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: HubLayout.heroHeight, alignment: .top)
-    }
-
-    private var heroPillars: [(String, String)] {
-        [("Breathe", "wind"), ("Read", "book"), ("Keep", "quote.opening"), ("Write", "pencil.line")]
+        heroQuote
+            .padding(.horizontal, 28)
+            .frame(maxWidth: .infinity)
+            .frame(height: HubLayout.heroHeight)
     }
 
     /// Every saved quote, book ones and your own, in the order they're shown.
@@ -246,21 +225,17 @@ struct ReflectionView: View {
     private var heroQuote: some View {
         let quotes = heroQuotes
         if quotes.isEmpty {
-            VStack(spacing: 8) {
-                Text("\u{201C}Be still, and look closely.\u{201D}")
-                    .font(.system(size: 24, weight: .light, design: .serif))
-                Text("Quotes you keep turn over here.")
-                    .font(.footnote).foregroundStyle(HubDesign.secondary)
-            }
-            .multilineTextAlignment(.center)
+            Text("\u{201C}Be still, and look closely.\u{201D}")
+                .font(.system(size: 34, weight: .light, design: .serif))
+                .multilineTextAlignment(.center)
         } else {
             let q = quotes[heroQuoteIndex % quotes.count]
-            VStack(spacing: 10) {
+            VStack(spacing: 16) {
                 Text("\u{201C}\(q.text)\u{201D}")
-                    .font(.system(size: 22, weight: .light, design: .serif))
-                    .lineLimit(4).minimumScaleFactor(0.6)
+                    .font(.system(size: 34, weight: .light, design: .serif))
+                    .lineLimit(9).minimumScaleFactor(0.45)
                 Text("\u{2014} \(attribution(for: q))")
-                    .font(.footnote).foregroundStyle(HubDesign.secondary)
+                    .font(.subheadline).foregroundStyle(HubDesign.secondary)
                     .lineLimit(1)
             }
             .multilineTextAlignment(.center)
