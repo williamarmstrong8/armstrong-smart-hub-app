@@ -61,7 +61,6 @@ private enum JournalTarget: Identifiable {
 /// Reflection: guided breathing that floods the screen with colour, quotes worth keeping, and a journal.
 struct ReflectionView: View {
     @State private var store = ReflectionStore()
-    @AppStorage("reflection.goal") private var goal = 60
     @State private var startingSession = false
     @State private var addingQuote = false
     @State private var quoteToDelete: ReflectionQuote?
@@ -70,6 +69,7 @@ struct ReflectionView: View {
     @State private var searchingBooks = false
     @State private var openBookID: UUID?
     @State private var addingBookManually = false
+    @State private var heroQuoteIndex = Int.random(in: 0..<1000)
 
     var body: some View {
         NavigationStack {
@@ -126,71 +126,91 @@ struct ReflectionView: View {
 
     // MARK: Hero
 
-    /// A message about the sitting streak over a gauge of this week's time against a weekly goal.
+    /// A breathing orb over still water — the page in one picture — with the quotes kept here
+    /// (from books and typed in) turning over beneath it. Tap the quote for the next one.
     private var hero: some View {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: .now)
-        let weekStart = cal.date(byAdding: .day, value: -6, to: today) ?? today
-        let weekMinutes = store.sessions.filter { $0.date >= weekStart }.reduce(0) { $0 + $1.minutes }
-        let sitDays = Set(store.sessions.map { cal.startOfDay(for: $0.date) })
-        let satToday = sitDays.contains(today)
-        var cursor = satToday ? today : (cal.date(byAdding: .day, value: -1, to: today) ?? today)
-        var streak = 0
-        while sitDays.contains(cursor) {
-            streak += 1
-            cursor = cal.date(byAdding: .day, value: -1, to: cursor) ?? .distantPast
-        }
-        let message: String
-        if store.sessions.isEmpty { message = "A few quiet minutes is all it takes." }
-        else if satToday { message = streak > 1 ? "\(streak) days in a row. Well kept." : "You sat today. Nicely done." }
-        else if streak > 0 { message = "\(streak)-day streak. Sit today to keep it." }
-        else { message = "A quiet minute is waiting." }
-        let h = weekMinutes / 60, m = weekMinutes % 60
-        return VStack(spacing: 0) {
-            Text(message)
-                .font(.system(size: 34, weight: .light))
-                .multilineTextAlignment(.center)
-                .lineLimit(3).minimumScaleFactor(0.7)
-                .padding(.horizontal, 16).padding(.top, 24)
-                .accessibilityAddTraits(.isHeader)
-            ArcGauge(fraction: Double(weekMinutes) / Double(goal), tint: .teal) {
-                VStack(spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        if h > 0 {
-                            Text("\(h)").font(.system(size: 56, weight: .light))
-                            Text("h").font(.title3).foregroundStyle(HubDesign.secondary).padding(.trailing, 6)
-                        }
-                        Text("\(m)").font(.system(size: 56, weight: .light))
-                        Text("m").font(.title3).foregroundStyle(HubDesign.secondary)
-                    }
-                    .monospacedDigit()
-                    Text("of \(goal) min goal").font(.callout).foregroundStyle(HubDesign.secondary)
+        VStack(spacing: 0) {
+            ReflectionPond()
+                .frame(height: 230)
+                .padding(.top, 8)
+            HStack(spacing: 18) {
+                ForEach(heroPillars, id: \.0) { label, icon in
+                    Label(label, systemImage: icon)
+                        .labelStyle(.titleAndIcon)
+                        .font(.footnote)
+                        .foregroundStyle(HubDesign.secondary)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.top, 16)
-            HStack(spacing: 0) {
-                heroStat(value: "\(streak)", label: "Day streak")
-                heroStat(value: "\(store.sessions.count)", label: "Sessions")
-                heroStat(value: totalTime(store.totalMinutes), label: "All time")
-            }
-            .padding(.horizontal, 16).padding(.top, 8)
+            .padding(.top, 2)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Breathe, read, keep quotes and write")
+            heroQuote
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight, alignment: .top)
     }
 
-    private func heroStat(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.title3.weight(.regular)).monospacedDigit()
-            Text(label).font(.footnote).foregroundStyle(HubDesign.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
+    private var heroPillars: [(String, String)] {
+        [("Breathe", "wind"), ("Read", "book"), ("Keep", "quote.opening"), ("Write", "pencil.line")]
     }
 
-    private func totalTime(_ minutes: Int) -> String {
-        minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
+    /// Every saved quote, book ones and your own, in the order they're shown.
+    private var heroQuotes: [ReflectionQuote] { store.quotes.sorted { $0.added < $1.added } }
+
+    @ViewBuilder
+    private var heroQuote: some View {
+        let quotes = heroQuotes
+        if quotes.isEmpty {
+            VStack(spacing: 8) {
+                Text("\u{201C}Be still, and look closely.\u{201D}")
+                    .font(.system(size: 24, weight: .light, design: .serif))
+                Text("Quotes you keep turn over here.")
+                    .font(.footnote).foregroundStyle(HubDesign.secondary)
+            }
+            .multilineTextAlignment(.center)
+        } else {
+            let q = quotes[heroQuoteIndex % quotes.count]
+            VStack(spacing: 10) {
+                Text("\u{201C}\(q.text)\u{201D}")
+                    .font(.system(size: 22, weight: .light, design: .serif))
+                    .lineLimit(4).minimumScaleFactor(0.6)
+                Text("\u{2014} \(attribution(for: q))")
+                    .font(.footnote).foregroundStyle(HubDesign.secondary)
+                    .lineLimit(1)
+            }
+            .multilineTextAlignment(.center)
+            .id(q.id)
+            .transition(.opacity.combined(with: .offset(y: 6)))
+            .contentShape(.rect)
+            .onTapGesture { advanceHeroQuote() }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(quotes.count > 1 ? "Shows the next quote" : "")
+            .task(id: quotes.count) {
+                guard quotes.count > 1 else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(9))
+                    if Task.isCancelled { break }
+                    advanceHeroQuote()
+                }
+            }
+        }
+    }
+
+    private func advanceHeroQuote() {
+        withAnimation(.easeInOut(duration: 0.6)) { heroQuoteIndex += 1 }
+    }
+
+    /// "Author, Book" for a book quote; "You" for one typed in without an author.
+    private func attribution(for q: ReflectionQuote) -> String {
+        let book = q.bookID.flatMap { id in store.books.first { $0.id == id } }
+        let author = q.author.isEmpty ? (book?.author ?? "") : q.author
+        if let book {
+            return author.isEmpty ? book.title : "\(author), \(book.title)"
+        }
+        return author.isEmpty ? "You" : author
     }
 
     private func heading(_ title: String) -> some View {
@@ -850,11 +870,10 @@ private struct MeditationFlood: View {
     }
 }
 
-/// Where a session is set up: how long, which breathing, the colour, and the weekly goal. Begin starts it.
+/// Where a session is set up: how long, which breathing, and the colour. Begin starts it.
 private struct StartSessionPage: View {
     let store: ReflectionStore
     @AppStorage("reflection.minutes") private var minutes = 3
-    @AppStorage("reflection.goal") private var goal = 60
     @AppStorage("reflection.colorHex") private var colorHex = floodColors[0].hex
     @AppStorage("reflection.pattern") private var patternID = "box"
     @State private var run: MeditationRun?
@@ -918,12 +937,6 @@ private struct StartSessionPage: View {
                         }
                         Spacer(minLength: 0)
                     }
-                }
-                group("Weekly goal") {
-                    Stepper("\(goal) min a week", value: $goal, in: 15...600, step: 15)
-                        .padding(.horizontal, 16)
-                        .frame(minHeight: HubLayout.minHitTarget)
-                        .glassGlare(.regular, in: .capsule)
                 }
                 Button { run = MeditationRun(minutes: minutes, hex: colorHex, pattern: BreathPattern.find(patternID)) } label: {
                     Label("Begin \(minutes) min", systemImage: "wind")
