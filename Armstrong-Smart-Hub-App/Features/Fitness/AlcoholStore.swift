@@ -112,6 +112,10 @@ enum AlcoholPrompt: Equatable {
 /// Drinks, logged on the phone next to the check-in data. A "night" is named for
 /// the evening it started: a drink at 1 am belongs to the night before, so it
 /// lines up with the sleep and recovery numbers of the morning after.
+///
+/// The phone's log is the one that counts; every change is also queued for the
+/// hub (/api/mobile/fitness/drinks) and sent when it answers, so logging works
+/// with no hub in reach and the hub can line drinks up with everything else.
 @MainActor
 @Observable
 final class AlcoholStore {
@@ -137,6 +141,10 @@ final class AlcoholStore {
             entries = saved.entries
             dryNights = Set(saved.dry)
             battery = saved.battery
+        }
+        if !Demo.isOn, let data = try? Data(contentsOf: Self.queueURL), let saved = try? JSONDecoder().decode(Queue.self, from: data) {
+            pending = saved.pending
+            backfilled = saved.backfilled
         }
     }
 
@@ -225,17 +233,23 @@ final class AlcoholStore {
         let now = Date.now
         for kind in DrinkKind.allCases {
             guard let n = counts[kind], n > 0 else { continue }
-            entries.append(DrinkEntry(date: date, kind: kind, count: n, time: time, loggedAt: now))
+            let entry = DrinkEntry(date: date, kind: kind, count: n, time: time, loggedAt: now)
+            entries.append(entry)
+            enqueue(.put(entry))
         }
         if entries(on: night).isEmpty { return }
         dryNights.remove(night)
         persist()
+        sync()
     }
 
     func add(_ kind: DrinkKind, count: Int = 1, at date: Date = .now) {
-        entries.append(DrinkEntry(date: date, kind: kind, count: max(1, count), time: .of(date), loggedAt: .now))
+        let entry = DrinkEntry(date: date, kind: kind, count: max(1, count), time: .of(date), loggedAt: .now)
+        entries.append(entry)
+        enqueue(.put(entry))
         dryNights.remove(Self.night(of: date))
         persist()
+        sync()
     }
 
     func update(_ id: UUID, kind: DrinkKind, count: Int, date: Date) {
@@ -243,13 +257,17 @@ final class AlcoholStore {
         entries[index].kind = kind
         entries[index].count = max(1, count)
         entries[index].date = date
+        enqueue(.put(entries[index]))
         dryNights.remove(Self.night(of: date))
         persist()
+        sync()
     }
 
     func remove(_ id: UUID) {
         entries.removeAll { $0.id == id }
+        enqueue(.delete(id))
         persist()
+        sync()
     }
 
     /// Takes back the newest entry of a night.
@@ -261,12 +279,142 @@ final class AlcoholStore {
     func markDry(_ night: String) {
         guard drinks(on: night) == 0 else { return }
         dryNights.insert(night)
+        enqueue(.dry(night: night, dry: true))
         persist()
+        sync()
     }
 
     func clearDry(_ night: String) {
         dryNights.remove(night)
+        enqueue(.dry(night: night, dry: false))
         persist()
+        sync()
+    }
+
+    // MARK: Sending to the hub
+
+    /// Changes the hub hasn't confirmed yet, oldest first.
+    private(set) var pending: [Pending] = []
+    /// Whether everything logged before syncing existed has been sent once.
+    private var backfilled = false
+    /// Set while signed in; a new session sends what's waiting.
+    @ObservationIgnored var api: APIClient? {
+        didSet { if api != nil { sync() } }
+    }
+
+    enum Pending: Codable, Equatable {
+        case put(DrinkEntry)
+        case delete(UUID)
+        case dry(night: String, dry: Bool)
+    }
+
+    private struct Queue: Codable {
+        var pending: [Pending]
+        var backfilled: Bool
+    }
+
+    private static let queueURL = URL.applicationSupportDirectory.appending(path: "Fitness/alcohol-pending.json")
+
+    /// Queues a change, dropping older ones it makes moot (an earlier edit of the same drink, an earlier answer for the same night).
+    private func enqueue(_ item: Pending) {
+        if Demo.isOn { return }
+        switch item {
+        case let .put(e):
+            pending.removeAll { if case let .put(old) = $0 { old.id == e.id } else { false } }
+        case let .delete(id):
+            pending.removeAll { if case let .put(old) = $0 { old.id == id } else { false } }
+        case let .dry(night, _):
+            pending.removeAll { if case let .dry(old, _) = $0 { old == night } else { false } }
+        }
+        pending.append(item)
+        saveQueue()
+    }
+
+    private func saveQueue() {
+        try? FileManager.default.createDirectory(at: Self.queueURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(Queue(pending: pending, backfilled: backfilled)) {
+            try? data.write(to: Self.queueURL, options: .atomic)
+        }
+    }
+
+    /// Sends what's waiting in the background.
+    func sync() {
+        guard api != nil, !Demo.isOn else { return }
+        Task { await flush() }
+    }
+
+    /// A drink as the hub keeps it: the night worked out here, where the time zone is known.
+    private struct Wire: Encodable {
+        var id: String
+        var night: String
+        var at: String
+        var kind: String
+        var count: Int
+        var time: String?
+        var loggedAt: String?
+
+        init(_ e: DrinkEntry) {
+            id = e.id.uuidString.lowercased()
+            night = AlcoholStore.night(of: e.date)
+            at = AlcoholStore.iso.string(from: e.date)
+            kind = e.kind.rawValue
+            count = e.count
+            time = e.time?.rawValue
+            loggedAt = e.loggedAt.map(AlcoholStore.iso.string(from:))
+        }
+    }
+
+    nonisolated(unsafe) private static let iso = ISO8601DateFormatter()
+
+    /// A refusal (400) arrives as `{ error }`: retrying won't fix it, so the item is dropped.
+    private struct Reply: Decodable { var error: String? }
+    private struct Refused: Error {}
+
+    private func send(_ api: APIClient, _ request: URLRequest) async throws {
+        let reply: Reply = try await api.send(request)
+        if reply.error != nil { throw Refused() }
+    }
+
+    private var flushing = false
+
+    /// Sends the one-time backfill, then each change in order, stopping at the first
+    /// one the hub can't take right now so the order holds.
+    func flush() async {
+        guard let api, !flushing, !Demo.isOn else { return }
+        flushing = true
+        defer { flushing = false }
+        if !backfilled {
+            struct Batch: Encodable { var entries: [Wire]; var dry: [String] }
+            do {
+                try await send(api, api.request("/api/mobile/fitness/drinks", method: "PUT",
+                                                body: Batch(entries: entries.map(Wire.init), dry: dryNights.sorted())))
+            } catch is Refused {
+            } catch {
+                return
+            }
+            backfilled = true
+            saveQueue()
+        }
+        while let item = pending.first {
+            do {
+                switch item {
+                case let .put(entry):
+                    struct Body: Encodable { var drink: Wire }
+                    try await send(api, api.request("/api/mobile/fitness/drinks", method: "PUT", body: Body(drink: Wire(entry))))
+                case let .delete(id):
+                    try await send(api, api.request("/api/mobile/fitness/drinks?id=\(id.uuidString.lowercased())", method: "DELETE"))
+                case let .dry(night, dry):
+                    struct Dry: Encodable { var night: String; var dry: Bool }
+                    struct Body: Encodable { var dry: Dry }
+                    try await send(api, api.request("/api/mobile/fitness/drinks", method: "PUT", body: Body(dry: Dry(night: night, dry: dry))))
+                }
+            } catch is Refused {
+            } catch {
+                return
+            }
+            pending.removeFirst()
+            saveQueue()
+        }
     }
 
     // MARK: Body Battery

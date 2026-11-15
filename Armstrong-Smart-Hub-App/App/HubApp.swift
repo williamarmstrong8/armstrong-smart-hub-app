@@ -39,6 +39,8 @@ struct HubApp: App {
                 .onChange(of: session.isSignedIn, initial: true) { _, signedIn in
                     watch.api = signedIn ? session.api : nil
                     CheckinReminders.shared.api = signedIn ? session.api : nil
+                    // Drinks logged on the phone go to the hub, with a one-time backfill of the log so far.
+                    AlcoholStore.shared.api = signedIn ? session.api : nil
                     TVActivityController.shared.api = signedIn ? session.api : nil
                     // Jarvis's build updates come in as notifications.
                     PushRegistration.shared.api = signedIn ? session.api : nil
@@ -48,6 +50,8 @@ struct HubApp: App {
                 // A sync after waking brings last night's sleep: guess again so 8 am can say what it thinks.
                 .onChange(of: watch.files.lastSync) { if session.isSignedIn { Task { await CheckinStore.shared.load(api: session.api) } } }
                 .onChange(of: scenePhase) { _, p in if p == .background { watch.live.save() } }
+                // Drinks logged while the hub was out of reach.
+                .onChange(of: scenePhase) { _, p in if p == .active, session.isSignedIn { AlcoholStore.shared.sync() } }
         }
     }
 }
