@@ -1,0 +1,310 @@
+import Foundation
+import Observation
+
+// MARK: Models
+
+enum DrinkKind: String, Codable, CaseIterable, Identifiable {
+    case beer, wine, liquor
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .beer: "Beer"
+        case .wine: "Wine"
+        case .liquor: "Liquor"
+        }
+    }
+    var longTitle: String { self == .liquor ? "Liquor or cocktail" : title }
+}
+
+/// Some drinks of one kind at one time. A count is standard drinks (a 12 oz beer, 5 oz of wine, a 1.5 oz shot).
+struct DrinkEntry: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var date: Date
+    var kind: DrinkKind
+    var count: Int
+}
+
+/// What to ask about on the Fitness screen.
+enum AlcoholPrompt: Equatable {
+    /// A night that's over: asked the morning after a rough sleep or a weekend night.
+    case lastNight(night: String, reason: String)
+    /// A Friday or Saturday evening that hasn't been logged yet.
+    case tonight(night: String)
+
+    var night: String {
+        switch self {
+        case let .lastNight(night, _), let .tonight(night): night
+        }
+    }
+}
+
+// MARK: Store
+
+/// Drinks, logged on the phone next to the check-in data. A "night" is named for
+/// the evening it started: a drink at 1 am belongs to the night before, so it
+/// lines up with the sleep and recovery numbers of the morning after.
+@MainActor
+@Observable
+final class AlcoholStore {
+    static let shared = AlcoholStore()
+
+    /// In the order they were logged.
+    private(set) var entries: [DrinkEntry] = []
+    /// Nights answered "No drinks".
+    private(set) var dryNights: Set<String> = []
+    /// The morning Body Battery by day, which the hub only keeps for the last day: saved as it passes.
+    private(set) var battery: [String: Int] = [:]
+
+    private struct Saved: Codable {
+        var entries: [DrinkEntry]
+        var dry: [String]
+        var battery: [String: Int]
+    }
+
+    private static let url = URL.applicationSupportDirectory.appending(path: "Fitness/alcohol.json")
+
+    init() {
+        if !Demo.isOn, let data = try? Data(contentsOf: Self.url), let saved = try? JSONDecoder().decode(Saved.self, from: data) {
+            entries = saved.entries
+            dryNights = Set(saved.dry)
+            battery = saved.battery
+        }
+    }
+
+    private func persist() {
+        if Demo.isOn { return }
+        try? FileManager.default.createDirectory(at: Self.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let saved = Saved(entries: entries, dry: dryNights.sorted(), battery: battery)
+        if let data = try? JSONEncoder().encode(saved) { try? data.write(to: Self.url, options: .atomic) }
+    }
+
+    // MARK: Nights
+
+    /// The night a moment belongs to: before 5 am it is still the evening before.
+    static func night(of date: Date) -> String { localDay(date.addingTimeInterval(-5 * 3600)) }
+
+    /// Where drinks added to a past night start: 9 pm that evening.
+    static func evening(of night: String) -> Date {
+        let day = MorningCheckin.date(night) ?? .now
+        return Calendar.current.date(bySettingHour: 21, minute: 0, second: 0, of: day) ?? day
+    }
+
+    static func isWeekend(_ night: String) -> Bool {
+        guard let date = DayFormat.parse(night) else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        let weekday = calendar.component(.weekday, from: date)
+        return weekday == 6 || weekday == 7
+    }
+
+    var tonight: String { Self.night(of: .now) }
+
+    func entries(on night: String) -> [DrinkEntry] {
+        entries.filter { Self.night(of: $0.date) == night }
+    }
+
+    func drinks(on night: String) -> Int { entries(on: night).reduce(0) { $0 + $1.count } }
+
+    func isAnswered(_ night: String) -> Bool { dryNights.contains(night) || drinks(on: night) > 0 }
+
+    /// "2 Beer · 1 Wine", or nil with nothing logged.
+    func summary(_ night: String) -> String? {
+        let parts = DrinkKind.allCases.compactMap { kind -> String? in
+            let n = entries(on: night).filter { $0.kind == kind }.reduce(0) { $0 + $1.count }
+            return n > 0 ? "\(n) \(kind.title)" : nil
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Nights with something logged, newest first.
+    var loggedNights: [String] {
+        Set(entries.map { Self.night(of: $0.date) }).union(dryNights).sorted(by: >)
+    }
+
+    /// The first night he used the log; nights before it say nothing about dry ones.
+    var trackingSince: String? { loggedNights.last }
+
+    // MARK: Logging
+
+    func add(_ kind: DrinkKind, count: Int = 1, at date: Date = .now) {
+        entries.append(DrinkEntry(date: date, kind: kind, count: max(1, count)))
+        dryNights.remove(Self.night(of: date))
+        persist()
+    }
+
+    func update(_ id: UUID, kind: DrinkKind, count: Int, date: Date) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[index].kind = kind
+        entries[index].count = max(1, count)
+        entries[index].date = date
+        dryNights.remove(Self.night(of: date))
+        persist()
+    }
+
+    func remove(_ id: UUID) {
+        entries.removeAll { $0.id == id }
+        persist()
+    }
+
+    /// Takes back the newest entry of a night.
+    func undoLast(on night: String) {
+        guard let last = entries.last(where: { Self.night(of: $0.date) == night }) else { return }
+        remove(last.id)
+    }
+
+    func markDry(_ night: String) {
+        guard drinks(on: night) == 0 else { return }
+        dryNights.insert(night)
+        persist()
+    }
+
+    func clearDry(_ night: String) {
+        dryNights.remove(night)
+        persist()
+    }
+
+    // MARK: Body Battery
+
+    /// Keeps each morning's Body Battery peak (4 am to noon) from the readings the page has now.
+    /// A day only counts when the readings reach back before 9 am, so a window
+    /// that starts mid-morning can't save a low reading for the day.
+    func recordBattery(_ readings: [FitnessStore.Reading]) {
+        let calendar = Calendar.current
+        var days: [String: (peak: Int, early: Bool)] = [:]
+        for r in readings {
+            let hour = calendar.component(.hour, from: r.date)
+            guard hour >= 4, hour < 12 else { continue }
+            let key = localDay(r.date)
+            let old = days[key] ?? (0, false)
+            days[key] = (max(old.peak, r.value), old.early || hour < 9)
+        }
+        var changed = false
+        for (day, found) in days where found.early && found.peak > (battery[day] ?? 0) {
+            battery[day] = found.peak
+            changed = true
+        }
+        if changed { persist() }
+    }
+
+    // MARK: Prompts
+
+    /// What to ask now: last night's drinks after a bad sleep or a weekend night,
+    /// else tonight's on a Friday or Saturday evening. Nothing once it's answered.
+    func prompt(_ fitness: FitnessStore, now: Date = .now) -> AlcoholPrompt? {
+        let calendar = Calendar.current
+        if let night = fitness.lastNight, let start = night.startDate, let end = night.endDate, calendar.isDate(end, inSameDayAs: now) {
+            let last = Self.night(of: start)
+            if !isAnswered(last) {
+                let hrv = fitness.snapshot?.hrv?.first { $0.day == localDay(end) }
+                if let reason = Self.badSleep(night, hrv: hrv) { return .lastNight(night: last, reason: reason) }
+                if Self.isWeekend(last) { return .lastNight(night: last, reason: "Weekend night") }
+            }
+        }
+        let tonight = Self.night(of: now)
+        let hour = calendar.component(.hour, from: now)
+        if !isAnswered(tonight), Self.isWeekend(tonight), hour >= 17 || hour < 5 { return .tonight(night: tonight) }
+        return nil
+    }
+
+    /// Why the sleep counts as bad, when it does: a low score, under 6 hours, or HRV under the balanced range.
+    static func badSleep(_ night: SleepNight, hrv: FitnessHrv?) -> String? {
+        if let score = night.score, score < 70 { return "Sleep scored \(score)" }
+        if night.asleepSeconds > 0, night.asleepSeconds < 6 * 3600 { return "Only \(FitnessFormat.duration(Double(night.asleepSeconds))) of sleep" }
+        if let low = hrv?.baselineBalancedLower, let last = hrv?.lastNightAverage, last < low { return "HRV was low" }
+        return nil
+    }
+}
+
+// MARK: Insights
+
+/// The next-day numbers alcohol is compared against.
+enum AlcoholMetric: CaseIterable, Identifiable {
+    case sleep, hrv, restingHr, battery, readiness
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .sleep: "Sleep score"
+        case .hrv: "HRV"
+        case .restingHr: "Resting heart rate"
+        case .battery: "Body Battery"
+        case .readiness: "Readiness"
+        }
+    }
+    var unit: String {
+        switch self {
+        case .hrv: " ms"
+        case .restingHr: " bpm"
+        default: ""
+        }
+    }
+    /// Lower resting heart rate is the better one.
+    var higherIsBetter: Bool { self != .restingHr }
+
+    func format(_ value: Double) -> String { "\(Int(value.rounded()))\(unit)" }
+}
+
+/// Drinks per night against what the next morning looked like.
+@MainActor
+struct AlcoholInsights {
+    struct Bucket: Identifiable {
+        var label: String
+        var average: Double?
+        var nights: Int
+        var id: String { label }
+    }
+
+    static let labels = ["None", "1–2", "3+"]
+
+    private let store: AlcoholStore
+    private let values: [AlcoholMetric: [String: Double]]
+    private let since: String?
+
+    init(store: AlcoholStore, fitness: FitnessStore) {
+        self.store = store
+        since = store.trackingSince
+        var values: [AlcoholMetric: [String: Double]] = [:]
+        func put(_ metric: AlcoholMetric, _ day: String, _ value: Double) {
+            if values[metric]?[day] == nil { values[metric, default: [:]][day] = value }
+        }
+        for n in fitness.nights {
+            if let end = n.endDate, let score = n.score { put(.sleep, localDay(end), Double(score)) }
+        }
+        for n in fitness.snapshot?.hrv ?? [] {
+            if let v = n.lastNightAverage { put(.hrv, n.day, v) }
+        }
+        for d in fitness.days {
+            if let v = d.restingHr { put(.restingHr, d.day, Double(v)) }
+        }
+        let readiness = fitness.snapshot?.watch?.readiness
+        for p in readiness?.history ?? [] {
+            if let date = p.date { put(.readiness, localDay(date), p.value) }
+        }
+        if let r = readiness, let date = ISO.parse(r.at) { put(.readiness, localDay(date), Double(r.score)) }
+        for (day, v) in store.battery { put(.battery, day, Double(v)) }
+        self.values = values
+    }
+
+    /// Average of a metric on mornings after none, 1–2 and 3+ drinks. Only mornings from the first logged night on count; nights without a log count as none.
+    func buckets(_ metric: AlcoholMetric) -> [Bucket] {
+        var sums = [Double](repeating: 0, count: 3)
+        var counts = [Int](repeating: 0, count: 3)
+        for (day, value) in values[metric] ?? [:] {
+            let night = addDays(day, -1)
+            guard let since, night >= since else { continue }
+            let n = store.drinks(on: night)
+            let index = n == 0 ? 0 : n <= 2 ? 1 : 2
+            sums[index] += value
+            counts[index] += 1
+        }
+        return Self.labels.indices.map { Bucket(label: Self.labels[$0], average: counts[$0] > 0 ? sums[$0] / Double(counts[$0]) : nil, nights: counts[$0]) }
+    }
+
+    /// The heaviest bucket with data against the none bucket.
+    func change(_ metric: AlcoholMetric) -> (label: String, delta: Double)? {
+        let b = buckets(metric)
+        guard let base = b[0].average, let heavy = b.dropFirst().last(where: { $0.average != nil }), let value = heavy.average else { return nil }
+        return (heavy.label, value - base)
+    }
+}

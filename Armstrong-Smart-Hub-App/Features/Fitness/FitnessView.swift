@@ -31,6 +31,7 @@ struct FitnessView: View {
                     sheet
                     LazyVStack(spacing: HubLayout.sectionGap) {
                         if watch.savedWatchID == nil {
+                            AlcoholCard(fitness: store)
                             workoutsSection
                         } else {
                             if let error = store.error, !store.loaded {
@@ -38,6 +39,7 @@ struct FitnessView: View {
                             }
                             VStack(spacing: HubLayout.sectionGap) {
                                 MorningCheckin(store: checkins)
+                                AlcoholCard(fitness: store)
                                 HealthSummaryCard(store: store)
                                 today
                             }
