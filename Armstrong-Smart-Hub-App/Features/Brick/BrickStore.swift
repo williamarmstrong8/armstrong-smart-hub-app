@@ -66,7 +66,6 @@ final class BrickStore: NSObject {
         pairLockdowns()
         authorized = AuthorizationCenter.shared.authorizationStatus == .approved
         if authorized { BrickEngine.syncSchedules() }
-        repairEmergencyLockdowns()
         startTicker()
         check()
     }
@@ -373,17 +372,23 @@ final class BrickStore: NSObject {
     }
 
     /// One-off fix for 2026-11-15: an emergency unbrick used to end lockdowns too. Gives the allowance back
-    /// and turns each lockdown that's off back on, keyed to its paired tag. Waits for Screen Time access.
+    /// at once, and turns each lockdown that's off back on, keyed to its paired tag, once Screen Time access
+    /// is confirmed. Runs from each check, since iOS often confirms access only after launch.
     private func repairEmergencyLockdowns() {
-        let key = "brick.repair.emergencyLockdown"
-        guard authorized, !defaults.bool(forKey: key) else { return }
-        emergencyLeft = BrickStore.emergencyAllowance
-        defaults.set(emergencyLeft, forKey: "brick.emergencyLeft")
+        guard !Demo.isOn else { return }
+        let allowanceKey = "brick.repair.emergencyAllowance.v2"
+        if !defaults.bool(forKey: allowanceKey) {
+            emergencyLeft = BrickStore.emergencyAllowance
+            defaults.set(emergencyLeft, forKey: "brick.emergencyLeft")
+            defaults.set(true, forKey: allowanceKey)
+        }
+        let lockdownKey = "brick.repair.emergencyLockdown.v2"
+        guard authorized, !defaults.bool(forKey: lockdownKey) else { return }
         for p in profiles where p.lockdown && !p.isEmpty && !isOn(p.id) {
             guard let tag = pairedTag(p.id) else { continue }
             start(p, tagID: tag.id)
         }
-        defaults.set(true, forKey: key)
+        defaults.set(true, forKey: lockdownKey)
     }
 
     // MARK: Blocking
@@ -413,6 +418,7 @@ final class BrickStore: NSObject {
         let approved = Demo.isOn || AuthorizationCenter.shared.authorizationStatus == .approved
         if approved != authorized { authorized = approved }
         reload()
+        repairEmergencyLockdowns()
         if isBlocking { now = Date() }
         if let endsAt, endsAt <= Date(), let id = blockingProfileID { end(id, byTimer: true) }
         for l in lockdowns where (l.endsAt.map { $0 <= Date() } ?? false) { end(l.profileID, byTimer: true) }
