@@ -33,41 +33,43 @@ struct NextEventCard: View {
         }
     }
 
+    /// One line: what, then when.
     private func card(_ event: CalendarEvent, start: Date, now: Date) -> some View {
-        HStack(spacing: 14) {
-            Capsule()
-                .fill(Color(hexForWhiteText: event.color))
-                .frame(width: 4)
-                .padding(.vertical, 2)
-            VStack(alignment: .leading, spacing: 3) {
-                BrickCaps(text: Self.when(start, now: now)).foregroundStyle(BrickLook.soft)
-                Text(event.title).font(.headline).foregroundStyle(HubDesign.ink).lineLimit(1)
-                Text(detail(event, start: start))
-                    .font(.subheadline).foregroundStyle(BrickLook.soft).lineLimit(1)
-                    .monospacedDigit()
-            }
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(event.title)
+                .font(.title3.weight(.medium))
+                .foregroundStyle(HubDesign.ink)
+                .lineLimit(1)
             Spacer(minLength: 8)
-            Image(systemName: "calendar")
+            Text(when(start, now: now))
                 .font(.title3)
                 .foregroundStyle(BrickLook.soft)
+                .monospacedDigit()
+                .lineLimit(1)
+                .layoutPriority(1)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .leading)
-        .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.cardRadius))
-        .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
+        .modifier(Shell())
         .accessibilityElement(children: .combine)
     }
 
     private var empty: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "calendar").font(.title3).foregroundStyle(BrickLook.soft)
-            Text("Nothing else on your calendar").font(.subheadline).foregroundStyle(BrickLook.soft)
-            Spacer(minLength: 0)
+        Text("Nothing else on your calendar")
+            .font(.title3)
+            .foregroundStyle(BrickLook.soft)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(Shell(interactive: false))
+    }
+
+    /// The card's glass, shared so every state is the same height.
+    private struct Shell: ViewModifier {
+        var interactive = true
+        func body(content: Content) -> some View {
+            content
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity, minHeight: NextEventCard.height, alignment: .leading)
+                .glassGlare(interactive ? .regular.interactive() : .regular, in: .rect(cornerRadius: HubLayout.cardRadius))
+                .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
         }
-        .padding(.horizontal, 18)
-        .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .leading)
-        .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
     }
 
     /// Google's link has lapsed (or was never made): sign in again right here.
@@ -75,30 +77,20 @@ struct NextEventCard: View {
         Button {
             Task { await connectGoogle() }
         } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "calendar.badge.exclamationmark").font(.title3).foregroundStyle(BrickLook.soft)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(first ? "Connect Google Calendar" : "Reconnect Google Calendar")
-                        .font(.headline).foregroundStyle(HubDesign.ink)
-                    Text(agenda.connectError ?? (first ? "Sign in once to see what's next" : "Google's sign-in expired"))
-                        .font(.subheadline).foregroundStyle(BrickLook.soft).lineLimit(1)
-                }
+            HStack(spacing: 12) {
+                Text(agenda.connectError ?? (first ? "Connect Google Calendar" : "Reconnect Google Calendar"))
+                    .font(.title3)
+                    .foregroundStyle(agenda.connectError == nil ? HubDesign.ink : BrickLook.soft)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 8)
                 if connecting {
                     ProgressView()
                 } else {
-                    Text(first ? "Connect" : "Reconnect")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(HubDesign.ink)
-                        .padding(.horizontal, 14).frame(height: 34)
-                        .glassGlare(.regular.tint(HubDesign.action.opacity(0.35)), in: .capsule)
+                    Image(systemName: "arrow.clockwise").font(.body.weight(.semibold)).foregroundStyle(BrickLook.soft)
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .leading)
-            .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.cardRadius))
-            .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
+            .modifier(Shell())
         }
         .buttonStyle(.plain)
         .disabled(connecting)
@@ -118,39 +110,25 @@ struct NextEventCard: View {
         }
     }
 
-    static let height: CGFloat = 84
+    static let height: CGFloat = 60
 
-    /// "3 PM – 4 PM · Office", in the calendar's time zone.
-    private func detail(_ event: CalendarEvent, start: Date) -> String {
-        let tz = agenda.data.flatMap { TimeZone(identifier: $0.timeZone) } ?? .current
-        func short(_ d: Date) -> String {
-            var cal = Calendar(identifier: .gregorian)
-            cal.timeZone = tz
-            var style = Date.FormatStyle.dateTime.hour()
-            if cal.component(.minute, from: d) != 0 { style = style.minute() }
-            style.timeZone = tz
-            return d.formatted(style)
-        }
-        var time = short(start)
-        if let end = ISO.parse(event.end) { time += " – \(short(end))" }
-        if let place = event.location?.split(separator: ",").first.map(String.init), !place.isEmpty {
-            return "\(time) · \(place)"
-        }
-        return time
-    }
-
-    /// "Now", "In 40 min", "Today", "Tomorrow" or the weekday.
-    static func when(_ start: Date, now: Date) -> String {
+    /// "Now", "In 40 min", "3 PM", "Tomorrow 9 AM" or "Tue 9 AM", in the calendar's time zone.
+    private func when(_ start: Date, now: Date) -> String {
         let minutes = Int(start.timeIntervalSince(now) / 60)
         if minutes <= 0 { return "Now" }
         if minutes < 60 { return "In \(minutes) min" }
-        let cal = Calendar.current
-        if cal.isDate(start, inSameDayAs: now) {
-            let hours = minutes / 60
-            return hours < 6 ? "In \(hours) hr" : "Later today"
-        }
-        if let tomorrow = cal.date(byAdding: .day, value: 1, to: now), cal.isDate(start, inSameDayAs: tomorrow) { return "Tomorrow" }
-        return start.formatted(.dateTime.weekday(.wide))
+        let tz = agenda.data.flatMap { TimeZone(identifier: $0.timeZone) } ?? .current
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = tz
+        var style = Date.FormatStyle.dateTime.hour()
+        if cal.component(.minute, from: start) != 0 { style = style.minute() }
+        style.timeZone = tz
+        let time = start.formatted(style)
+        if cal.isDate(start, inSameDayAs: now) { return time }
+        if let tomorrow = cal.date(byAdding: .day, value: 1, to: now), cal.isDate(start, inSameDayAs: tomorrow) { return "Tomorrow \(time)" }
+        var day = Date.FormatStyle.dateTime.weekday(.abbreviated)
+        day.timeZone = tz
+        return "\(start.formatted(day)) \(time)"
     }
 
     private static let placeholder: CalendarEvent = {
