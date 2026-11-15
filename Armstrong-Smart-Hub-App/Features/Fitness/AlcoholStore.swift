@@ -135,7 +135,8 @@ final class AlcoholStore {
         }
         if !Demo.isOn, let data = try? Data(contentsOf: Self.queueURL), let saved = try? JSONDecoder().decode(Queue.self, from: data) {
             pending = saved.pending
-            backfilled = saved.backfilled
+            // A backfill from before "Drank" nights existed didn't carry them: send it again.
+            backfilled = saved.backfilled && (saved.version ?? 1) >= Self.backfillVersion
         }
     }
 
@@ -285,12 +286,16 @@ final class AlcoholStore {
         guard drinks(on: night) == 0 else { return }
         drankNights.insert(night)
         dryNights.remove(night)
+        enqueue(.drank(night: night, drank: true))
         persist()
+        sync()
     }
 
     func clearDrank(_ night: String) {
         drankNights.remove(night)
+        enqueue(.drank(night: night, drank: false))
         persist()
+        sync()
     }
 
     func clearDry(_ night: String) {
@@ -306,6 +311,8 @@ final class AlcoholStore {
     private(set) var pending: [Pending] = []
     /// Whether everything logged before syncing existed has been sent once.
     private var backfilled = false
+    /// Bumped when the backfill starts carrying more (2: "Drank" nights).
+    private static let backfillVersion = 2
     /// Set while signed in; a new session sends what's waiting.
     @ObservationIgnored var api: APIClient? {
         didSet { if api != nil { sync() } }
@@ -315,11 +322,15 @@ final class AlcoholStore {
         case put(DrinkEntry)
         case delete(UUID)
         case dry(night: String, dry: Bool)
+        /// "Drank, not sure how much", or taking that back.
+        case drank(night: String, drank: Bool)
     }
 
     private struct Queue: Codable {
         var pending: [Pending]
         var backfilled: Bool
+        /// Missing from queues saved by the first version of the backfill.
+        var version: Int?
     }
 
     private static let queueURL = URL.applicationSupportDirectory.appending(path: "Fitness/alcohol-pending.json")
@@ -332,8 +343,14 @@ final class AlcoholStore {
             pending.removeAll { if case let .put(old) = $0 { old.id == e.id } else { false } }
         case let .delete(id):
             pending.removeAll { if case let .put(old) = $0 { old.id == id } else { false } }
-        case let .dry(night, _):
-            pending.removeAll { if case let .dry(old, _) = $0 { old == night } else { false } }
+        case let .dry(night, _), let .drank(night, _):
+            // One answer per night: a later dry or drank answer replaces an earlier one.
+            pending.removeAll {
+                switch $0 {
+                case let .dry(old, _), let .drank(old, _): old == night
+                default: false
+                }
+            }
         }
         pending.append(item)
         saveQueue()
@@ -341,7 +358,7 @@ final class AlcoholStore {
 
     private func saveQueue() {
         try? FileManager.default.createDirectory(at: Self.queueURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let data = try? JSONEncoder().encode(Queue(pending: pending, backfilled: backfilled)) {
+        if let data = try? JSONEncoder().encode(Queue(pending: pending, backfilled: backfilled, version: Self.backfillVersion)) {
             try? data.write(to: Self.queueURL, options: .atomic)
         }
     }
@@ -393,10 +410,10 @@ final class AlcoholStore {
         flushing = true
         defer { flushing = false }
         if !backfilled {
-            struct Batch: Encodable { var entries: [Wire]; var dry: [String] }
+            struct Batch: Encodable { var entries: [Wire]; var dry: [String]; var drank: [String] }
             do {
                 try await send(api, api.request("/api/mobile/fitness/drinks", method: "PUT",
-                                                body: Batch(entries: entries.map(Wire.init), dry: dryNights.sorted())))
+                                                body: Batch(entries: entries.map(Wire.init), dry: dryNights.sorted(), drank: drankNights.sorted())))
             } catch is Refused {
             } catch {
                 return
@@ -416,6 +433,10 @@ final class AlcoholStore {
                     struct Dry: Encodable { var night: String; var dry: Bool }
                     struct Body: Encodable { var dry: Dry }
                     try await send(api, api.request("/api/mobile/fitness/drinks", method: "PUT", body: Body(dry: Dry(night: night, dry: dry))))
+                case let .drank(night, drank):
+                    struct Drank: Encodable { var night: String; var drank: Bool }
+                    struct Body: Encodable { var drank: Drank }
+                    try await send(api, api.request("/api/mobile/fitness/drinks", method: "PUT", body: Body(drank: Drank(night: night, drank: drank))))
                 }
             } catch is Refused {
             } catch {
