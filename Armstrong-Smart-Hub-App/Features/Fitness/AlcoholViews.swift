@@ -1,20 +1,20 @@
 import Charts
 import SwiftUI
 
-/// A night, to open in the log sheet.
+/// A night to open in the log sheet, and the drink to start it with.
 struct NightRef: Identifiable {
     var id: String
+    var kind: DrinkKind?
 }
 
 // MARK: Quick log
 
-/// Drinks on the Fitness screen: one tap adds a drink now, the stepper sets how
-/// many the next tap adds, Undo takes the last one back. On a rough morning or a
-/// weekend evening it also asks, with a one-tap "No drinks".
+/// Drinks on the Fitness screen: a big tile per drink opens the log with one of
+/// it already counted, so a drink is tap, (pick the time), Log. "No drinks"
+/// answers the night in one tap. On a rough morning or a weekend evening it asks.
 struct AlcoholCard: View {
     var fitness: FitnessStore
     @State private var store = AlcoholStore.shared
-    @State private var count = 1
     @State private var sheet: NightRef?
 
     var body: some View {
@@ -26,7 +26,7 @@ struct AlcoholCard: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Drinks").font(.system(size: 22, weight: .regular)).foregroundStyle(BrickLook.ink)
-                        Text(store.summary(tonight).map { "Tonight · \($0)" } ?? (dry ? "No drinks tonight" : "Tap to log one"))
+                        Text(store.detail(tonight).map { "Tonight · \($0)" } ?? (dry ? "No drinks tonight" : "Nothing logged tonight"))
                             .font(.subheadline).foregroundStyle(BrickLook.soft)
                     }
                     Spacer(minLength: 8)
@@ -40,63 +40,57 @@ struct AlcoholCard: View {
                     promptView(prompt)
                     BrickDivider()
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     ForEach(DrinkKind.allCases) { kind in
-                        Button {
-                            store.add(kind, count: count)
-                            count = 1
-                        } label: {
-                            Text(count > 1 ? "\(kind.title) ×\(count)" : kind.title)
-                                .font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
-                                .lineLimit(1).minimumScaleFactor(0.8)
-                                .frame(maxWidth: .infinity, minHeight: 46)
-                                .glassGlare(.regular.interactive(), in: .capsule)
+                        Button { sheet = NightRef(id: tonight, kind: kind) } label: {
+                            VStack(spacing: 4) {
+                                Text(kind.emoji).font(.system(size: 28))
+                                Text(kind.title).font(.subheadline.weight(.semibold)).foregroundStyle(BrickLook.ink)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 76)
+                            .glassGlare(.regular.interactive(), in: .rect(cornerRadius: 18, style: .continuous))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Add \(count) \(kind.longTitle)")
+                        .accessibilityLabel("Log \(kind.longTitle)")
                     }
                 }
                 HStack(spacing: 10) {
-                    stepButton("minus", label: "Fewer drinks", enabled: count > 1) { count -= 1 }
-                    Text("\(count)").font(.body.weight(.medium)).monospacedDigit().frame(minWidth: 22)
-                        .accessibilityLabel("\(count) drinks")
-                    stepButton("plus", label: "More drinks", enabled: count < 12) { count += 1 }
-                    Spacer(minLength: 8)
-                    if logged || dry {
-                        textButton("Undo") { if logged { store.undoLast(on: tonight) } else { store.clearDry(tonight) } }
+                    if logged {
+                        wideButton("Edit tonight", symbol: "pencil") { sheet = NightRef(id: tonight) }
+                    } else if dry {
+                        wideButton("Undo no drinks", symbol: "arrow.uturn.backward") { store.clearDry(tonight) }
+                    } else {
+                        wideButton("No drinks tonight", symbol: "checkmark") { store.markDry(tonight) }
                     }
-                    if logged { textButton("Edit") { sheet = NightRef(id: tonight) } }
-                    if !logged, !dry { textButton("No drinks") { store.markDry(tonight) } }
                 }
             }
         }
-        .sensoryFeedback(.impact(weight: .light), trigger: store.entries.count)
-        .sensoryFeedback(.selection, trigger: count)
+        .sensoryFeedback(.success, trigger: store.dryNights.count)
         .task(id: fitness.updatedAt) { store.recordBattery(fitness.series(.bodyBattery)) }
-        .sheet(item: $sheet) { AlcoholSheet(night: $0.id).presentationDetents([.medium, .large]) }
+        .sheet(item: $sheet) { AlcoholSheet(night: $0.id, start: $0.kind) }
     }
 
     private func promptView(_ prompt: AlcoholPrompt) -> some View {
         let weekday = MorningCheckin.date(prompt.night)?.formatted(.dateTime.weekday(.wide)) ?? "Tonight"
         let night = prompt.night
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 12) {
             switch prompt {
             case let .lastNight(_, reason):
                 Text("\(reason). Did you have any drinks \(weekday) night?").font(.subheadline).foregroundStyle(BrickLook.ink)
             case .tonight:
                 Text("It's \(weekday) night. Any drinks?").font(.subheadline).foregroundStyle(BrickLook.ink)
             }
-            HStack(spacing: 8) {
-                Button { store.markDry(night) } label: {
-                    Text("No drinks").font(.footnote.weight(.semibold)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .glassGlare(.regular.tint(Fit.action.opacity(0.55)).interactive(), in: .capsule)
-                }
-                .buttonStyle(.plain)
-                if case .lastNight = prompt {
+            if case .lastNight = prompt {
+                HStack(spacing: 10) {
+                    Button { store.markDry(night) } label: {
+                        Text("No drinks").font(.body.weight(.semibold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .glassGlare(.regular.tint(Fit.action.opacity(0.55)).interactive(), in: .capsule)
+                    }
+                    .buttonStyle(.plain)
                     Button { sheet = NightRef(id: night) } label: {
-                        Text("Log drinks").font(.footnote.weight(.semibold)).foregroundStyle(BrickLook.ink)
-                            .frame(maxWidth: .infinity, minHeight: 40)
+                        Text("Log drinks").font(.body.weight(.semibold)).foregroundStyle(BrickLook.ink)
+                            .frame(maxWidth: .infinity, minHeight: 50)
                             .glassGlare(.regular.interactive(), in: .capsule)
                     }
                     .buttonStyle(.plain)
@@ -105,22 +99,11 @@ struct AlcoholCard: View {
         }
     }
 
-    private func stepButton(_ symbol: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func wideButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(BrickLook.ink)
-                .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
-                .glassGlare(.regular.interactive(enabled), in: .circle)
-                .opacity(enabled ? 1 : 0.4)
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .accessibilityLabel(label)
-    }
-
-    private func textButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title).font(.footnote).foregroundStyle(BrickLook.soft)
-                .padding(.horizontal, 8).frame(minHeight: HubLayout.minHitTarget).contentShape(.rect)
+            Label(title, systemImage: symbol).font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .glassGlare(.regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
     }
@@ -128,70 +111,196 @@ struct AlcoholCard: View {
 
 // MARK: Log sheet
 
-/// One night's drinks: add with a kind, count and time, change a count, delete.
+/// Logging a round in one screen: which night, how many of each drink, what
+/// time of day, then one big Log button. Below it, what's already logged for
+/// that night, each with a delete.
 struct AlcoholSheet: View {
     @Environment(\.dismiss) private var dismiss
-    var night: String
     @State private var store = AlcoholStore.shared
-    @State private var kind = DrinkKind.beer
-    @State private var count = 1
-    @State private var date: Date
+    @State private var night: String
+    @State private var counts: [DrinkKind: Int]
+    @State private var time: DrinkTime
+    @State private var otherDay = false
 
-    init(night: String) {
-        self.night = night
-        _date = State(initialValue: AlcoholStore.night(of: .now) == night ? .now : AlcoholStore.evening(of: night))
+    init(night: String, start: DrinkKind? = nil) {
+        let tonight = AlcoholStore.night(of: .now)
+        _night = State(initialValue: night)
+        _counts = State(initialValue: start.map { [$0: 1] } ?? [:])
+        _time = State(initialValue: night == tonight ? .of(.now) : .evening)
+        _otherDay = State(initialValue: night != tonight && night != addDays(tonight, -1))
     }
+
+    private var tonight: String { store.tonight }
+    private var total: Int { counts.values.reduce(0, +) }
 
     var body: some View {
         NavigationStack {
-            GlassForm {
-                GlassSection("Add a drink") {
-                    Picker("Drink", selection: $kind) {
-                        ForEach(DrinkKind.allCases) { Text($0.longTitle).tag($0) }
-                    }
-                    Stepper("Count: \(count)", value: $count, in: 1...20)
-                    DatePicker("When", selection: $date)
-                    Button("Add") {
-                        store.add(kind, count: count, at: date)
-                        count = 1
-                    }
-                    .fontWeight(.semibold)
-                }
-                let entries = store.entries(on: night)
-                GlassSection(Self.title(night)) {
-                    if entries.isEmpty {
-                        Text(store.dryNights.contains(night) ? "No drinks this night." : "Nothing logged for this night.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(entries) { entry in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.kind.longTitle)
-                                Text(entry.date, format: .dateTime.hour().minute()).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 8)
-                            Text("\(entry.count)").monospacedDigit().frame(minWidth: 24)
-                            Stepper("Count", value: countBinding(entry), in: 1...20).labelsHidden()
-                            Button(role: .destructive) { store.remove(entry.id) } label: {
-                                Image(systemName: "trash").frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
-                            }
-                            .accessibilityLabel("Delete \(entry.kind.longTitle)")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    section("Night") { nightPicker }
+                    section("Drinks") {
+                        VStack(spacing: 10) {
+                            ForEach(DrinkKind.allCases) { counter($0) }
                         }
                     }
-                    if entries.isEmpty, !store.dryNights.contains(night) {
-                        Button("No drinks this night") { store.markDry(night) }
+                    section("Time of day") { timePicker }
+                    Button {
+                        store.log(counts, night: night, time: time)
+                        dismiss()
+                    } label: {
+                        Text(total == 0 ? "Add a drink above" : "Log \(total) \(total == 1 ? "drink" : "drinks")")
+                            .font(.title3.weight(.semibold)).foregroundStyle(total == 0 ? BrickLook.soft : .white)
+                            .frame(maxWidth: .infinity, minHeight: 58)
+                            .glassGlare(total == 0 ? .regular : .regular.tint(Fit.action.opacity(0.7)).interactive(), in: .capsule)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(total == 0)
+                    logged
                 }
+                .padding(.horizontal, HubLayout.gutter)
+                .padding(.top, 8).padding(.bottom, HubLayout.bottomInset)
             }
-            .navigationTitle("Drinks")
+            .navigationTitle("Log drinks")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        }
+        .presentationDetents([.large])
+        .sensoryFeedback(.selection, trigger: counts)
+        .sensoryFeedback(.selection, trigger: time)
+    }
+
+    // MARK: Parts
+
+    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.footnote.weight(.semibold)).foregroundStyle(BrickLook.soft).textCase(.uppercase)
+            content()
         }
     }
 
-    private func countBinding(_ entry: DrinkEntry) -> Binding<Int> {
-        Binding(get: { store.entries.first { $0.id == entry.id }?.count ?? entry.count },
-                set: { store.update(entry.id, kind: entry.kind, count: $0, date: entry.date) })
+    private var nightPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                chip("Tonight", selected: !otherDay && night == tonight) { otherDay = false; night = tonight }
+                chip("Last night", selected: !otherDay && night == addDays(tonight, -1)) { otherDay = false; night = addDays(tonight, -1) }
+                chip("Earlier", selected: otherDay) { otherDay = true; if night == tonight { night = addDays(tonight, -2) } }
+            }
+            if otherDay {
+                DatePicker("Night of", selection: nightDate, in: ...Date.now, displayedComponents: .date)
+                    .font(.body).foregroundStyle(BrickLook.ink)
+            }
+        }
+    }
+
+    private var nightDate: Binding<Date> {
+        Binding(get: { MorningCheckin.date(night) ?? .now }, set: { night = localDay($0) })
+    }
+
+    private func counter(_ kind: DrinkKind) -> some View {
+        let n = counts[kind] ?? 0
+        return HStack(spacing: 12) {
+            Button { counts[kind] = min(n + 1, 20) } label: {
+                HStack(spacing: 12) {
+                    Text(kind.emoji).font(.system(size: 30))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(kind.longTitle).font(.body.weight(.semibold)).foregroundStyle(BrickLook.ink)
+                        Text(kind.serving).font(.caption).foregroundStyle(BrickLook.soft)
+                    }
+                    Spacer(minLength: 4)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add a \(kind.longTitle)")
+            stepper("minus", enabled: n > 0, label: "One less \(kind.title)") { counts[kind] = max(n - 1, 0) }
+            Text("\(n)").font(.title2.weight(.semibold)).monospacedDigit()
+                .foregroundStyle(n > 0 ? BrickLook.ink : BrickLook.soft)
+                .frame(minWidth: 28)
+                .accessibilityLabel("\(n) \(kind.title)")
+            stepper("plus", enabled: n < 20, label: "One more \(kind.title)") { counts[kind] = min(n + 1, 20) }
+        }
+        .padding(.leading, 16).padding(.trailing, 10).padding(.vertical, 10)
+        .glassGlare(n > 0 ? .regular.tint(Fit.action.opacity(0.15)) : .regular, in: .rect(cornerRadius: 20, style: .continuous))
+    }
+
+    private func stepper(_ symbol: String, enabled: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 18, weight: .bold)).foregroundStyle(BrickLook.ink)
+                .frame(width: 48, height: 48)
+                .glassGlare(.regular.interactive(enabled), in: .circle)
+                .opacity(enabled ? 1 : 0.35)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+
+    private var timePicker: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            ForEach(DrinkTime.allCases) { slot in
+                Button { time = slot } label: {
+                    Label(slot.title, systemImage: slot.symbol)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(time == slot ? .white : BrickLook.ink)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .glassGlare(time == slot ? .regular.tint(Fit.action.opacity(0.7)).interactive() : .regular.interactive(), in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(time == slot ? .isSelected : [])
+            }
+        }
+    }
+
+    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.body.weight(.medium))
+                .foregroundStyle(selected ? .white : BrickLook.ink)
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .glassGlare(selected ? .regular.tint(Fit.action.opacity(0.7)).interactive() : .regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    @ViewBuilder private var logged: some View {
+        let entries = store.entries(on: night)
+        let dry = store.dryNights.contains(night)
+        section("Logged for \(Self.title(night))") {
+            VStack(spacing: 0) {
+                if entries.isEmpty {
+                    Text(dry ? "Marked as no drinks." : "Nothing yet.")
+                        .font(.subheadline).foregroundStyle(BrickLook.soft)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
+                    if !dry {
+                        Button { store.markDry(night) } label: {
+                            Label("No drinks this night", systemImage: "checkmark").font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
+                                .frame(maxWidth: .infinity, minHeight: 50)
+                                .glassGlare(.regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                ForEach(entries) { entry in
+                    HStack(spacing: 12) {
+                        Text(entry.kind.emoji).font(.title2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(entry.count) \(entry.kind.title)").font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
+                            Text(entry.slot.title).font(.caption).foregroundStyle(BrickLook.soft)
+                        }
+                        Spacer(minLength: 8)
+                        Button(role: .destructive) { store.remove(entry.id) } label: {
+                            Image(systemName: "trash").font(.body).foregroundStyle(HubDesign.danger)
+                                .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget).contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Delete \(entry.count) \(entry.kind.title)")
+                    }
+                    .padding(.vertical, 6)
+                    if entry.id != entries.last?.id { BrickDivider() }
+                }
+            }
+        }
     }
 
     static func title(_ night: String) -> String {
@@ -246,12 +355,13 @@ struct AlcoholPage: View {
                 ForEach(AlcoholMetric.allCases) { metric in
                     comparison(metric, insights)
                 }
+                timing(insights)
                 FitSection(title: "Nights") {
                     VStack(spacing: 0) {
                         let nights = Array(alcohol.loggedNights.prefix(10))
                         ForEach(nights, id: \.self) { night in
                             Button { sheet = NightRef(id: night) } label: {
-                                DetailRow(label: AlcoholSheet.title(night), value: alcohol.summary(night) ?? "No drinks", last: night == nights.last)
+                                DetailRow(label: AlcoholSheet.title(night), value: alcohol.detail(night) ?? "No drinks", last: night == nights.last)
                                     .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
@@ -261,13 +371,25 @@ struct AlcoholPage: View {
             }
         }
         .task { alcohol.recordBattery(store.series(.bodyBattery)) }
-        .sheet(item: $sheet) { AlcoholSheet(night: $0.id).presentationDetents([.medium, .large]) }
+        .sheet(item: $sheet) { AlcoholSheet(night: $0.id) }
     }
 
     private var recent: [DayValue] {
         (0..<14).reversed().compactMap { back in
             let night = addDays(alcohol.tonight, -back)
             return MorningCheckin.date(night).map { DayValue(date: $0, value: Double(alcohol.drinks(on: night))) }
+        }
+    }
+
+    /// Sleep by when the drinking ran latest: the same drinks late at night usually cost more sleep than at lunch.
+    private func timing(_ insights: AlcoholInsights) -> some View {
+        let buckets = insights.timing(.sleep).filter { $0.label == AlcoholInsights.timingLabels[0] || $0.nights > 0 }
+        return FitSection(title: "When you drank", trailing: "Sleep score") {
+            if buckets.count > 1 {
+                AlcoholBucketChart(metric: .sleep, buckets: buckets)
+            }
+            Takeaway(text: buckets.count > 1 ? "Next-morning sleep score by when the drinking ran latest. All day counts on its own."
+                                             : "Needs a few nights logged with a time of day.").font(.caption)
         }
     }
 

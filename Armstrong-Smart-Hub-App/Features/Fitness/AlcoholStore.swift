@@ -15,14 +15,82 @@ enum DrinkKind: String, Codable, CaseIterable, Identifiable {
         }
     }
     var longTitle: String { self == .liquor ? "Liquor or cocktail" : title }
+    var emoji: String {
+        switch self {
+        case .beer: "🍺"
+        case .wine: "🍷"
+        case .liquor: "🥃"
+        }
+    }
+    /// What one standard drink of it is.
+    var serving: String {
+        switch self {
+        case .beer: "12 oz can or bottle"
+        case .wine: "5 oz glass"
+        case .liquor: "1.5 oz shot or a cocktail"
+        }
+    }
+}
+
+/// When in the day the drinking happened. "All day" is its own answer: a day
+/// of drinking hits sleep differently than two at dinner.
+enum DrinkTime: String, Codable, CaseIterable, Identifiable {
+    case morning, afternoon, evening, lateNight, allDay
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .morning: "Morning"
+        case .afternoon: "Afternoon"
+        case .evening: "Evening"
+        case .lateNight: "Late night"
+        case .allDay: "All day"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .morning: "sunrise"
+        case .afternoon: "sun.max"
+        case .evening: "sunset"
+        case .lateNight: "moon.stars"
+        case .allDay: "clock"
+        }
+    }
+    /// Where a drink logged for this slot sits on the night's own day (late night is 11 pm, still that night).
+    var hour: Int {
+        switch self {
+        case .morning: 10
+        case .afternoon: 14
+        case .evening: 19
+        case .lateNight: 23
+        case .allDay: 12
+        }
+    }
+
+    /// The slot a clock time falls in: 5 to noon, noon to 5, 5 to 10, then late night until 5 am.
+    static func of(_ date: Date) -> DrinkTime {
+        switch Calendar.current.component(.hour, from: date) {
+        case 5..<12: .morning
+        case 12..<17: .afternoon
+        case 17..<22: .evening
+        default: .lateNight
+        }
+    }
 }
 
 /// Some drinks of one kind at one time. A count is standard drinks (a 12 oz beer, 5 oz of wine, a 1.5 oz shot).
 struct DrinkEntry: Codable, Identifiable, Equatable {
     var id = UUID()
+    /// The moment it was logged for. It decides the night: see AlcoholStore.night(of:).
     var date: Date
     var kind: DrinkKind
     var count: Int
+    /// Missing from entries logged before the time of day was asked; those go by the clock.
+    var time: DrinkTime?
+    /// When it was logged, to tell a live log from one filled in the next day.
+    var loggedAt: Date?
+
+    var slot: DrinkTime { time ?? .of(date) }
 }
 
 /// What to ask about on the Fitness screen.
@@ -117,6 +185,13 @@ final class AlcoholStore {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// "2 Beer · 1 Wine · Evening".
+    func detail(_ night: String) -> String? {
+        guard let summary = summary(night) else { return nil }
+        let times = times(night).map(\.title).joined(separator: ", ")
+        return times.isEmpty ? summary : "\(summary) · \(times)"
+    }
+
     /// Nights with something logged, newest first.
     var loggedNights: [String] {
         Set(entries.map { Self.night(of: $0.date) }).union(dryNights).sorted(by: >)
@@ -125,10 +200,40 @@ final class AlcoholStore {
     /// The first night he used the log; nights before it say nothing about dry ones.
     var trackingSince: String? { loggedNights.last }
 
+    /// The time slots of a night, in order of the day: "Evening, Late night", or "All day".
+    func times(_ night: String) -> [DrinkTime] {
+        let slots = Set(entries(on: night).map(\.slot))
+        if slots.contains(.allDay) { return [.allDay] }
+        return DrinkTime.allCases.filter(slots.contains)
+    }
+
+    /// How a drinking night is filed for the timing comparison: all day, else the latest slot.
+    func timing(_ night: String) -> DrinkTime? { times(night).last }
+
     // MARK: Logging
 
+    /// The moment to file drinks under: now, when it's tonight and now is in that slot; else the slot's hour on the night's day.
+    static func moment(night: String, time: DrinkTime, now: Date = .now) -> Date {
+        if night == Self.night(of: now), time != .allDay, DrinkTime.of(now) == time { return now }
+        let day = MorningCheckin.date(night) ?? now
+        return Calendar.current.date(bySettingHour: time.hour, minute: 0, second: 0, of: day) ?? day
+    }
+
+    /// Logs a round: any number of each kind, for one night and time of day, as one entry per kind.
+    func log(_ counts: [DrinkKind: Int], night: String, time: DrinkTime) {
+        let date = Self.moment(night: night, time: time)
+        let now = Date.now
+        for kind in DrinkKind.allCases {
+            guard let n = counts[kind], n > 0 else { continue }
+            entries.append(DrinkEntry(date: date, kind: kind, count: n, time: time, loggedAt: now))
+        }
+        if entries(on: night).isEmpty { return }
+        dryNights.remove(night)
+        persist()
+    }
+
     func add(_ kind: DrinkKind, count: Int = 1, at date: Date = .now) {
-        entries.append(DrinkEntry(date: date, kind: kind, count: max(1, count)))
+        entries.append(DrinkEntry(date: date, kind: kind, count: max(1, count), time: .of(date), loggedAt: .now))
         dryNights.remove(Self.night(of: date))
         persist()
     }
@@ -299,6 +404,28 @@ struct AlcoholInsights {
             counts[index] += 1
         }
         return Self.labels.indices.map { Bucket(label: Self.labels[$0], average: counts[$0] > 0 ? sums[$0] / Double(counts[$0]) : nil, nights: counts[$0]) }
+    }
+
+    static let timingLabels = ["None", "Daytime", "Evening", "Late", "All day"]
+
+    /// Average of a metric on mornings after no drinks, and after drinking that ran latest in the daytime, the evening, late at night, or all day.
+    func timing(_ metric: AlcoholMetric) -> [Bucket] {
+        var sums = [Double](repeating: 0, count: Self.timingLabels.count)
+        var counts = [Int](repeating: 0, count: Self.timingLabels.count)
+        for (day, value) in values[metric] ?? [:] {
+            let night = addDays(day, -1)
+            guard let since, night >= since else { continue }
+            let index: Int = switch store.timing(night) {
+            case nil: 0
+            case .morning, .afternoon: 1
+            case .evening: 2
+            case .lateNight: 3
+            case .allDay: 4
+            }
+            sums[index] += value
+            counts[index] += 1
+        }
+        return Self.timingLabels.indices.map { Bucket(label: Self.timingLabels[$0], average: counts[$0] > 0 ? sums[$0] / Double(counts[$0]) : nil, nights: counts[$0]) }
     }
 
     /// The heaviest bucket with data against the none bucket.
