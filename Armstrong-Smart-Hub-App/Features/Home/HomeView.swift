@@ -16,6 +16,9 @@ struct HomeView: View {
     @State private var store = HomeStore()
     @State private var habits = HabitsStore()
     @State private var pi = PiStore()
+    @State private var agenda = AgendaStore()
+    /// Today's steps, sleep and readiness as the widgets last saw them: light to read, no network.
+    @State private var glance = FitnessGlance.read()
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
@@ -31,7 +34,7 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             HubTabPage(hero: {
-                if store.state != nil, store.state?.configured != false { hero }
+                if store.state?.configured != false { hero }
             }, content: {
                 content
             }, mountains: true)
@@ -65,11 +68,14 @@ struct HomeView: View {
                 async let a: Void = store.refresh(api: session.api)
                 async let b: Void = habits.load(api: session.api)
                 async let c: Void = pi.load(api: session.api)
-                _ = await (a, b, c)
+                async let d: Void = agenda.load(api: session.api, refresh: true)
+                _ = await (a, b, c, d)
+                glance = FitnessGlance.read()
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 habits.rollDay()
+                glance = FitnessGlance.read()
                 await store.poll(api: session.api)
             }
             // The Pi card refreshes every minute while Home is open.
@@ -81,6 +87,14 @@ struct HomeView: View {
                 }
             }
             .task { if !habits.fetched { await habits.load(api: session.api) } }
+            // The next event, every few minutes while Home is open.
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    await agenda.load(api: session.api)
+                    try? await Task.sleep(for: .seconds(300))
+                }
+            }
             .sheet(item: $light) { e in
                 LightSheet(entityID: e.id, store: store, toast: toast)
                     .presentationDetents([.medium, .large])
@@ -174,48 +188,86 @@ struct HomeView: View {
         .padding(.top, 4)
     }
 
-    /// A centred greeting and one line on the house, quick buttons for the lights, and a Docker check.
+    /// A line about your day (sleep, steps, habits or the calendar), the next event as a glass
+    /// card, and the Pi's health. Jarvis sits in the bar above, top right.
     private var hero: some View {
-        let hour = Calendar.current.component(.hour, from: .now)
-        let greeting = hour < 5 ? "Still up" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
-        let lights = store.entities.filter { $0.control == .light && !$0.isTV && !$0.name.localizedCaseInsensitiveContains("remote") }
-        let on = lights.filter(\.isOn).count
-        let unlocked = store.entities.filter { $0.control == .lock && $0.isOn }
-        let summary: String = {
-            if let door = unlocked.first { return unlocked.count == 1 ? "\(door.name) is unlocked" : "\(unlocked.count) doors are unlocked" }
-            if on > 0 { return on == 1 ? "One light is on" : "\(on) lights are on" }
-            return "The house is quiet"
-        }()
+        let line = HomeGreeting(
+            name: session.user?.firstName ?? "",
+            glance: glance,
+            habitsDone: habits.loaded ? habits.doneToday : nil,
+            habitsTotal: habits.habits.count,
+            nextEvent: agenda.next?.start,
+            house: houseSummary
+        )
         return VStack(spacing: 0) {
             Spacer(minLength: 0)
             VStack(spacing: 8) {
-                Text(greeting)
-                    .font(.system(size: 48, weight: .light))
+                Text(line.title)
+                    .font(.system(size: 40, weight: .light))
                     .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .contentTransition(.numericText())
                     .accessibilityAddTraits(.isHeader)
-                Text(summary).font(.title3).foregroundStyle(BrickLook.soft)
-                Button { showAgent = true } label: {
-                    Label("Ask Jarvis", systemImage: "sparkles")
-                        .font(.headline)
-                        .foregroundStyle(HubDesign.ink)
-                        .padding(.horizontal, 24)
-                        .frame(minHeight: 52)
-                        .glassGlare(.regular.tint(HubDesign.action.opacity(0.55)).interactive(), in: .capsule)
-                        .contentShape(.capsule)
+                if let detail = line.detail {
+                    Text(detail).font(.title3).foregroundStyle(BrickLook.soft)
+                        .multilineTextAlignment(.center).lineLimit(2)
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 14)
-                .accessibilityHint("Opens the data agent")
             }
+            .hubAnimation(value: line.title)
+            NextEventCard(agenda: agenda)
+                .padding(.top, 22)
             Spacer(minLength: 0)
-            if let status = pi.status, status.available, let containers = status.containers, !containers.isEmpty {
-                NavigationLink { PiDetailView(pi: pi) } label: { dockerCheck(status, containers) }
-                    .buttonStyle(.plain)
-                    .padding(.top, 18)
-            }
+            piBadge.padding(.top, 18)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight)
+        // In the bar HubTabPage keeps above every hero, where a page's buttons go.
+        .overlay(alignment: .topTrailing) {
+            jarvisButton.offset(y: -(HubLayout.minHitTarget + 8))
+        }
+    }
+
+    /// Only worth saying when something's open or on.
+    private var houseSummary: String? {
+        let lights = store.entities.filter { $0.control == .light && !$0.isTV && !$0.name.localizedCaseInsensitiveContains("remote") }
+        let on = lights.filter(\.isOn).count
+        let unlocked = store.entities.filter { $0.control == .lock && $0.isOn }
+        if let door = unlocked.first { return unlocked.count == 1 ? "\(door.name) is unlocked" : "\(unlocked.count) doors are unlocked" }
+        if on > 0 { return on == 1 ? "One light is on" : "\(on) lights are on" }
+        return nil
+    }
+
+    private var jarvisButton: some View {
+        Button { showAgent = true } label: {
+            Label("Jarvis", systemImage: "sparkles")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(HubDesign.ink)
+                .padding(.horizontal, 16)
+                .frame(height: HubLayout.minHitTarget)
+                .glassGlare(.regular.tint(HubDesign.action.opacity(0.35)).interactive(), in: .capsule)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Ask Jarvis")
+        .accessibilityHint("Opens the data agent")
+    }
+
+    /// The last known health (from the phone's copy until the hub answers); a redacted badge
+    /// of the same size before anything is known, so nothing below it moves.
+    @ViewBuilder
+    private var piBadge: some View {
+        if let status = pi.status {
+            if status.available, let containers = status.containers, !containers.isEmpty {
+                NavigationLink { PiDetailView(pi: pi) } label: { dockerCheck(status, containers) }
+                    .buttonStyle(.plain)
+                    .opacity(pi.fresh ? 1 : 0.7)
+            }
+        } else {
+            dockerCheck(.placeholder, [])
+                .redacted(reason: .placeholder)
+                .accessibilityHidden(true)
+        }
     }
 
     /// "Pi healthy", or a red dot and what's wrong.
@@ -244,14 +296,16 @@ struct HomeView: View {
                 message: "Set HEARTHBOARD_URL and HEARTHBOARD_TOKEN on the hub, then pull to refresh."
             )
         } else {
-            if let error = store.loadError ?? store.state?.errors.entities {
+            // Only what the hub itself reports: while it's out of reach the last state (or a
+            // skeleton) shows quietly and the next poll catches up.
+            if let error = store.state?.errors.entities, store.loadError == nil {
                 ErrorBanner(message: store.entities.isEmpty ? error : "\(error) Showing the last known state.") {
                     Task { await store.refresh(api: session.api) }
                 }
             }
 
             if store.state == nil {
-                ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+                DeviceSkeleton()
             } else {
                 // Together, so no birthday today leaves no gap.
                 VStack(alignment: .leading, spacing: 0) {
@@ -264,9 +318,15 @@ struct HomeView: View {
 
             habitsSection
 
-            if let status = pi.status, status.available {
-                NavigationLink { PiDetailView(pi: pi) } label: { PiStatusCard(status: status) }
-                    .buttonStyle(.plain)
+            if let status = pi.status {
+                if status.available {
+                    NavigationLink { PiDetailView(pi: pi) } label: { PiStatusCard(status: status) }
+                        .buttonStyle(.plain)
+                }
+            } else {
+                PiStatusCard(status: .placeholder)
+                    .redacted(reason: .placeholder)
+                    .accessibilityHidden(true)
             }
 
             // Keep the actual control mounted: a fixed-height placeholder jumps at larger text sizes.
