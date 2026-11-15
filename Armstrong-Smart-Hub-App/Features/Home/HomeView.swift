@@ -17,8 +17,6 @@ struct HomeView: View {
     @State private var habits = HabitsStore()
     @State private var pi = PiStore()
     @State private var agenda = AgendaStore()
-    /// Today's steps, sleep and readiness as the widgets last saw them: light to read, no network.
-    @State private var glance = FitnessGlance.read()
     @State private var toast = Toast()
     @State private var light: HAEntity?
     @State private var remote: HAEntity?
@@ -70,12 +68,10 @@ struct HomeView: View {
                 async let c: Void = pi.load(api: session.api)
                 async let d: Void = agenda.load(api: session.api, refresh: true)
                 _ = await (a, b, c, d)
-                glance = FitnessGlance.read()
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 habits.rollDay()
-                glance = FitnessGlance.read()
                 await store.poll(api: session.api)
             }
             // The Pi card refreshes every minute while Home is open.
@@ -188,63 +184,38 @@ struct HomeView: View {
         .padding(.top, 4)
     }
 
-    /// A line about your day (sleep, steps, habits or the calendar), the next event as a glass
-    /// card, and the Pi's health. Jarvis sits in the bar above, top right.
+    /// A Jarvis greeting, the next event as a glass card, then the Pi's health with Jarvis
+    /// beside it.
     private var hero: some View {
-        let line = HomeGreeting(
-            name: session.user?.firstName ?? "",
-            glance: glance,
-            habitsDone: habits.loaded ? habits.doneToday : nil,
-            habitsTotal: habits.habits.count,
-            nextEvent: agenda.next?.start,
-            house: houseSummary
-        )
+        let line = HomeGreeting.line(name: session.user?.firstName ?? "")
         return VStack(spacing: 0) {
             Spacer(minLength: 0)
-            VStack(spacing: 8) {
-                Text(line.title)
-                    .font(.system(size: 40, weight: .light))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.7)
-                    .contentTransition(.numericText())
-                    .accessibilityAddTraits(.isHeader)
-                if let detail = line.detail {
-                    Text(detail).font(.title3).foregroundStyle(BrickLook.soft)
-                        .multilineTextAlignment(.center).lineLimit(2)
-                }
-            }
-            .hubAnimation(value: line.title)
+            Text(line)
+                .font(.system(size: 40, weight: .light))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+                .accessibilityAddTraits(.isHeader)
             NextEventCard(agenda: agenda)
-                .padding(.top, 22)
+                .padding(.top, 24)
             Spacer(minLength: 0)
-            piBadge.padding(.top, 18)
+            HStack(spacing: 10) {
+                piBadge
+                jarvisButton
+            }
+            .padding(.top, 18)
         }
         .frame(maxWidth: .infinity)
         .frame(height: HubLayout.heroHeight)
-        // In the bar HubTabPage keeps above every hero, where a page's buttons go.
-        .overlay(alignment: .topTrailing) {
-            jarvisButton.offset(y: -(HubLayout.minHitTarget + 8))
-        }
     }
 
-    /// Only worth saying when something's open or on.
-    private var houseSummary: String? {
-        let lights = store.entities.filter { $0.control == .light && !$0.isTV && !$0.name.localizedCaseInsensitiveContains("remote") }
-        let on = lights.filter(\.isOn).count
-        let unlocked = store.entities.filter { $0.control == .lock && $0.isOn }
-        if let door = unlocked.first { return unlocked.count == 1 ? "\(door.name) is unlocked" : "\(unlocked.count) doors are unlocked" }
-        if on > 0 { return on == 1 ? "One light is on" : "\(on) lights are on" }
-        return nil
-    }
-
+    /// A badge like the Pi's, beside it.
     private var jarvisButton: some View {
         Button { showAgent = true } label: {
-            Label("Jarvis", systemImage: "sparkles")
-                .font(.subheadline.weight(.semibold))
+            Text("Jarvis")
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(HubDesign.ink)
-                .padding(.horizontal, 16)
-                .frame(height: HubLayout.minHitTarget)
+                .padding(.horizontal, 14).padding(.vertical, 10)
                 .glassGlare(.regular.tint(HubDesign.action.opacity(0.35)).interactive(), in: .capsule)
                 .contentShape(.capsule)
         }

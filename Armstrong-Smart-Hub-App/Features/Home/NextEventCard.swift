@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 /// The next thing on the calendar as one Liquid Glass card in Home's hero: the calendar's
@@ -6,6 +7,8 @@ import SwiftUI
 struct NextEventCard: View {
     let agenda: AgendaStore
     @Environment(\.openURL) private var openURL
+    @Environment(AppSession.self) private var session
+    @State private var connecting = false
 
     var body: some View {
         // Ticks each minute so "in 12 min" stays true.
@@ -22,6 +25,8 @@ struct NextEventCard: View {
                 card(Self.placeholder, start: .now.addingTimeInterval(3600), now: context.date)
                     .redacted(reason: .placeholder)
                     .accessibilityHidden(true)
+            } else if let status = agenda.data?.status, ["not_connected", "missing_scope"].contains(status) {
+                reconnect(first: status == "not_connected")
             } else if agenda.hasAgenda {
                 empty
             }
@@ -63,6 +68,54 @@ struct NextEventCard: View {
         .padding(.horizontal, 18)
         .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .leading)
         .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
+    }
+
+    /// Google's link has lapsed (or was never made): sign in again right here.
+    private func reconnect(first: Bool) -> some View {
+        Button {
+            Task { await connectGoogle() }
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "calendar.badge.exclamationmark").font(.title3).foregroundStyle(BrickLook.soft)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(first ? "Connect Google Calendar" : "Reconnect Google Calendar")
+                        .font(.headline).foregroundStyle(HubDesign.ink)
+                    Text(agenda.connectError ?? (first ? "Sign in once to see what's next" : "Google's sign-in expired"))
+                        .font(.subheadline).foregroundStyle(BrickLook.soft).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if connecting {
+                    ProgressView()
+                } else {
+                    Text(first ? "Connect" : "Reconnect")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 14).frame(height: 34)
+                        .glassGlare(.regular.tint(HubDesign.action.opacity(0.35)), in: .capsule)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .leading)
+            .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.cardRadius))
+            .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
+        }
+        .buttonStyle(.plain)
+        .disabled(connecting)
+    }
+
+    /// Google's sign-in sheet; the hub keeps the tokens and the agenda reloads.
+    private func connectGoogle() async {
+        connecting = true
+        defer { connecting = false }
+        agenda.connectError = nil
+        do {
+            _ = try await GoogleSignIn.connect(api: session.api)
+            await agenda.load(api: session.api, refresh: true)
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+        } catch {
+            agenda.connectError = error.localizedDescription
+        }
     }
 
     static let height: CGFloat = 84
