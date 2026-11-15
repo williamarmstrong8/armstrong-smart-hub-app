@@ -257,25 +257,26 @@ private struct BrickSheet: View {
                 HStack(spacing: 8) {
                     // Tapping the chip scans for its own tag only; any other tag is a wrong tag.
                     Button { store.tapTag(.ending(l.id)) } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "lock.fill").font(.caption)
-                            Text("\(l.name) lockdown").font(.subheadline.weight(.medium))
+                        HStack(spacing: 6) {
+                            Image(systemName: "lock.fill").font(.caption2)
+                            Text("Lockdown").font(.subheadline.weight(.medium))
                         }
-                        .frame(minHeight: HubLayout.minHitTarget)
+                        .frame(minHeight: 28)
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("\(l.name) lockdown")
                     if !l.strict {
                         Button { store.unlockWithoutTag(l.id) } label: {
                             Text("End")
                                 .font(.subheadline.weight(.medium)).foregroundStyle(BrickLook.soft)
-                                .frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
+                                .frame(minWidth: HubLayout.minHitTarget, minHeight: 28)
                                 .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 14).padding(.vertical, 8)
+                .padding(.horizontal, 14).padding(.vertical, 2)
                 .glassGlare(.regular, in: .capsule)
             }
         }
