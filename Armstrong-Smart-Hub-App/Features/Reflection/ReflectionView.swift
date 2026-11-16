@@ -50,11 +50,14 @@ private struct MeditationRun: Identifiable {
 private enum JournalTarget: Identifiable {
     case new
     case entry(JournalEntry)
+    /// A new entry started from a Journaling Suggestion: the moment, written out, to add to.
+    case draft(String)
 
     var id: String {
         switch self {
         case .new: "new"
         case .entry(let e): e.id.uuidString
+        case .draft: "draft"
         }
     }
 }
@@ -147,6 +150,8 @@ struct ReflectionView: View {
     @State private var openBookID: UUID?
     @State private var addingBookManually = false
     @State private var journalLock = JournalLock()
+    /// Apple's picker of moments from your day (workouts, places, photos, music).
+    @State private var pickingMoment = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var heroQuoteIndex = Int.random(in: 0..<1000)
 
@@ -196,7 +201,13 @@ struct ReflectionView: View {
                     JournalEditor(entry: nil, lock: journalLock, onSave: { store.saveEntry(id: nil, text: $0) }, onDelete: nil)
                 case .entry(let e):
                     JournalEditor(entry: e, lock: journalLock, onSave: { store.saveEntry(id: e.id, text: $0) }, onDelete: { store.deleteEntry(e.id) })
+                case .draft(let text):
+                    JournalEditor(entry: nil, draft: text, lock: journalLock, onSave: { store.saveEntry(id: nil, text: $0) }, onDelete: nil)
                 }
+            }
+            .journalingSuggestionsPicker(isPresented: $pickingMoment) { suggestion in
+                let text = await JournalMoment.draft(from: suggestion)
+                journal = .draft(text)
             }
             .onChange(of: scenePhase) { _, phase in
                 // Only on background: the Face ID prompt itself makes the scene inactive.
@@ -382,6 +393,23 @@ struct ReflectionView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Lock journal")
                 }
+                // Start from a moment of the day: Apple's Journaling Suggestions.
+                Button {
+                    if journalLock.isLocked {
+                        Task { await journalLock.unlock(); if !journalLock.isLocked { pickingMoment = true } }
+                    } else {
+                        pickingMoment = true
+                    }
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(HubDesign.ink)
+                        .frame(width: HubLayout.minHitTarget, height: HubLayout.minHitTarget)
+                        .glassGlare(.regular, in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("New entry from your day")
                 Button {
                     if journalLock.isLocked {
                         Task { await journalLock.unlock(); if !journalLock.isLocked { journal = .new } }
@@ -493,12 +521,12 @@ private struct JournalEditor: View {
     @State private var editing: Bool
     @FocusState private var focused: Bool
 
-    init(entry: JournalEntry?, lock: JournalLock, onSave: @escaping (String) -> Void, onDelete: (() -> Void)?) {
+    init(entry: JournalEntry?, draft: String? = nil, lock: JournalLock, onSave: @escaping (String) -> Void, onDelete: (() -> Void)?) {
         self.entry = entry
         self.lock = lock
         self.onSave = onSave
         self.onDelete = onDelete
-        _text = State(initialValue: entry?.text ?? "")
+        _text = State(initialValue: entry?.text ?? draft ?? "")
         _editing = State(initialValue: entry == nil)
     }
 

@@ -237,6 +237,8 @@ final class CheckinStore {
         let echo = guess.map { g in GuessEcho(energy: g.energy, states: Dictionary(uniqueKeysWithValues: g.states.map { ($0.state, $0.probability) })) }
         pending.removeAll { if case let .checkin(c, _) = $0 { c.day == checkin.day } else { false } }
         enqueue(.checkin(checkin, guess: echo))
+        // The day's mood in Apple Health, from the same answer.
+        Task { await HealthSync.shared.saveMood(checkin) }
         await flush(api: api)
         await CheckinReminders.shared.schedule(self)
     }

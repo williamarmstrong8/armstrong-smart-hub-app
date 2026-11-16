@@ -231,13 +231,16 @@ nonisolated struct ScanParagraph: Identifiable, Hashable, Sendable {
 }
 
 nonisolated private enum QuoteOCR {
-    private struct Line {
+    struct Line {
         var text: String
         var rect: CGRect // pixels, origin top-left
+        /// Tilt of the line's baseline in degrees; text on a facing page or a screen behind leans differently.
+        var angle: CGFloat = 0
     }
 
     /// Reads the page and groups its lines into paragraphs by spacing, indents, short last lines
-    /// and changes in type size.
+    /// and changes in type size. Only the main page's text column is kept: a facing page, a
+    /// screen in the background and other stray text are dropped.
     static func paragraphs(in image: CGImage) -> [ScanParagraph] {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
@@ -247,29 +250,46 @@ nonisolated private enum QuoteOCR {
         let w = CGFloat(image.width), h = CGFloat(image.height)
 
         let raw: [Line] = (request.results ?? []).compactMap { obs in
-            guard let top = obs.topCandidates(1).first else { return nil }
+            guard let top = obs.topCandidates(1).first, top.confidence >= 0.3 else { return nil }
             let text = top.string.trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty else { return nil }
             let b = obs.boundingBox
-            return Line(text: text, rect: CGRect(x: b.minX * w, y: (1 - b.maxY) * h, width: b.width * w, height: b.height * h))
+            let dx = (obs.topRight.x - obs.topLeft.x) * w
+            let dy = (obs.topRight.y - obs.topLeft.y) * h
+            return Line(text: text, rect: CGRect(x: b.minX * w, y: (1 - b.maxY) * h, width: b.width * w, height: b.height * h),
+                        angle: atan2(dy, dx) * 180 / .pi)
         }
-        let lines = mergeRows(raw).filter { !isPageNoise($0.text) }
+        return paragraphs(from: raw, width: w, height: h)
+    }
+
+    static func paragraphs(from raw: [Line], width w: CGFloat, height h: CGFloat) -> [ScanParagraph] {
+        let lines = mergeRows(mainColumn(raw)).filter { !isPageNoise($0.text) }
         guard !lines.isEmpty else { return [] }
 
         let lineHeight = median(lines.map(\.rect.height))
-        let left = median(lines.map(\.rect.minX))
-        let right = percentile(lines.map(\.rect.maxX), 0.9)
         let gaps = zip(lines, lines.dropFirst()).map { $1.rect.minY - $0.rect.maxY }
         let typicalGap = gaps.isEmpty ? 0 : median(gaps)
 
+        // Margins are measured against nearby lines, so a page photographed at an angle (its
+        // left edge drifting across the photo) doesn't read as indents.
+        func neighbours(_ i: Int) -> [Line] {
+            let range = max(0, i - 3)...min(lines.count - 1, i + 3)
+            let near = range.filter { $0 != i }.map { lines[$0] }
+            return near.count >= 2 ? near : lines
+        }
+        func leftMargin(_ i: Int) -> CGFloat { median(neighbours(i).map(\.rect.minX)) }
+        func rightMargin(_ i: Int) -> CGFloat { percentile(neighbours(i).map(\.rect.maxX), 0.75) }
+
         var groups: [[Line]] = []
-        for line in lines {
-            guard let prev = groups.last?.last else { groups.append([line]); continue }
+        for (i, line) in lines.enumerated() {
+            guard i > 0, !groups.isEmpty else { groups.append([line]); continue }
+            let prev = lines[i - 1]
             let gap = line.rect.minY - prev.rect.maxY
             let bigGap = gap > typicalGap + 0.6 * lineHeight
-            let indented = line.rect.minX - left > 0.8 * lineHeight && prev.rect.minX - left < 0.5 * lineHeight
+            let left = leftMargin(i)
+            let indented = line.rect.minX - left > 0.8 * lineHeight && prev.rect.minX - leftMargin(i - 1) < 0.5 * lineHeight
             let ender = prev.text.last.map { ".!?\"”’:)".contains($0) } ?? false
-            let shortEnd = ender && prev.rect.maxX < right - 2.5 * lineHeight
+            let shortEnd = ender && prev.rect.maxX < rightMargin(i - 1) - 2.5 * lineHeight
             let sizeChange = abs(line.rect.height - prev.rect.height) > 0.45 * lineHeight
             if bigGap || indented || shortEnd || sizeChange {
                 groups.append([line])
@@ -288,17 +308,60 @@ nonisolated private enum QuoteOCR {
             .map { ScanParagraph(id: $0.offset, text: $0.element.0, box: $0.element.1) }
     }
 
-    /// Vision sometimes splits one printed line into pieces; put them back together, top to bottom.
+    /// The text of the page being photographed. Lines are gathered into columns by how they
+    /// overlap side to side, longest lines first so body text seeds them; the column holding the
+    /// most text is the page. Lines in it that lean differently or are a very different size
+    /// (a curling facing page, a screen) are dropped too.
+    static func mainColumn(_ lines: [Line]) -> [Line] {
+        guard lines.count >= 4 else { return lines }
+        struct Column { var minX: CGFloat; var maxX: CGFloat; var members: [Line] }
+        func overlap(_ line: Line, _ c: Column) -> CGFloat {
+            let shared = min(line.rect.maxX, c.maxX) - max(line.rect.minX, c.minX)
+            return max(0, shared) / max(line.rect.width, 1)
+        }
+        var columns: [Column] = []
+        for line in lines.sorted(by: { $0.rect.width > $1.rect.width }) {
+            let best = columns.indices.max { a, b in
+                overlap(line, columns[a]) < overlap(line, columns[b])
+            }
+            if let best, overlap(line, columns[best]) >= 0.6 {
+                columns[best].members.append(line)
+                columns[best].minX = min(columns[best].minX, line.rect.minX)
+                columns[best].maxX = max(columns[best].maxX, line.rect.maxX)
+            } else {
+                columns.append(Column(minX: line.rect.minX, maxX: line.rect.maxX, members: [line]))
+            }
+        }
+        guard let page = columns.max(by: { a, b in
+            a.members.reduce(0) { $0 + $1.text.count } < b.members.reduce(0) { $0 + $1.text.count }
+        }) else { return lines }
+
+        let body = page.members.filter { $0.text.count >= 20 }
+        let reference = body.count >= 3 ? body : page.members
+        let angle = median(reference.map(\.angle))
+        let size = median(reference.map(\.rect.height))
+        return page.members.filter { line in
+            abs(line.angle - angle) <= 6
+                && line.rect.height >= 0.6 * size
+                && line.rect.height <= 2.5 * size
+        }
+    }
+
+    /// Vision sometimes splits one printed line into pieces; put them back together, top to
+    /// bottom. Only pieces close side by side are joined, never text across a gutter.
     private static func mergeRows(_ lines: [Line]) -> [Line] {
         var rows: [Line] = []
         for line in lines.sorted(by: { $0.rect.midY < $1.rect.midY }) {
             if let last = rows.last,
                abs(line.rect.midY - last.rect.midY) < 0.5 * min(line.rect.height, last.rect.height) {
                 let (a, b) = line.rect.minX < last.rect.minX ? (line, last) : (last, line)
-                rows[rows.count - 1] = Line(text: a.text + " " + b.text, rect: a.rect.union(b.rect))
-            } else {
-                rows.append(line)
+                let apart = b.rect.minX - a.rect.maxX
+                if apart < 3 * max(a.rect.height, b.rect.height) {
+                    rows[rows.count - 1] = Line(text: a.text + " " + b.text, rect: a.rect.union(b.rect), angle: a.angle)
+                    continue
+                }
             }
+            rows.append(line)
         }
         return rows
     }

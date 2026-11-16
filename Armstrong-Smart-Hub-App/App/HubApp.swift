@@ -14,6 +14,8 @@ struct HubApp: App {
         TVActions.handler = { await TVActivityController.shared.handle($0) }
         // Check-in notifications answer themselves from the lock screen.
         CheckinReminders.shared.start()
+        // Home, work and gym geofences: an arrival can relaunch the app in the background.
+        PlaceMonitor.shared.start()
         #if os(iOS)
         WorkoutActivityController.shared.sync(WorkoutStore.shared)
         #endif
@@ -44,14 +46,28 @@ struct HubApp: App {
                     TVActivityController.shared.api = signedIn ? session.api : nil
                     // Jarvis's build updates come in as notifications.
                     PushRegistration.shared.api = signedIn ? session.api : nil
+                    // The morning and night health briefings, and the work done while the app is closed.
+                    HealthBriefing.shared.api = signedIn ? session.api : nil
+                    BackgroundRefresh.shared.api = signedIn ? session.api : nil
                     // The 8 am and 6 pm check-ins, from the last page the phone has.
                     if signedIn { Task { await CheckinReminders.shared.schedule(CheckinStore.shared) } }
                 }
-                // A sync after waking brings last night's sleep: guess again so 8 am can say what it thinks.
-                .onChange(of: watch.files.lastSync) { if session.isSignedIn { Task { await CheckinStore.shared.load(api: session.api) } } }
+                // A sync after waking brings last night's sleep: guess again so 8 am can say what it thinks,
+                // and send the morning briefing once the night is in.
+                .onChange(of: watch.files.lastSync) { if session.isSignedIn { Task { await BackgroundRefresh.shared.run() } } }
+                // Opening the app sends a briefing that's due; going to the background asks for the next refresh.
+                .onChange(of: scenePhase) { _, p in
+                    guard session.isSignedIn else { return }
+                    if p == .active { Task { await HealthBriefing.shared.runIfDue() } }
+                    if p == .background { BackgroundRefresh.shared.schedule() }
+                }
                 .onChange(of: scenePhase) { _, p in if p == .background { watch.live.save() } }
                 // Drinks logged while the hub was out of reach.
                 .onChange(of: scenePhase) { _, p in if p == .active, session.isSignedIn { AlcoholStore.shared.sync() } }
+        }
+        // iOS's background refreshes (BackgroundRefresh.schedule asks for them).
+        .backgroundTask(.appRefresh(BackgroundRefresh.identifier)) {
+            await BackgroundRefresh.shared.run()
         }
     }
 }

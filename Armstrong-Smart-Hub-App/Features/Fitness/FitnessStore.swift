@@ -52,6 +52,9 @@ final class FitnessStore {
             error = nil
             WidgetSync.fitness(self)
             if Demo.isOn { return }
+            // New nights, workouts, HRV and resting heart rate go on to Apple Health, when that's on.
+            let snapshot = snapshot
+            Task { await HealthSync.shared.sync(snapshot, drinks: AlcoholStore.shared.entries) }
             try? FileManager.default.createDirectory(at: Self.cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: Self.cacheURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch is CancellationError {

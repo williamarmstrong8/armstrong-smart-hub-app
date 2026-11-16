@@ -145,6 +145,9 @@ final class AlcoholStore {
         try? FileManager.default.createDirectory(at: Self.url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let saved = Saved(entries: entries, dry: dryNights.sorted(), battery: battery, drank: drankNights.sorted())
         if let data = try? JSONEncoder().encode(saved) { try? data.write(to: Self.url, options: .atomic) }
+        // Drinks go to Apple Health as they're logged, edited or deleted (when that's on).
+        let entries = entries
+        Task { await HealthSync.shared.sync(nil, drinks: entries) }
     }
 
     // MARK: Nights
