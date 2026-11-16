@@ -919,8 +919,9 @@ struct ManualQuoteSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
-        .onAppear { focused = true }
+        // Full height from the start, so the keyboard doesn't push a half sheet up.
+        .presentationDetents([.large])
+        .focusAfterPresenting($focused)
     }
 
     private func save() {

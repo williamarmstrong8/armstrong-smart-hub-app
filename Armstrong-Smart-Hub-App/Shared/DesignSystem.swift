@@ -204,6 +204,15 @@ extension GlassSection where Header == EmptyView {
 }
 
 extension View {
+    /// Puts the keyboard up once a sheet has finished sliding in. Focusing in `onAppear` raises it
+    /// mid-presentation, which makes the sheet and its contents jump.
+    func focusAfterPresenting(_ focus: FocusState<Bool>.Binding) -> some View {
+        task {
+            do { try await Task.sleep(for: .milliseconds(450)) } catch { return }
+            focus.wrappedValue = true
+        }
+    }
+
     /// A list on the ambient backdrop.
     func hubGlassList() -> some View { hubListStyle() }
 }

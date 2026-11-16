@@ -183,7 +183,8 @@ struct ReflectionView: View {
             }
             .sheet(isPresented: $addingQuote) {
                 NewQuoteCard { text, author in store.addQuote(text: text, author: author) }
-                    .presentationDetents([.medium])
+                    // Full height, so the keyboard doesn't push a half sheet (and the card) up.
+                    .presentationDetents([.large])
                     .presentationBackground(.clear)
             }
             .navigationDestination(isPresented: $startingSession) {
@@ -465,7 +466,7 @@ private struct NewQuoteCard: View {
         .glassEffect(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
         .padding(HubLayout.gutter)
         .frame(maxHeight: .infinity, alignment: .top)
-        .onAppear { focused = true }
+        .focusAfterPresenting($focused)
     }
 }
 

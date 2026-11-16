@@ -383,7 +383,7 @@ struct ManualBookSheet: View {
             }
         }
         .presentationDetents([.large])
-        .onAppear { titleFocused = true }
+        .focusAfterPresenting($titleFocused)
     }
 }
 
@@ -406,10 +406,9 @@ struct BookDetailView: View {
     @State private var pageText = ""
     @State private var confirmRemove = false
     @State private var editingQuote: ReflectionQuote?
-    @State private var scanning = false
-    @State private var typingQuote = false
-    /// The chapter a new quote is being added from, so it's filed there.
-    @State private var quoteChapter: UUID?
+    /// A quote being scanned or typed, carrying the chapter it was started from so it's filed there.
+    @State private var scanning: NewQuote?
+    @State private var typingQuote: NewQuote?
     @State private var openChapters: Set<UUID> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var notesFocused: Bool
@@ -487,11 +486,11 @@ struct BookDetailView: View {
             QuoteNoteSheet(quote: q, store: store)
                 .presentationDetents([.large])
         }
-        .fullScreenCover(isPresented: $scanning) {
-            QuoteScanFlow(store: store, bookID: bookID, chapterID: quoteChapter) { scanning = false }
+        .fullScreenCover(item: $scanning) { target in
+            QuoteScanFlow(store: store, bookID: bookID, chapterID: target.chapterID) { scanning = nil }
         }
-        .sheet(isPresented: $typingQuote) {
-            ManualQuoteSheet(store: store, bookID: bookID, chapterID: quoteChapter)
+        .sheet(item: $typingQuote) { target in
+            ManualQuoteSheet(store: store, bookID: bookID, chapterID: target.chapterID)
         }
     }
 
@@ -695,12 +694,10 @@ struct BookDetailView: View {
 
                     HStack(spacing: 8) {
                         addQuoteButton("Scan", systemImage: "text.viewfinder", label: "Scan a quote from this chapter") {
-                            quoteChapter = chapter.id
-                            scanning = true
+                            scanning = NewQuote(chapterID: chapter.id)
                         }
                         addQuoteButton("Type", systemImage: "square.and.pencil", label: "Type a quote from this chapter") {
-                            quoteChapter = chapter.id
-                            typingQuote = true
+                            typingQuote = NewQuote(chapterID: chapter.id)
                         }
                     }
                 }
@@ -761,7 +758,7 @@ struct BookDetailView: View {
                         .font(.title2.weight(.regular)).accessibilityAddTraits(.isHeader)
                     Spacer()
                     if !hasChapters {
-                        Button { quoteChapter = nil; typingQuote = true } label: {
+                        Button { typingQuote = NewQuote(chapterID: nil) } label: {
                             Image(systemName: "square.and.pencil")
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(HubDesign.ink)
@@ -771,7 +768,7 @@ struct BookDetailView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Type a quote from this book")
-                        Button { quoteChapter = nil; scanning = true } label: {
+                        Button { scanning = NewQuote(chapterID: nil) } label: {
                             Label("Scan", systemImage: "text.viewfinder")
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(HubDesign.ink)
@@ -880,6 +877,12 @@ private struct ChapterNotesView: View {
         }
         .onChange(of: notes) { _, value in store.setChapterNotes(bookID, chapter: chapterID, value) }
     }
+}
+
+/// A quote about to be added from a book page, and the chapter it's from (nil for none).
+private struct NewQuote: Identifiable {
+    let id = UUID()
+    let chapterID: UUID?
 }
 
 /// One saved quote as a row in a glass section: the quote, then its page and note.
