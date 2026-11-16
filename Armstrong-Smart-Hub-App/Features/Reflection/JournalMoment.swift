@@ -65,8 +65,7 @@ enum JournalMoment {
     /// The item's content of one kind, when it has that kind (an item can offer several).
     private static func first<T: JournalingSuggestionAsset>(_ item: JournalingSuggestion.ItemContent, _ type: T.Type) async -> T? {
         guard item.hasContent(ofType: type) else { return nil }
-        let all: [T] = await item.content(forType: type)
-        return all.first
+        return try? await item.content(forType: type)
     }
 
     private static func workout(_ w: JournalingSuggestion.Workout) -> String {
