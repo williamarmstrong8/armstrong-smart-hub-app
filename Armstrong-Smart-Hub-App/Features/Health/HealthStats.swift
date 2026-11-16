@@ -194,6 +194,11 @@ struct HealthStats {
             out.append(Finding(text: effect, weight: 1.2))
         }
 
+        out += calendarToday(table, morning: true)
+        if let delivery = deliveryEffect(table), (LifeContext.shared.spending(addDays(now.day, -1))?.delivery ?? 0) > 0 {
+            out.append(Finding(text: "You ordered delivery last night. " + delivery, weight: 1.2))
+        }
+
         if let top = checkins.likely.first {
             out.append(Finding(text: "The hub's check-in model puts \(top.label.lowercased()) at \(Int(top.probability * 100))% this morning, from your own past check-ins.", weight: 1.5))
         }
@@ -246,6 +251,75 @@ struct HealthStats {
         }
         guard !parts.isEmpty else { return nil }
         return "After a training day you typically wake with " + Self.list(parts) + " than after a rest day (\(after.count) vs \(rest.count) mornings), and yesterday was a training day."
+    }
+
+    // MARK: Calendar and spending (LifeContext)
+
+    /// Meeting hours on days that had meetings, the last 60 before `day`.
+    private func meetingBaseline(before day: String) -> Baseline? {
+        let days = (LifeContext.shared.snapshot?.calendar ?? []).filter { $0.day < day && $0.meetings > 0 }.prefix(60)
+        return Baseline(days.map(\.meetingHours), min: 8)
+    }
+
+    /// Morning: today's calendar against your days. Night: tomorrow's. With what heavy days do to your next morning.
+    private func calendarToday(_ table: [Morning], morning: Bool) -> [Finding] {
+        let context = LifeContext.shared
+        guard context.hasCalendar else { return [] }
+        let base = localDay(Date.now.addingTimeInterval(-3 * 3600))
+        let day = morning ? localDay() : addDays(base, 1)
+        let when = morning ? "Today" : "Tomorrow"
+        guard let cal = context.calendar(day), cal.meetings > 0, let b = meetingBaseline(before: day) else { return [] }
+        var out: [Finding] = []
+        let z = b.z(cal.meetingHours)
+        var line = "\(when) has \(Self.hm(cal.meetingHours)) of meetings across \(cal.meetings)"
+        if let start = cal.firstStart { line += ", starting \(Self.clock(Double(start) - 720))" }
+        if cal.backToBack >= 2 { line += ", with \(cal.backToBack) back to back" }
+        if let r = Self.rank(b, cal.meetingHours, noun: "days with meetings") { line += ", \(r)" }
+        out.append(Finding(text: line + ".", weight: max(0.5, z)))
+
+        // Early start against your usual first meeting.
+        let starts = (context.snapshot?.calendar ?? []).filter { $0.day < day }.prefix(60).compactMap { $0.firstStart.map(Double.init) }
+        if let start = cal.firstStart, let sb = Baseline(starts, min: 8), Double(start) <= sb.mean - 60, !morning {
+            out.append(Finding(text: "Your first meeting tomorrow is \(Int(sb.mean - Double(start))) minutes earlier than your usual \(Self.clock(sb.mean - 720)).", weight: 1.4))
+        }
+
+        // What a heavy day does to the next morning, in your data.
+        let heavyCut = b.values.sorted()[Int(Double(b.n) * 0.75)]
+        if cal.meetingHours >= heavyCut {
+            let next = Dictionary(uniqueKeysWithValues: table.map { ($0.day, $0) })
+            var heavy: [Double] = [], light: [Double] = []
+            for d in context.snapshot?.calendar ?? [] where d.day < day {
+                guard let hrv = next[addDays(d.day, 1)]?.hrv else { continue }
+                if d.meetingHours >= heavyCut { heavy.append(hrv) } else { light.append(hrv) }
+            }
+            if heavy.count >= 4, light.count >= 4, let a = Self.mean(heavy), let c = Self.mean(light) {
+                let change = Self.pct(a, vs: c)
+                if abs(change) >= 3 {
+                    out.append(Finding(text: "After your heavy meeting days (\(Self.hm(heavyCut)) or more, \(heavy.count) of them), next-morning HRV runs \(abs(change))% \(change < 0 ? "lower" : "higher") than after lighter days.",
+                                       weight: 1.6))
+                }
+            }
+        }
+        return out
+    }
+
+    /// Nights you order delivery against nights you don't: sleep score and how long you sleep.
+    private func deliveryEffect(_ table: [Morning]) -> String? {
+        let context = LifeContext.shared
+        var with: [Morning] = [], without: [Morning] = []
+        for m in table {
+            guard let night = context.spending(addDays(m.day, -1)) else { without.append(m); continue }
+            if night.delivery > 0 { with.append(m) } else { without.append(m) }
+        }
+        if let a = Self.mean(with.compactMap(\.score)), let b = Self.mean(without.compactMap(\.score)),
+           with.compactMap(\.score).count >= 4, without.compactMap(\.score).count >= 4, abs(a - b) >= 2 {
+            return "In your data, nights you order delivery score \(Int(abs(a - b).rounded())) sleep points \(a < b ? "lower" : "higher") than other nights (\(with.count) vs \(without.count))."
+        }
+        if let a = Self.mean(with.compactMap(\.sleep)), let b = Self.mean(without.compactMap(\.sleep)),
+           with.compactMap(\.sleep).count >= 4, abs(a - b) >= 0.25 {
+            return "In your data, nights you order delivery give \(Self.hm(abs(a - b))) \(a < b ? "less" : "more") sleep than other nights."
+        }
+        return nil
     }
 
     private static func list(_ parts: [String]) -> String {
@@ -328,6 +402,11 @@ struct HealthStats {
         }
         if !todays.isEmpty, let effect = trainingEffect(table) {
             out.append(Finding(text: effect.replacingOccurrences(of: ", and yesterday was a training day.", with: ", so expect that tomorrow."), weight: 1))
+        }
+
+        out += calendarToday(table, morning: false)
+        if (LifeContext.shared.spending(today)?.delivery ?? 0) > 0, let delivery = deliveryEffect(table) {
+            out.append(Finding(text: "You ordered delivery tonight. " + delivery, weight: 1.2))
         }
 
         // Time at work against your other workdays.

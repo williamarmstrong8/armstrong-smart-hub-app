@@ -41,6 +41,7 @@ final class BackgroundRefresh {
                 HealthBriefing.shared.api = session.api
                 CheckinReminders.shared.api = session.api
                 AlcoholStore.shared.api = session.api
+                LifeContext.shared.api = session.api
             }
         }
         guard let api, !running else { return }
@@ -49,6 +50,8 @@ final class BackgroundRefresh {
         AlcoholStore.shared.sync()
         await CheckinStore.shared.load(api: api)
         // The briefing loads the Fitness snapshot, which also goes on to Health and the widgets.
+        // Calendar load and spending for the stats, and "Drinks at …?" for likely bar charges.
+        await LifeContext.shared.load()
         await HealthBriefing.shared.runIfDue()
         // After the wake-up sync: today's workout onto the watch.
         await TodayWorkout.shared.runIfDue(fitness: HealthBriefing.shared.fitnessStore)

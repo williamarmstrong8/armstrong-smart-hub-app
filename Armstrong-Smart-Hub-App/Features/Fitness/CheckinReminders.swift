@@ -110,6 +110,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             ], intentIdentifiers: []),
             PlaceMonitor.notificationCategory,
             HealthBriefing.notificationCategory,
+            LifeContext.notificationCategory,
         ]).union(options))
     }
 
@@ -279,6 +280,11 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             await PlaceMonitor.shared.handle(category: category, action: action)
             return
         }
+        if category.hasPrefix(LifeContext.categoryPrefix) {
+            let info = content.userInfo
+            await LifeContext.shared.answer(action: action, userInfo: info)
+            return
+        }
         if category == HealthBriefing.category {
             await Self.route(.fitness, card: .briefing)
             return
@@ -316,6 +322,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
         let category = notification.request.content.categoryIdentifier
         let shown = [Self.category, Self.guessCategory, HealthBriefing.category, "jarvis"].contains(category)
             || category.hasPrefix(PlaceMonitor.categoryPrefix) || category.hasPrefix(Self.optionsPrefix)
+            || category.hasPrefix(LifeContext.categoryPrefix)
         return shown ? [.banner, .sound] : []
     }
 

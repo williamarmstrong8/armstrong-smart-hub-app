@@ -188,6 +188,11 @@ private struct Signals {
         if answered?.tags.contains("run_down") == true || likely.contains(where: { $0.state == "run_down" && $0.probability >= 0.5 }) {
             score -= 1; reasons.append("You're likely run down.")
         }
+        // A packed calendar leaves less to recover with.
+        if let cal = LifeContext.shared.calendar(today), cal.meetingHours >= 6 {
+            score -= 1
+            reasons.append(String(format: "Today has %.1f hours of meetings.", cal.meetingHours))
+        }
         // Recent load: three days running, or two easy days in a row.
         let calendar = Calendar.current
         let trained = Set(fitness.activities.compactMap { a -> String? in

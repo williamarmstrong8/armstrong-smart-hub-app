@@ -49,6 +49,7 @@ struct HubApp: App {
                     // The morning and night health briefings, and the work done while the app is closed.
                     HealthBriefing.shared.api = signedIn ? session.api : nil
                     BackgroundRefresh.shared.api = signedIn ? session.api : nil
+                    LifeContext.shared.api = signedIn ? session.api : nil
                     // The 8 am and 6 pm check-ins, from the last page the phone has.
                     if signedIn { Task { await CheckinReminders.shared.schedule(CheckinStore.shared) } }
                 }
