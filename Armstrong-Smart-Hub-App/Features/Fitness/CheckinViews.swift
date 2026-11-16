@@ -24,16 +24,20 @@ struct MorningCheckin: View {
     private static let swap = AnyTransition.opacity.combined(with: .scale(scale: 0.97, anchor: .top))
 
     var body: some View {
-        BrickCard {
-            VStack(alignment: .leading, spacing: 20) {
-                if let feeling, !changing {
-                    answered(feeling).transition(Self.swap)
-                } else {
-                    asking.transition(Self.swap)
+        // Once checked in the card goes away; it stays only for a past day still to confirm.
+        Group {
+            if feeling == nil || changing || !store.suggestions.isEmpty {
+                BrickCard {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if feeling == nil || changing {
+                            asking.transition(Self.swap)
+                        }
+                        if let stretch = store.suggestions.first, !changing, feeling != nil {
+                            past(stretch)
+                        }
+                    }
                 }
-                if let stretch = store.suggestions.first, !changing, feeling != nil {
-                    past(stretch)
-                }
+                .transition(.opacity)
             }
         }
         .onChange(of: store.entry(for: day)) { _, entry in
@@ -70,20 +74,6 @@ struct MorningCheckin: View {
                     .contentShape(.rect)
             }
             .frame(maxWidth: .infinity)
-        }
-    }
-
-    /// The answer as one line, in its color. Tap Change to pick again.
-    private func answered(_ feeling: String) -> some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Feeling.answer(feeling)).font(.system(size: 22, weight: .regular)).foregroundStyle(Feeling.tint(feeling))
-                Text("Checked in").font(.subheadline).foregroundStyle(BrickLook.soft)
-            }
-            Spacer(minLength: 8)
-            Button("Change") { withAnimation(.snappy) { changing = true } }
-                .font(.footnote).foregroundStyle(BrickLook.soft)
-                .buttonStyle(.plain)
         }
     }
 
