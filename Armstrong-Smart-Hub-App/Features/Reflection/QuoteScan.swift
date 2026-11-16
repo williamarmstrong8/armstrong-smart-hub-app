@@ -233,9 +233,16 @@ nonisolated struct ScanParagraph: Identifiable, Hashable, Sendable {
 nonisolated private enum QuoteOCR {
     struct Line {
         var text: String
-        var rect: CGRect // pixels, origin top-left
+        /// Where the line sits once the page is turned level, in pixels (origin top-left). All the
+        /// spacing, indent and size checks use this, since a tilted line's upright bounding box is
+        /// far taller than its text.
+        var rect: CGRect
+        /// Where it sits on the photo as taken, in pixels (origin top-left), for drawing.
+        var box: CGRect
         /// Tilt of the line's baseline in degrees; text on a facing page or a screen behind leans differently.
         var angle: CGFloat = 0
+        /// The four corners on the photo (top-left, top-right, bottom-right, bottom-left), pixels, origin top-left.
+        var corners: [CGPoint] = []
     }
 
     /// Reads the page and groups its lines into paragraphs by spacing, indents, short last lines
@@ -254,16 +261,38 @@ nonisolated private enum QuoteOCR {
             let text = top.string.trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty else { return nil }
             let b = obs.boundingBox
-            let dx = (obs.topRight.x - obs.topLeft.x) * w
-            let dy = (obs.topRight.y - obs.topLeft.y) * h
-            return Line(text: text, rect: CGRect(x: b.minX * w, y: (1 - b.maxY) * h, width: b.width * w, height: b.height * h),
-                        angle: atan2(dy, dx) * 180 / .pi)
+            let corners = [obs.topLeft, obs.topRight, obs.bottomRight, obs.bottomLeft]
+                .map { CGPoint(x: $0.x * w, y: (1 - $0.y) * h) }
+            let box = CGRect(x: b.minX * w, y: (1 - b.maxY) * h, width: b.width * w, height: b.height * h)
+            return Line(text: text, rect: box, box: box, angle: lineAngle(corners), corners: corners)
         }
         return paragraphs(from: raw, width: w, height: h)
     }
 
+    /// Baseline tilt in degrees, image y pointing down (positive leans down to the right).
+    static func lineAngle(_ c: [CGPoint]) -> CGFloat {
+        guard c.count == 4 else { return 0 }
+        return atan2(c[1].y - c[0].y, c[1].x - c[0].x) * 180 / .pi
+    }
+
+    /// Turns every line level by the page's tilt (the median of its long lines), so a photo taken
+    /// at an angle measures like a straight one.
+    static func levelled(_ lines: [Line]) -> [Line] {
+        let long = lines.filter { $0.text.count >= 20 }
+        let tilt = median((long.count >= 3 ? long : lines).map(\.angle)) * .pi / 180
+        let (cs, sn) = (cos(-tilt), sin(-tilt))
+        return lines.map { line in
+            guard line.corners.count == 4 else { return line }
+            let turned = line.corners.map { CGPoint(x: $0.x * cs - $0.y * sn, y: $0.x * sn + $0.y * cs) }
+            let xs = turned.map(\.x), ys = turned.map(\.y)
+            var out = line
+            out.rect = CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+            return out
+        }
+    }
+
     static func paragraphs(from raw: [Line], width w: CGFloat, height h: CGFloat) -> [ScanParagraph] {
-        let lines = mergeRows(mainColumn(raw)).filter { !isPageNoise($0.text) }
+        let lines = mergeRows(mainColumn(levelled(raw))).filter { !isPageNoise($0.text) }
         guard !lines.isEmpty else { return [] }
 
         let lineHeight = median(lines.map(\.rect.height))
@@ -280,6 +309,14 @@ nonisolated private enum QuoteOCR {
         func leftMargin(_ i: Int) -> CGFloat { median(neighbours(i).map(\.rect.minX)) }
         func rightMargin(_ i: Int) -> CGFloat { percentile(neighbours(i).map(\.rect.maxX), 0.75) }
 
+        func isHeading(_ i: Int) -> Bool {
+            let line = lines[i]
+            let letters = line.text.filter(\.isLetter)
+            if letters.count >= 3, letters.allSatisfy(\.isUppercase) { return true }
+            return line.rect.minX - leftMargin(i) > 1.5 * lineHeight
+                && line.rect.maxX < rightMargin(i) - 1.5 * lineHeight
+        }
+
         var groups: [[Line]] = []
         for (i, line) in lines.enumerated() {
             guard i > 0, !groups.isEmpty else { groups.append([line]); continue }
@@ -291,7 +328,9 @@ nonisolated private enum QuoteOCR {
             let ender = prev.text.last.map { ".!?\"”’:)".contains($0) } ?? false
             let shortEnd = ender && prev.rect.maxX < rightMargin(i - 1) - 2.5 * lineHeight
             let sizeChange = abs(line.rect.height - prev.rect.height) > 0.45 * lineHeight
-            if bigGap || indented || shortEnd || sizeChange {
+            // A heading (all capitals, or short and clear of both margins) stands on its own.
+            let heading = isHeading(i) || isHeading(i - 1)
+            if bigGap || indented || shortEnd || sizeChange || heading {
                 groups.append([line])
             } else {
                 groups[groups.count - 1].append(line)
@@ -301,7 +340,7 @@ nonisolated private enum QuoteOCR {
         return groups.compactMap { group -> (String, CGRect)? in
                 let text = join(group.map(\.text))
                 guard text.count > 3 else { return nil }
-                let r = group.dropFirst().reduce(group[0].rect) { $0.union($1.rect) }
+                let r = group.dropFirst().reduce(group[0].box) { $0.union($1.box) }
                 return (text, CGRect(x: r.minX / w, y: r.minY / h, width: r.width / w, height: r.height / h))
             }
             .enumerated()
@@ -357,7 +396,8 @@ nonisolated private enum QuoteOCR {
                 let (a, b) = line.rect.minX < last.rect.minX ? (line, last) : (last, line)
                 let apart = b.rect.minX - a.rect.maxX
                 if apart < 3 * max(a.rect.height, b.rect.height) {
-                    rows[rows.count - 1] = Line(text: a.text + " " + b.text, rect: a.rect.union(b.rect), angle: a.angle)
+                    rows[rows.count - 1] = Line(text: a.text + " " + b.text, rect: a.rect.union(b.rect),
+                                                box: a.box.union(b.box), angle: a.angle, corners: a.corners)
                     continue
                 }
             }
