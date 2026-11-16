@@ -149,7 +149,9 @@ struct WorkoutDetail: Codable, Identifiable {
 
     var start: Date? { ISO.parse(startedAt) }
     var end: Date? { ISO.parse(endedAt) }
-    var points: [(Double, Double)] { heartRate.compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil } }
+    var points: [(Double, Double)] {
+        heartRate.compactMap { $0.count == 2 && HeartRateReading.isPlausible($0[1]) ? ($0[0], $0[1]) : nil }
+    }
 }
 
 // MARK: The workout being logged (kept on the phone until it's uploaded)
@@ -309,7 +311,7 @@ struct WorkoutUpload: Encodable {
         }
         let joined = notes.filter { !$0.isEmpty }.joined(separator: "\n")
         self.notes = joined.isEmpty ? nil : String(joined.prefix(4000))
-        heartRate = workout.heartRate
+        heartRate = workout.heartRate.filter { $0.count == 2 && HeartRateReading.isPlausible($0[1]) }
         exercises = workout.exercises.compactMap { exercise in
             let sets = exercise.sets.filter { $0.completedAt != nil }
             guard !sets.isEmpty else { return nil }

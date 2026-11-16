@@ -183,7 +183,9 @@ struct FitnessActivityDetail: Decodable {
     }
 
     /// (seconds from start, bpm)
-    var points: [(Double, Double)] { heartRate.compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil } }
+    var points: [(Double, Double)] {
+        heartRate.compactMap { $0.count == 2 && HeartRateReading.isPlausible($0[1]) ? ($0[0], $0[1]) : nil }
+    }
 }
 
 struct SleepNight: Decodable, Identifiable {

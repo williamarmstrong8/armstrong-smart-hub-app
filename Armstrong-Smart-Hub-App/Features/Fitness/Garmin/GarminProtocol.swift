@@ -429,11 +429,19 @@ struct HeartRateReading: Equatable {
     var bpm: Int
     var restingBPM: Int?
 
-    /// `[padding, bpm, resting]`; resting is 0 until the watch knows it.
+    /// What a human heart can read; anything else is the watch saying it has nothing.
+    static let plausible = 25...240
+
+    static func isPlausible(_ bpm: Int) -> Bool { plausible.contains(bpm) }
+    static func isPlausible(_ bpm: Double) -> Bool { isPlausible(Int(bpm.rounded())) }
+
+    /// `[padding, bpm, resting]`; resting is 0 until the watch knows it. Off the
+    /// wrist or between optical locks the watch sends 0 or 0xFF (255) as the
+    /// bpm, which is no reading at all, not a heart rate.
     init?(_ payload: [UInt8]) {
-        guard payload.count >= 3 else { return nil }
+        guard payload.count >= 3, Self.isPlausible(Int(payload[1])) else { return nil }
         bpm = Int(payload[1])
-        restingBPM = payload[2] > 0 ? Int(payload[2]) : nil
+        restingBPM = Self.isPlausible(Int(payload[2])) ? Int(payload[2]) : nil
     }
 }
 

@@ -475,7 +475,7 @@ final class WorkoutStore {
 
     /// Keeps a live reading: every change, and at least every 5 s while steady.
     func record(bpm: Int, at date: Date) {
-        guard var workout = active, workout.endedAt == nil else { return }
+        guard HeartRateReading.isPlausible(bpm), var workout = active, workout.endedAt == nil else { return }
         let seconds = date.timeIntervalSince(workout.startedAt)
         guard seconds >= 0 else { return }
         if let last = workout.heartRate.last, last.count == 2 {
@@ -632,7 +632,7 @@ final class WorkoutStore {
     static func localSummary(_ workout: ActiveWorkout) -> WorkoutSummary {
         let upload = WorkoutUpload(workout)
         let sets = upload.exercises.flatMap(\.sets)
-        let bpm = workout.heartRate.compactMap { $0.count == 2 ? Int($0[1]) : nil }
+        let bpm = workout.heartRate.compactMap { $0.count == 2 ? Int($0[1]) : nil }.filter(HeartRateReading.isPlausible)
         return WorkoutSummary(id: upload.id, name: upload.name, startedAt: upload.startedAt, endedAt: upload.endedAt,
                               exercises: upload.exercises.map(\.name),
                               sets: sets.filter { $0.kind != SetKind.warmup.rawValue }.count,

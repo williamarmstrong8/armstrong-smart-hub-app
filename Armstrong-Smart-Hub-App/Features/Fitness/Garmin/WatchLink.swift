@@ -57,6 +57,8 @@ final class WatchLink: NSObject {
     var api: APIClient?
     private var lastLivePost = Date.distantPast
     private static let livePostEvery: TimeInterval = 5 * 60
+    /// How long a dropped heart rate keeps showing its last good number.
+    private static let heartRateHold: TimeInterval = 10
     /// DIAGNOSTIC: raw payloads logged per live service, so the stress layout can be checked.
     private var rawLogged: [UInt16: Int] = [:]
     /// Protocol events for the diagnostics list: message names and sizes, never contents.
@@ -513,7 +515,10 @@ final class WatchLink: NSObject {
                 if let reading = HeartRateReading(payload) {
                     heartRate = reading
                     heartRateAt = .now
-                    if reading.bpm > 0 { keep(.heartRate, reading.bpm) }
+                    keep(.heartRate, reading.bpm)
+                } else if let at = heartRateAt, Date.now.timeIntervalSince(at) > Self.heartRateHold {
+                    // Off the wrist: a blip keeps the last number, a longer gap shows none.
+                    heartRate = nil
                 }
             case Garmin.Service.realtimeStress.rawValue:
                 logRaw(.realtimeStress, payload)

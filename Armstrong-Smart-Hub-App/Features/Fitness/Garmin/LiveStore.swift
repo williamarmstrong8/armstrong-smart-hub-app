@@ -48,6 +48,7 @@ final class LiveStore {
     // MARK: Recording
 
     func record(_ kind: Kind, _ value: Int, at date: Date = .now) {
+        guard Self.isValid(kind, value) else { return }
         let minute = Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60)
         let sample = Sample(kind: kind, at: minute, value: value)
         let key = Self.key(sample)
@@ -99,7 +100,7 @@ final class LiveStore {
 
     /// Readings not yet acknowledged by the hub, oldest first.
     func pending(limit: Int) -> [Sample] {
-        Array(unsent.compactMap { samples[$0] }.sorted { $0.at < $1.at }.prefix(limit))
+        Array(unsent.compactMap { samples[$0] }.filter(Self.isValid).sorted { $0.at < $1.at }.prefix(limit))
     }
 
     /// The hub has these. A reading that changed since it was taken stays unsent.
@@ -113,16 +114,23 @@ final class LiveStore {
 
     // MARK: Reading
 
+    /// Older builds kept the watch's 255 "no reading" as a heart rate; those never count.
+    private static func isValid(_ kind: Kind, _ value: Int) -> Bool {
+        kind != .heartRate || HeartRateReading.isPlausible(value)
+    }
+
+    private static func isValid(_ sample: Sample) -> Bool { isValid(sample.kind, sample.value) }
+
     /// Readings of one kind since `date`, oldest first.
     func series(_ kind: Kind, since date: Date = .distantPast) -> [Sample] {
         _ = revision
-        return samples.values.filter { $0.kind == kind && $0.at >= date }.sorted { $0.at < $1.at }
+        return samples.values.filter { $0.kind == kind && $0.at >= date && Self.isValid($0) }.sorted { $0.at < $1.at }
     }
 
     /// The newest reading of a kind, if it's under `maxAge` old.
     func latest(_ kind: Kind, maxAge: TimeInterval = 600) -> Sample? {
         _ = revision
-        return samples.values.filter { $0.kind == kind }.max { $0.at < $1.at }
+        return samples.values.filter { $0.kind == kind && Self.isValid($0) }.max { $0.at < $1.at }
             .flatMap { Date.now.timeIntervalSince($0.at) < maxAge ? $0 : nil }
     }
 }
