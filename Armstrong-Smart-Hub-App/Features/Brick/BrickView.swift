@@ -186,7 +186,7 @@ private struct BrickSheet: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, HubLayout.sectionGap)
             }
-            if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.topInset) }
+            if !store.activeLockdowns.isEmpty { lockdownLine.padding(.top, HubLayout.topInset + 10) }
             // The stats sit centred in the room between the device and the button.
             Spacer(minLength: 8)
             // Smaller when a line under the button or a lockdown chip needs the room; gone when both do.
