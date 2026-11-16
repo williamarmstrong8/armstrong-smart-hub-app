@@ -29,6 +29,7 @@ struct SettingsView: View {
                         Text("Opens the hub's Calendar page in Safari, where Google is linked. Reconnect to let Jarvis add events.")
                     }
                 }
+                PhoneFeaturesSettings()
                 GlassSection {
                     Button("Sign out", role: .destructive) {
                         Task {

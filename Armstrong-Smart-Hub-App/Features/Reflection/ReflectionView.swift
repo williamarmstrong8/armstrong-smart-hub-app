@@ -1,4 +1,5 @@
 import SwiftUI
+import JournalingSuggestions
 import LocalAuthentication
 
 private let durations = [1, 3, 5, 10]

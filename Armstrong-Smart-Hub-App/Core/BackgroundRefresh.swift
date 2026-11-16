@@ -33,6 +33,16 @@ final class BackgroundRefresh {
     /// One pass. Safe to call whenever the app gets time (refresh, watch sync, opening).
     func run() async {
         defer { schedule() }
+        // A background launch may have no window, so the app's sign-in hand-off hasn't run: read the saved session.
+        if api == nil, !Demo.isOn {
+            let session = AppSession()
+            if session.isSignedIn {
+                api = session.api
+                HealthBriefing.shared.api = session.api
+                CheckinReminders.shared.api = session.api
+                AlcoholStore.shared.api = session.api
+            }
+        }
         guard let api, !running else { return }
         running = true
         defer { running = false }

@@ -94,7 +94,7 @@ final class HealthSync {
         let fresh = samples.filter { written[$0.id] != $0.fingerprint }
         do {
             if !fresh.isEmpty {
-                try await store.save(fresh.map(\.sample))
+                try await store.save(fresh.map { $0.sample })
                 for s in fresh { written[s.id] = s.fingerprint }
             }
             try await removeDeletedDrinks(keeping: Set(drinks.map { Self.drinkID($0.id) }))

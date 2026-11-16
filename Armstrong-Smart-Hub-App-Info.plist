@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.paularmstrong.ArmstrongSmartHubApp.refresh</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -22,6 +26,12 @@
 	<string>Rings your wake-up alarm, even when the app is closed or the iPad is on silent.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scans a page from a book so you can save a quote from it.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Lets the hub check what it has already written to Health.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Adds your watch workouts, sleep, HRV, resting heart rate, drinks and check-in moods to Apple Health.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Notices when you arrive at or leave home, work and the gym, so it can offer to start a workout and tell you how your day went. Places stay on this phone.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Saves where you start a workout, so each workout shows the gym or place you trained.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -33,6 +43,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
+		<string>fetch</string>
 	</array>
 	<key>com.apple.developer.nfc.readersession.iso7816.select-identifiers</key>
 	<array>
