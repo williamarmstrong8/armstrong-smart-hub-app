@@ -161,16 +161,21 @@ final class HealthBriefing {
     private func write(_ slot: Slot, facts: [String]) async -> String {
         guard modelAvailable else { return Self.plain(facts) }
         let instructions = """
-        You write a short \(slot == .morning ? "morning" : "end-of-day") health briefing for one person, from their \
-        watch and app data. Two to four short sentences, second person, warm and direct, plain text: no lists, \
-        headings or emoji. Use only the facts given and never invent numbers. Lead with what matters most \
-        \(slot == .morning ? "for today" : "about today"), compare with their usual where a fact says what usual is, \
-        and end with one practical suggestion. No diagnoses or medical advice.
+        You are a sports scientist reading one person's own data back to them \(slot == .morning ? "first thing in the morning" : "at the end of the day"). \
+        Each finding compares them with their own history: standard deviations from their average, how rare a value \
+        is for them, drifts over weeks, and patterns from their past days. Write one paragraph of three to five \
+        sentences, second person, plain and specific. Say what the numbers mean about them: how recovered or \
+        loaded they are, what is unusual for them, and what their own patterns predict. Keep the key numbers \
+        (standard deviations, percentages, counts of days) exactly as given; never invent or round differently. \
+        Findings are ordered by importance, so lead with the first. Finish with one concrete thing to do \
+        \(slot == .morning ? "today" : "tonight") that follows from their own data. No greetings, no generic wellness \
+        advice, no diagnoses, no lists, no emoji, and never use dashes of any kind: join clauses with commas, \
+        colons or full stops.
         """
         do {
             let session = LanguageModelSession(instructions: instructions)
-            let response = try await session.respond(to: "Facts:\n" + facts.map { "- \($0)" }.joined(separator: "\n"))
-            let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let response = try await session.respond(to: "Findings, most important first:\n" + facts.map { "- \($0)" }.joined(separator: "\n"))
+            let text = Self.undash(response.content.trimmingCharacters(in: .whitespacesAndNewlines))
             return text.isEmpty ? Self.plain(facts) : text
         } catch {
             return Self.plain(facts)
@@ -179,7 +184,15 @@ final class HealthBriefing {
 
     /// No model: the first few facts as they are.
     private static func plain(_ facts: [String]) -> String {
-        facts.prefix(4).map { $0.hasSuffix(".") ? $0 : $0 + "." }.joined(separator: " ")
+        undash(facts.prefix(4).map { $0.hasSuffix(".") ? $0 : $0 + "." }.joined(separator: " "))
+    }
+
+    /// No em or en dashes: a range becomes "to", a clause break a comma.
+    static func undash(_ text: String) -> String {
+        var s = text.replacingOccurrences(of: #"(\d)\s*[–—]\s*(\d)"#, with: "$1 to $2", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"\s*[—–]\s*"#, with: ", ", options: .regularExpression)
+        s = s.replacingOccurrences(of: #"\s+-\s+"#, with: ", ", options: .regularExpression)
+        return s.replacingOccurrences(of: ", ,", with: ",").replacingOccurrences(of: ",,", with: ",")
     }
 
     private func notify(_ slot: Slot, _ text: String, after seconds: TimeInterval = 0) async {
@@ -199,8 +212,13 @@ final class HealthBriefing {
 
     // MARK: Facts
 
+    /// The findings that matter most today, measured against your own history
+    /// (HealthStats); the plain readings only while there's too little history.
     private func facts(_ slot: Slot) -> [String] {
-        slot == .morning ? morningFacts() : nightFacts()
+        let stats = HealthStats(fitness: fitness, alcohol: .shared, checkins: .shared, places: .shared)
+        let findings = (slot == .morning ? stats.morning() : stats.night()).prefix(6).map(\.text)
+        if !findings.isEmpty { return Array(findings) }
+        return slot == .morning ? morningFacts() : nightFacts()
     }
 
     private func morningFacts() -> [String] {
