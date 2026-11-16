@@ -1,9 +1,8 @@
 import AuthenticationServices
 import SwiftUI
 
-/// The next thing on the calendar as one Liquid Glass card in Home's hero: the calendar's
-/// color, how soon, the name, and when and where. Holds its height while the agenda loads,
-/// so the hero never jumps.
+/// The next thing on the calendar as plain text under Home's greeting: the name, when, and
+/// where. Holds its height while the agenda loads, so the hero never jumps.
 struct NextEventCard: View {
     let agenda: AgendaStore
     @Environment(\.openURL) private var openURL
@@ -36,7 +35,7 @@ struct NextEventCard: View {
     /// The name, when (how soon, then start to end), and where, all in full: lines wrap
     /// rather than cut off.
     private func card(_ event: CalendarEvent, start: Date, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 4) {
             Text(event.title)
                 .font(.title3.weight(.medium))
                 .foregroundStyle(HubDesign.ink)
@@ -50,9 +49,6 @@ struct NextEventCard: View {
                     .foregroundStyle(BrickLook.soft)
             }
         }
-        .multilineTextAlignment(.leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(Shell())
         .accessibilityElement(children: .combine)
     }
@@ -78,20 +74,17 @@ struct NextEventCard: View {
         Text("Nothing else on your calendar")
             .font(.title3)
             .foregroundStyle(BrickLook.soft)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .modifier(Shell(interactive: false))
+            .modifier(Shell())
     }
 
-    /// The card's glass, shared so every state is the same height.
+    /// Plain text centred under the greeting, no glass; every state keeps the same minimum height.
     private struct Shell: ViewModifier {
-        var interactive = true
         func body(content: Content) -> some View {
             content
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity, minHeight: NextEventCard.height, alignment: .leading)
-                .glassGlare(interactive ? .regular.interactive() : .regular, in: .rect(cornerRadius: HubLayout.cardRadius))
-                .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: NextEventCard.height)
+                .contentShape(.rect)
         }
     }
 
@@ -100,17 +93,21 @@ struct NextEventCard: View {
         Button {
             Task { await connectGoogle() }
         } label: {
-            HStack(spacing: 12) {
-                Text(agenda.connectError ?? (first ? "Connect Google Calendar" : "Reconnect Google Calendar"))
+            VStack(spacing: 10) {
+                Text(agenda.connectError ?? (first ? "Google Calendar isn't connected" : "Google Calendar needs reconnecting"))
                     .font(.title3)
-                    .foregroundStyle(agenda.connectError == nil ? HubDesign.ink : BrickLook.soft)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                if connecting {
-                    ProgressView()
-                } else {
-                    Image(systemName: "arrow.clockwise").font(.body.weight(.semibold)).foregroundStyle(BrickLook.soft)
+                    .foregroundStyle(BrickLook.soft)
+                Group {
+                    if connecting {
+                        ProgressView()
+                    } else {
+                        Text(first ? "Connect Google" : "Reconnect Google")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(HubDesign.ink)
+                    }
                 }
+                .padding(.horizontal, 16).frame(height: 40)
+                .glassGlare(.regular.tint(HubDesign.action.opacity(0.35)).interactive(), in: .capsule)
             }
             .modifier(Shell())
         }
