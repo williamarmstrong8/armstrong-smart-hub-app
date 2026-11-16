@@ -503,18 +503,14 @@ struct BookDetailView: View {
             }
             let facts = details(book)
             if !facts.isEmpty {
-                BrickCard {
-                    VStack(spacing: 0) {
-                        ForEach(Array(facts.enumerated()), id: \.offset) { i, fact in
-                            if i > 0 { Divider().overlay(HubDesign.separator) }
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(fact.0).foregroundStyle(HubDesign.secondary)
-                                Spacer(minLength: 16)
-                                Text(fact.1).multilineTextAlignment(.trailing)
-                            }
-                            .font(.subheadline)
-                            .padding(.vertical, 10)
+                GlassSection {
+                    ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(fact.0).foregroundStyle(HubDesign.secondary)
+                            Spacer(minLength: 16)
+                            Text(fact.1).multilineTextAlignment(.trailing)
                         }
+                        .font(.subheadline)
                     }
                 }
             }
@@ -598,33 +594,35 @@ struct BookDetailView: View {
                 }
                 .padding(.horizontal, 4)
             } else {
-                BrickCard {
-                    VStack(spacing: 0) {
-                        ForEach(Array(chapters.enumerated()), id: \.element.id) { i, chapter in
-                            if i > 0 { Divider().overlay(HubDesign.separator) }
-                            Button { openChapterID = chapter.id } label: {
-                                HStack(spacing: 12) {
-                                    Text(chapter.title)
-                                        .font(.body)
-                                        .multilineTextAlignment(.leading)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    if !chapter.notes.isEmpty {
-                                        Image(systemName: "note.text").foregroundStyle(HubDesign.action)
-                                            .accessibilityLabel("Has notes")
-                                    }
-                                    Image(systemName: "chevron.right").font(.footnote).foregroundStyle(HubDesign.secondary)
+                let counts = Dictionary(grouping: store.quotes(in: bookID).compactMap(\.chapterID)) { $0 }.mapValues(\.count)
+                GlassSection {
+                    ForEach(chapters) { chapter in
+                        Button { openChapterID = chapter.id } label: {
+                            HStack(spacing: 12) {
+                                Text(chapter.title)
+                                    .font(.body)
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if !chapter.notes.isEmpty {
+                                    Image(systemName: "note.text").foregroundStyle(HubDesign.action)
+                                        .accessibilityLabel("Has notes")
                                 }
-                                .foregroundStyle(HubDesign.ink)
-                                .padding(.vertical, 10)
-                                .frame(minHeight: HubLayout.minHitTarget)
-                                .contentShape(.rect)
+                                if let n = counts[chapter.id] {
+                                    Label("\(n)", systemImage: "quote.opening")
+                                        .font(.footnote.weight(.medium)).monospacedDigit()
+                                        .foregroundStyle(HubDesign.secondary)
+                                        .accessibilityLabel(n == 1 ? "1 quote" : "\(n) quotes")
+                                }
+                                Image(systemName: "chevron.right").font(.footnote).foregroundStyle(HubDesign.secondary)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Opens notes for this chapter")
-                            .contextMenu {
-                                Button("Delete chapter", systemImage: "trash", role: .destructive) {
-                                    store.deleteChapter(bookID, chapter: chapter.id)
-                                }
+                            .foregroundStyle(HubDesign.ink)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens notes and quotes for this chapter")
+                        .contextMenu {
+                            Button("Delete chapter", systemImage: "trash", role: .destructive) {
+                                store.deleteChapter(bookID, chapter: chapter.id)
                             }
                         }
                     }
@@ -660,7 +658,7 @@ struct BookDetailView: View {
     }
 
     private func quotesSection(_ book: Book) -> some View {
-        let quotes = store.quotes(in: book.id)
+        let groups = store.quotesByChapter(in: book.id)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Quotes").font(.title2.weight(.regular)).accessibilityAddTraits(.isHeader)
@@ -687,30 +685,25 @@ struct BookDetailView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Scan a quote from this book")
             }
-            if quotes.isEmpty {
+            if groups.isEmpty {
                 Text("Scan a page or type a quote to keep it here.")
                     .font(.subheadline).foregroundStyle(HubDesign.secondary)
                     .padding(.horizontal, 4)
             } else {
-                ForEach(quotes) { q in
-                    Button { editingQuote = q } label: {
-                        BrickCard {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("\u{201C}\(q.text)\u{201D}").font(.title3).multilineTextAlignment(.leading)
-                                if q.note.isEmpty {
-                                    Label("Add a note", systemImage: "square.and.pencil")
-                                        .font(.footnote).foregroundStyle(HubDesign.action)
-                                } else {
-                                    Text(q.note).font(.subheadline).foregroundStyle(HubDesign.secondary)
-                                        .multilineTextAlignment(.leading)
-                                }
-                            }
+                ForEach(groups) { group in
+                    GlassSection {
+                        ForEach(group.quotes) { q in
+                            QuoteRow(quote: q) { editingQuote = q }
                         }
-                        .foregroundStyle(HubDesign.ink)
-                        .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
+                    } header: {
+                        if let chapter = group.chapter {
+                            Text(chapter.title).lineLimit(1)
+                        } else if !(book.chapters ?? []).isEmpty {
+                            Text("No chapter")
+                        }
+                    } footer: {
+                        EmptyView()
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens the quote to add a note")
                 }
             }
         }
@@ -731,6 +724,7 @@ private struct ChapterNotesView: View {
     let chapterID: UUID
 
     @State private var notes: String
+    @State private var editingQuote: ReflectionQuote?
     @FocusState private var focused: Bool
 
     init(store: ReflectionStore, bookID: UUID, chapterID: UUID) {
@@ -766,9 +760,22 @@ private struct ChapterNotesView: View {
                             }
                         }
                 }
+                let quotes = store.quotesByChapter(in: bookID).first { $0.chapter?.id == chapterID }?.quotes ?? []
+                if !quotes.isEmpty {
+                    GlassSection("Quotes") {
+                        ForEach(quotes) { q in
+                            QuoteRow(quote: q) { editingQuote = q }
+                        }
+                    }
+                    .padding(.top, 8)
+                }
             }
             .padding(.horizontal, HubLayout.gutter)
             .padding(.vertical, 12)
+        }
+        .sheet(item: $editingQuote) { q in
+            QuoteNoteSheet(quote: q, store: store)
+                .presentationDetents([.large])
         }
         .navigationTitle("Chapter notes")
         .navigationBarTitleDisplayMode(.inline)
@@ -785,40 +792,110 @@ private struct ChapterNotesView: View {
     }
 }
 
-/// A saved quote with its note, which can be edited or cleared; the quote can also be deleted.
+/// One saved quote as a row in a glass section: the quote, then its page and note.
+private struct QuoteRow: View {
+    let quote: ReflectionQuote
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("\u{201C}\(quote.text)\u{201D}")
+                    .font(.system(.body, design: .serif))
+                    .multilineTextAlignment(.leading)
+                if let page = quote.page {
+                    Text("Page \(page)").font(.caption.weight(.medium)).monospacedDigit()
+                        .foregroundStyle(HubDesign.secondary)
+                }
+                if !quote.note.isEmpty {
+                    Text(quote.note).font(.subheadline).foregroundStyle(HubDesign.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(HubDesign.ink)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the quote to edit its note, page and chapter")
+    }
+}
+
+/// The chapter and page rows for a quote, for use inside a `GlassSection`. The chapter row only
+/// shows when the book has chapters.
+@ViewBuilder
+func quotePlaceRows(chapters: [BookChapter], chapterID: Binding<UUID?>, page: Binding<String>) -> some View {
+    if !chapters.isEmpty {
+        HStack(spacing: 12) {
+            Text("Chapter")
+            Spacer(minLength: 12)
+            Picker("Chapter", selection: chapterID) {
+                Text("No chapter").tag(UUID?.none)
+                ForEach(chapters) { Text($0.title).tag(Optional($0.id)) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+        }
+    }
+    HStack(spacing: 12) {
+        Text("Page")
+        Spacer(minLength: 12)
+        TextField("Optional", text: page)
+            .keyboardType(.numberPad)
+            .multilineTextAlignment(.trailing)
+            .monospacedDigit()
+            .frame(maxWidth: 140)
+    }
+}
+
+/// A typed page number, or nil when blank or not a positive number.
+func quotePage(_ text: String) -> Int? {
+    Int(text.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0 > 0 ? $0 : nil }
+}
+
+/// A saved quote: its note, page and chapter can be edited, and the quote deleted.
 private struct QuoteNoteSheet: View {
     let quote: ReflectionQuote
     let store: ReflectionStore
 
     @Environment(\.dismiss) private var dismiss
     @State private var note: String
+    @State private var page: String
+    @State private var chapterID: UUID?
     @State private var confirmDelete = false
-    @FocusState private var focused: Bool
 
     init(quote: ReflectionQuote, store: ReflectionStore) {
         self.quote = quote
         self.store = store
         _note = State(initialValue: quote.note)
+        _page = State(initialValue: quote.page.map(String.init) ?? "")
+        let chapters = quote.bookID.flatMap { store.book($0)?.chapters } ?? []
+        _chapterID = State(initialValue: chapters.contains { $0.id == quote.chapterID } ? quote.chapterID : nil)
     }
+
+    private var chapters: [BookChapter] { quote.bookID.flatMap { store.book($0)?.chapters } ?? [] }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("\u{201C}\(quote.text)\u{201D}").font(.title2)
-                    Text("Your note").font(.headline)
-                    TextEditor(text: $note)
-                        .scrollContentBackground(.hidden)
-                        .focused($focused)
-                        .frame(minHeight: 160)
-                        .padding(8)
-                        .background(HubDesign.track.opacity(0.5), in: .rect(cornerRadius: HubLayout.controlRadius))
-                    Button("Delete quote", role: .destructive) { confirmDelete = true }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(HubDesign.danger)
-                        .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+            GlassForm {
+                Text("\u{201C}\(quote.text)\u{201D}")
+                    .font(.system(.title3, design: .serif))
+                    .lineSpacing(3)
+                    .padding(.horizontal, 8)
+                if quote.bookID != nil {
+                    GlassSection("Where it's from") {
+                        quotePlaceRows(chapters: chapters, chapterID: $chapterID, page: $page)
+                    }
                 }
-                .padding(HubLayout.gutter)
+                GlassSection("Your note") {
+                    TextField("Add a note", text: $note, axis: .vertical)
+                        .lineLimit(3...12)
+                }
+                Button("Delete quote", role: .destructive) { confirmDelete = true }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(HubDesign.danger)
+                    .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Quote")
@@ -826,13 +903,15 @@ private struct QuoteNoteSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { store.setQuoteNote(quote.id, note); dismiss() }
+                    Button("Save") {
+                        store.updateQuote(quote.id, note: note, page: quotePage(page), chapterID: chapterID)
+                        dismiss()
+                    }
                 }
             }
             .confirmationDialog("Delete this quote?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { store.deleteQuote(quote.id); dismiss() }
             }
         }
-        .hubPageStyle()
     }
 }

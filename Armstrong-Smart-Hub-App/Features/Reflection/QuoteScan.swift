@@ -553,7 +553,10 @@ private struct QuoteTrimView: View {
     @State private var editing = false
     @State private var editedText = ""
     @State private var chosenBook: UUID?
+    @State private var page = ""
+    @State private var chapterID: UUID?
     @FocusState private var editorFocused: Bool
+    @FocusState private var pageFocused: Bool
 
     private static let space = "quote-words"
 
@@ -566,7 +569,9 @@ private struct QuoteTrimView: View {
         _words = State(initialValue: w)
         _end = State(initialValue: max(0, w.count - 1))
         _lastParagraph = State(initialValue: paragraphs.firstIndex(of: first) ?? 0)
-        _chosenBook = State(initialValue: bookID ?? store.books.first?.id)
+        let book = bookID ?? store.books.first?.id
+        _chosenBook = State(initialValue: book)
+        _chapterID = State(initialValue: book.flatMap { store.lastChapter(in: $0) })
     }
 
     private var trimmed: Bool { start > 0 || end < words.count - 1 }
@@ -588,8 +593,8 @@ private struct QuoteTrimView: View {
                         .font(.system(.title3, design: .serif))
                         .lineSpacing(4)
                         .focused($editorFocused)
-                        .padding(14)
-                        .background(HubDesign.track.opacity(0.5), in: .rect(cornerRadius: HubLayout.controlRadius))
+                        .padding(16)
+                        .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.cardRadius, style: .continuous))
                         .padding(.horizontal, HubLayout.gutter)
                         .padding(.vertical, 16)
                 }
@@ -619,7 +624,14 @@ private struct QuoteTrimView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button(editing ? "Done" : "Edit") { toggleEditing() }
             }
+            ToolbarItemGroup(placement: .keyboard) {
+                if pageFocused {
+                    Spacer()
+                    Button("Done") { pageFocused = false }
+                }
+            }
         }
+        .onChange(of: chosenBook) { _, id in chapterID = id.flatMap { store.lastChapter(in: $0) } }
         .hubPageStyle()
     }
 
@@ -721,6 +733,7 @@ private struct QuoteTrimView: View {
                     .labelsHidden()
                 }
             }
+            if let book = chosenBook.flatMap({ store.book($0) }) { placeBar(book) }
             Button(action: save) {
                 Label("Save quote", systemImage: "quote.opening")
                     .font(.headline)
@@ -736,6 +749,44 @@ private struct QuoteTrimView: View {
         .padding(.horizontal, HubLayout.gutter)
         .padding(.top, 10)
         .padding(.bottom, 8)
+    }
+
+    /// The chapter and page the quote is filed under, as glass pills.
+    private func placeBar(_ book: Book) -> some View {
+        let chapters = book.chapters ?? []
+        return HStack(spacing: 8) {
+            if !chapters.isEmpty {
+                Menu {
+                    Picker("Chapter", selection: $chapterID) {
+                        Text("No chapter").tag(UUID?.none)
+                        ForEach(chapters) { Text($0.title).tag(Optional($0.id)) }
+                    }
+                } label: {
+                    Label(chapters.first { $0.id == chapterID }?.title ?? "Chapter", systemImage: "list.bullet")
+                        .lineLimit(1)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 36)
+                        .glassGlare(.regular, in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .accessibilityLabel("Chapter")
+            }
+            HStack(spacing: 4) {
+                Text("Page").foregroundStyle(HubDesign.secondary)
+                TextField("–", text: $page)
+                    .keyboardType(.numberPad)
+                    .monospacedDigit()
+                    .focused($pageFocused)
+                    .frame(width: 52)
+            }
+            .font(.footnote.weight(.medium))
+            .padding(.horizontal, 12)
+            .frame(minHeight: 36)
+            .glassGlare(.regular, in: .capsule)
+            Spacer(minLength: 0)
+        }
     }
 
     private func smallButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
@@ -774,7 +825,8 @@ private struct QuoteTrimView: View {
 
     private func save() {
         let book = chosenBook.flatMap { store.book($0) }
-        store.addQuote(text: quoteText, author: book?.author ?? "", bookID: book?.id)
+        store.addQuote(text: quoteText, author: book?.author ?? "", bookID: book?.id,
+                       page: quotePage(page), chapterID: book == nil ? nil : chapterID)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         onSaved()
     }
@@ -821,7 +873,18 @@ struct ManualQuoteSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var note = ""
+    @State private var page = ""
+    @State private var chapterID: UUID?
     @FocusState private var focused: Bool
+
+    init(store: ReflectionStore, bookID: UUID?, onSaved: (() -> Void)? = nil) {
+        self.store = store
+        self.bookID = bookID
+        self.onSaved = onSaved
+        _chapterID = State(initialValue: bookID.flatMap { store.lastChapter(in: $0) })
+    }
+
+    private var chapters: [BookChapter] { bookID.flatMap { store.book($0)?.chapters } ?? [] }
 
     private var canSave: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -833,6 +896,11 @@ struct ManualQuoteSheet: View {
                         .font(.system(.body, design: .serif))
                         .lineLimit(3...12)
                         .focused($focused)
+                }
+                if bookID != nil {
+                    GlassSection("Where it's from") {
+                        quotePlaceRows(chapters: chapters, chapterID: $chapterID, page: $page)
+                    }
                 }
                 GlassSection {
                     TextField("Your note (optional)", text: $note, axis: .vertical)
@@ -854,7 +922,8 @@ struct ManualQuoteSheet: View {
 
     private func save() {
         let book = bookID.flatMap { store.book($0) }
-        store.addQuote(text: text, author: book?.author ?? "", bookID: book?.id, note: note)
+        store.addQuote(text: text, author: book?.author ?? "", bookID: book?.id, note: note,
+                       page: quotePage(page), chapterID: chapterID)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         if let onSaved { onSaved() } else { dismiss() }
     }

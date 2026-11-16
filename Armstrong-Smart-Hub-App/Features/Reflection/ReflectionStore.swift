@@ -9,6 +9,10 @@ struct ReflectionQuote: Codable, Identifiable, Hashable {
     /// The book this quote was saved from; nil for a quote typed in on its own.
     var bookID: UUID?
     var note = ""
+    /// The page it's on, when given.
+    var page: Int?
+    /// The chapter of its book it's filed under; nil (or a deleted chapter) files it under no chapter.
+    var chapterID: UUID?
 
     init(text: String, author: String, bookID: UUID? = nil) {
         self.text = text
@@ -24,7 +28,16 @@ struct ReflectionQuote: Codable, Identifiable, Hashable {
         added = try c.decode(Date.self, forKey: .added)
         bookID = try c.decodeIfPresent(UUID.self, forKey: .bookID)
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+        page = try c.decodeIfPresent(Int.self, forKey: .page)
+        chapterID = try c.decodeIfPresent(UUID.self, forKey: .chapterID)
     }
+}
+
+/// A book's quotes filed under one chapter, or under none when `chapter` is nil.
+struct QuoteGroup: Identifiable {
+    let chapter: BookChapter?
+    let quotes: [ReflectionQuote]
+    var id: UUID? { chapter?.id }
 }
 
 struct BookChapter: Codable, Identifiable, Hashable {
@@ -116,11 +129,14 @@ final class ReflectionStore {
 
     var totalMinutes: Int { sessions.reduce(0) { $0 + $1.minutes } }
 
-    func addQuote(text: String, author: String, bookID: UUID? = nil, note: String = "") {
+    func addQuote(text: String, author: String, bookID: UUID? = nil, note: String = "",
+                  page: Int? = nil, chapterID: UUID? = nil) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         var quote = ReflectionQuote(text: text, author: author.trimmingCharacters(in: .whitespacesAndNewlines), bookID: bookID)
         quote.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        quote.page = page.flatMap { $0 > 0 ? $0 : nil }
+        quote.chapterID = bookID == nil ? nil : chapterID
         quotes.insert(quote, at: 0)
         persist()
     }
@@ -129,6 +145,50 @@ final class ReflectionStore {
         guard let i = quotes.firstIndex(where: { $0.id == id }), quotes[i].note != note else { return }
         quotes[i].note = note
         persist()
+    }
+
+    /// Updates a quote's note, page and chapter together.
+    func updateQuote(_ id: UUID, note: String, page: Int?, chapterID: UUID?) {
+        guard let i = quotes.firstIndex(where: { $0.id == id }) else { return }
+        var q = quotes[i]
+        q.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        q.page = page.flatMap { $0 > 0 ? $0 : nil }
+        q.chapterID = q.bookID == nil ? nil : chapterID
+        guard q != quotes[i] else { return }
+        quotes[i] = q
+        persist()
+    }
+
+    /// The chapter to suggest for a new quote from a book: the one its latest quote was filed under.
+    func lastChapter(in bookID: UUID) -> UUID? {
+        let chapters = Set(book(bookID)?.chapters?.map(\.id) ?? [])
+        return quotes.first { $0.bookID == bookID && $0.chapterID.map(chapters.contains) == true }?.chapterID
+    }
+
+    /// A book's quotes grouped by chapter, in the book's chapter order, each group sorted by page.
+    /// Quotes with no chapter (or whose chapter was deleted) come last, under a nil chapter.
+    func quotesByChapter(in bookID: UUID) -> [QuoteGroup] {
+        let all = quotes(in: bookID)
+        let chapters = book(bookID)?.chapters ?? []
+        func ordered(_ list: [ReflectionQuote]) -> [ReflectionQuote] {
+            list.sorted { a, b in
+                switch (a.page, b.page) {
+                case let (x?, y?) where x != y: return x < y
+                case (_?, nil): return true
+                case (nil, _?): return false
+                default: return a.added < b.added
+                }
+            }
+        }
+        var groups: [QuoteGroup] = []
+        for chapter in chapters {
+            let inChapter = all.filter { $0.chapterID == chapter.id }
+            if !inChapter.isEmpty { groups.append(QuoteGroup(chapter: chapter, quotes: ordered(inChapter))) }
+        }
+        let known = Set(chapters.map(\.id))
+        let loose = all.filter { $0.chapterID.map(known.contains) != true }
+        if !loose.isEmpty { groups.append(QuoteGroup(chapter: nil, quotes: ordered(loose))) }
+        return groups
     }
 
     func book(_ id: UUID) -> Book? { books.first { $0.id == id } }
@@ -203,6 +263,7 @@ final class ReflectionStore {
     func deleteChapter(_ bookID: UUID, chapter: UUID) {
         guard let i = books.firstIndex(where: { $0.id == bookID }) else { return }
         books[i].chapters?.removeAll { $0.id == chapter }
+        for j in quotes.indices where quotes[j].chapterID == chapter { quotes[j].chapterID = nil }
         persist()
     }
 
