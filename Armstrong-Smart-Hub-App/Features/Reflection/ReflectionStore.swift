@@ -252,6 +252,26 @@ final class ReflectionStore {
         persist()
     }
 
+    /// Adds the next chapter in order, "Chapter 1", "Chapter 2" and so on, to be renamed later.
+    func addNumberedChapter(_ id: UUID) {
+        guard let book = book(id) else { return }
+        let taken = Set((book.chapters ?? []).compactMap { c -> Int? in
+            guard c.title.hasPrefix("Chapter ") else { return nil }
+            return Int(c.title.dropFirst("Chapter ".count))
+        })
+        var n = (book.chapters?.count ?? 0) + 1
+        while taken.contains(n) { n += 1 }
+        addChapter(id, title: "Chapter \(n)")
+    }
+
+    func renameChapter(_ bookID: UUID, chapter: UUID, title: String) {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, let i = books.firstIndex(where: { $0.id == bookID }),
+              let j = books[i].chapters?.firstIndex(where: { $0.id == chapter }) else { return }
+        books[i].chapters?[j].title = title
+        persist()
+    }
+
     func setChapterNotes(_ bookID: UUID, chapter: UUID, _ notes: String) {
         guard let i = books.firstIndex(where: { $0.id == bookID }),
               let j = books[i].chapters?.firstIndex(where: { $0.id == chapter }),

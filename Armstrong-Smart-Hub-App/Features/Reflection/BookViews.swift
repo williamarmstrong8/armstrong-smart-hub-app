@@ -399,7 +399,8 @@ struct BookDetailView: View {
     @State private var notes: String
     @State private var showsGeneralNotes: Bool
     @State private var openChapterID: UUID?
-    @State private var addingChapter = false
+    /// The chapter being renamed from its long-press menu.
+    @State private var renamingChapter: BookChapter?
     @State private var chapterTitle = ""
     @State private var askingPage = false
     @State private var pageText = ""
@@ -455,10 +456,14 @@ struct BookDetailView: View {
             ChapterNotesView(store: store, bookID: bookID, chapterID: id)
         }
         .task(id: bookID) { await loadChapters() }
-        .alert("New chapter", isPresented: $addingChapter) {
+        .alert("Rename chapter", isPresented: Binding(get: { renamingChapter != nil },
+                                                      set: { if !$0 { renamingChapter = nil } })) {
             TextField("Chapter title", text: $chapterTitle)
-            Button("Add") { store.addChapter(bookID, title: chapterTitle) }
-            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                if let id = renamingChapter?.id { store.renameChapter(bookID, chapter: id, title: chapterTitle) }
+                renamingChapter = nil
+            }
+            Button("Cancel", role: .cancel) { renamingChapter = nil }
         }
         .alert("Bookmark", isPresented: $askingPage) {
             TextField("Page", text: $pageText).keyboardType(.numberPad)
@@ -576,8 +581,7 @@ struct BookDetailView: View {
                 Text("Chapters").font(.title2.weight(.regular)).accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button {
-                    chapterTitle = ""
-                    addingChapter = true
+                    withAnimation(HubMotion.animation(reduceMotion: reduceMotion)) { store.addNumberedChapter(bookID) }
                 } label: {
                     Label("Add", systemImage: "plus")
                         .font(.subheadline.weight(.medium))
@@ -645,6 +649,10 @@ struct BookDetailView: View {
             .accessibilityValue(open ? "Open" : "Closed")
             .accessibilityHint(open ? "Hides its notes and quotes" : "Shows its notes and quotes")
             .contextMenu {
+                Button("Rename", systemImage: "pencil") {
+                    chapterTitle = chapter.title
+                    renamingChapter = chapter
+                }
                 Button("Delete chapter", systemImage: "trash", role: .destructive) {
                     store.deleteChapter(bookID, chapter: chapter.id)
                 }
