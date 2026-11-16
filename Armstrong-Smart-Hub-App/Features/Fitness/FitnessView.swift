@@ -82,7 +82,7 @@ struct FitnessView: View {
             // A notification tapped: scroll to its card once the page has laid out.
             .onChange(of: router.pendingCard, initial: true) { _, card in
                 guard let card else { return }
-                path.removeAll()
+                path = NavigationPath()
                 Task {
                     try? await Task.sleep(for: .milliseconds(350))
                     withAnimation(.snappy) { scroller.scrollTo(card, anchor: .top) }
