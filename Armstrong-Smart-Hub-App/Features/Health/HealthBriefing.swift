@@ -115,7 +115,7 @@ final class HealthBriefing {
     }
 
     /// The slot for right now: morning until 3 pm, then night.
-    static var currentSlot: Slot { Calendar.current.component(.hour, from: .now) < 15 ? .morning : .night }
+    nonisolated static var currentSlot: Slot { Calendar.current.component(.hour, from: .now) < 15 ? .morning : .night }
 
     /// Writes a briefing now, whatever the time, without a notification (the card's refresh).
     func writeNow(_ slot: Slot = currentSlot) async {

@@ -37,7 +37,13 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
     private nonisolated static let edit = "checkin.edit"
     private static let prefix = "checkin."
     private static let days = 7
-    private static let times: [(slot: String, hour: Int)] = [("morning", 8), ("evening", 18)]
+    /// The evening one goes out on getting home (PlaceMonitor) once home is set,
+    /// so its fixed time moves to 9 pm as a fallback for days you were home already.
+    private static var times: [(slot: String, hour: Int)] {
+        [("morning", 8), ("evening", PlaceMonitor.shared.places[.home] != nil ? 21 : 18)]
+    }
+    /// The day whose evening check-in already went out on getting home.
+    private static let sentHomeKey = "checkin.evening.sentOnArrival"
 
     private let center = UNUserNotificationCenter.current()
 
@@ -124,6 +130,8 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
                 guard let fire = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: date), fire > .now else { continue }
                 // Nothing to ask in the morning once the day is answered.
                 if slot == "morning", answer != nil { continue }
+                // Already asked when you got home.
+                if slot == "evening", UserDefaults.standard.string(forKey: Self.sentHomeKey) == day { continue }
                 let content = UNMutableNotificationContent()
                 content.sound = .default
                 content.userInfo = ["day": day]
@@ -145,6 +153,26 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
                 try? await center.add(UNNotificationRequest(identifier: "\(Self.prefix)\(slot).\(day)", content: content, trigger: trigger))
             }
         }
+    }
+
+    /// Getting home from 3 pm on: the evening check-in now, instead of at its fixed time.
+    func arrivedHome() async {
+        guard !Demo.isOn else { return }
+        let hour = Calendar.current.component(.hour, from: .now)
+        guard (15..<23).contains(hour) else { return }
+        let day = Self.dayString(.now)
+        guard UserDefaults.standard.string(forKey: Self.sentHomeKey) != day else { return }
+        UserDefaults.standard.set(day, forKey: Self.sentHomeKey)
+        let answer = CheckinStore.shared.entry(for: day).flatMap(MorningCheckin.sick)
+        let content = UNMutableNotificationContent()
+        content.sound = .default
+        content.userInfo = ["day": day]
+        content.title = "Welcome home"
+        content.body = Self.text(slot: "evening", answer: answer, guessedFine: false)
+        content.categoryIdentifier = Self.category
+        content.interruptionLevel = .timeSensitive
+        // Same identifier as the fixed-time one, so this replaces it.
+        try? await center.add(UNNotificationRequest(identifier: "\(Self.prefix)evening.\(day)", content: content, trigger: nil))
     }
 
     /// Morning without a guess to put to the person. Evening: confirm the morning's answer, or ask.
