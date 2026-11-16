@@ -6,18 +6,27 @@ import UIKit
 /// exercises-dataset (github.com/hasaneyldrm/exercises-dataset). The steps and
 /// muscle data are MIT; the GIFs and thumbnails are © Gym visual
 /// (gymvisual.com), served at 180×180 and shown with their credit. The table
-/// itself is generated into ExerciseMediaData.swift. Custom exercises have no media.
+/// is ExerciseMedia.json, generated with the hub's library by
+/// scripts/exercise-library.py. Custom exercises have no media.
 enum ExerciseMedia {
     private static let base = "https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/"
     static let credit = "© Gym visual"
     static let creditURL = URL(string: "https://gymvisual.com/")!
 
-    struct Entry {
+    struct Entry: Decodable {
         var file: String
         var target: String
         var secondary: [String]
         var steps: [String]
     }
+
+    /// Library id → media and steps, read from the bundle on first use.
+    static let entries: [String: Entry] = {
+        guard let url = Bundle.main.url(forResource: "ExerciseMedia", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let table = try? JSONDecoder().decode([String: Entry].self, from: data) else { return [:] }
+        return table
+    }()
 
     static func has(_ exerciseId: String) -> Bool { entries[exerciseId] != nil }
 
