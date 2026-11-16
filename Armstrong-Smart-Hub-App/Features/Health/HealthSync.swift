@@ -36,6 +36,8 @@ final class HealthSync {
     private static let source = "ArmstrongHub"
 
     var available: Bool { HKHealthStore.isHealthDataAvailable() }
+    /// How many samples this phone has written (or replaced) in Health.
+    var writtenCount: Int { written.count }
 
     init() {
         enabled = UserDefaults.standard.bool(forKey: Self.enabledKey) && !Demo.isOn

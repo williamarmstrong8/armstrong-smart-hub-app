@@ -132,27 +132,79 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
                 if slot == "morning", answer != nil { continue }
                 // Already asked when you got home.
                 if slot == "evening", UserDefaults.standard.string(forKey: Self.sentHomeKey) == day { continue }
-                let content = UNMutableNotificationContent()
-                content.sound = .default
-                content.userInfo = ["day": day]
-                content.title = slot == "morning" ? "Morning check-in" : "Evening check-in"
-                // Only today's morning knows the guess; later days get the plain question.
-                if slot == "morning", offset == 0, let top = Self.topGuess(store) {
-                    content.categoryIdentifier = category(for: store.options, guess: top.key)
-                    content.userInfo["guess"] = top.key
-                    content.userInfo["offered"] = Array(Set(store.options.map(\.key) + [top.key]))
-                    content.title = "\(top.label)?"
-                    content.body = Self.why(top, store) + " Is that right, or how do you feel?"
-                } else {
-                    content.categoryIdentifier = Self.category
-                    content.body = Self.text(slot: slot, answer: answer, guessedFine: offset == 0 && store.guess != nil)
-                }
-                // Mornings come through a Focus: the check-in is only useful on the day.
-                if slot == "morning" { content.interruptionLevel = .timeSensitive }
+                let content = content(slot: slot, day: day, today: offset == 0, answer: answer, store: store)
                 let trigger = UNCalendarNotificationTrigger(dateMatching: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fire), repeats: false)
                 try? await center.add(UNNotificationRequest(identifier: "\(Self.prefix)\(slot).\(day)", content: content, trigger: trigger))
             }
         }
+    }
+
+    /// One check-in notification's text and buttons.
+    private func content(slot: String, day: String, today: Bool, answer: Bool?, store: CheckinStore) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.sound = .default
+        content.userInfo = ["day": day]
+        content.title = slot == "morning" ? "Morning check-in" : "Evening check-in"
+        // Only today's morning knows the guess; later days get the plain question.
+        if slot == "morning", today, let top = Self.topGuess(store) {
+            content.categoryIdentifier = category(for: store.options, guess: top.key)
+            content.userInfo["guess"] = top.key
+            content.userInfo["offered"] = Array(Set(store.options.map(\.key) + [top.key]))
+            content.title = "\(top.label)?"
+            content.body = Self.why(top, store) + " Is that right, or how do you feel?"
+        } else {
+            content.categoryIdentifier = Self.category
+            content.body = Self.text(slot: slot, answer: answer, guessedFine: today && store.guess != nil)
+        }
+        // Mornings come through a Focus: the check-in is only useful on the day.
+        if slot == "morning" { content.interruptionLevel = .timeSensitive }
+        return content
+    }
+
+    // MARK: Tests (Account › Test features)
+
+    enum Test { case morning, sampleGuess, evening, home }
+
+    /// Sends a check-in notification in a few seconds, as it would really look.
+    /// Its buttons don't save anything: they answer with a "Test:" notification
+    /// saying what would have been saved.
+    func sendTest(_ test: Test, after seconds: TimeInterval = 5) async {
+        _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        let store = CheckinStore.shared
+        let day = Self.dayString(.now)
+        let answer = store.entry(for: day).flatMap(MorningCheckin.sick)
+        let content: UNMutableNotificationContent
+        switch test {
+        case .morning: content = self.content(slot: "morning", day: day, today: true, answer: answer, store: store)
+        case .evening: content = self.content(slot: "evening", day: day, today: true, answer: answer, store: store)
+        case .home:
+            content = self.content(slot: "evening", day: day, today: true, answer: answer, store: store)
+            content.title = "Welcome home"
+            content.interruptionLevel = .timeSensitive
+        case .sampleGuess:
+            content = UNMutableNotificationContent()
+            content.sound = .default
+            let options = ["run_down", "fine", "sick"].map { CheckinOption(key: $0, label: Feeling.label($0)) }
+            content.categoryIdentifier = category(for: options, guess: "run_down")
+            content.userInfo = ["day": day, "guess": "run_down", "offered": options.map(\.key)]
+            content.title = "Run down?"
+            content.body = "Looks like you might be run down: HRV 38 ms (usually 52 ms), sleep 5h 40m (usually 7h 10m) and resting heart rate 61 bpm (usually 55 bpm). Is that right, or how do you feel?"
+            content.interruptionLevel = .timeSensitive
+        }
+        content.userInfo["test"] = true
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, seconds), repeats: false)
+        try? await center.add(UNNotificationRequest(identifier: "test.checkin.\(UUID().uuidString)", content: content, trigger: trigger))
+    }
+
+    /// A test notification's button: says what it would have saved.
+    private func reportTest(feeling: String?) async {
+        let content = UNMutableNotificationContent()
+        content.title = "Test: button worked"
+        content.body = feeling.map { "This would have saved today's check-in as \(Feeling.label($0).lowercased()). Nothing was saved." }
+            ?? "This would have opened the check-in."
+        content.sound = .default
+        content.categoryIdentifier = "jarvis"
+        try? await center.add(UNNotificationRequest(identifier: "test.checkin.answer", content: content, trigger: nil))
     }
 
     /// Getting home from 3 pm on: the evening check-in now, instead of at its fixed time.
@@ -232,6 +284,16 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             return
         }
         guard category == Self.category || category == Self.guessCategory || category.hasPrefix(Self.optionsPrefix), let day else { return }
+        if content.userInfo["test"] as? Bool == true {
+            switch action {
+            case Self.fine: await reportTest(feeling: "fine")
+            case Self.sick: await reportTest(feeling: "sick")
+            case let pick where pick.hasPrefix(Self.pickPrefix): await reportTest(feeling: String(pick.dropFirst(Self.pickPrefix.count)))
+            case Self.edit, UNNotificationDefaultActionIdentifier: await Self.open("fitness")
+            default: break
+            }
+            return
+        }
         switch action {
         case Self.fine: await answer(day: day, feeling: "fine", offered: ["sick"])
         case Self.sick: await answer(day: day, feeling: "sick", offered: ["sick"])

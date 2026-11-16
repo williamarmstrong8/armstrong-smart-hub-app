@@ -309,14 +309,50 @@ final class PlaceMonitor {
         notify(category: Self.gymLeft, title: "Left the gym", body: "Your workout is still going. Finish it?")
     }
 
-    private func notify(category: String, title: String, body: String) {
+    // MARK: Tests (Account › Test features)
+
+    /// Turns William's room lamp on now, as getting home does. Returns what happened.
+    func testLamp() async -> String {
+        guard let api = Self.api() else { return "Not signed in to the hub." }
+        do {
+            let _: Empty? = try await api.run("setLight", [.string(WakeAlarm.lampEntity), .object(["on": .bool(true)])])
+            return "Lamp on."
+        } catch {
+            return "The hub didn't turn it on: \(error.localizedDescription)"
+        }
+    }
+
+    /// Plays an arrival or departure without moving: the lamp is real, the check-in is a test one.
+    func simulate(_ kind: Kind, arriving: Bool) async -> String {
+        switch (kind, arriving) {
+        case (.home, true):
+            var result = "Lamp switch is off."
+            if homeLamp { result = await testLamp() }
+            if homeCheckin {
+                await CheckinReminders.shared.sendTest(.home)
+                result += " Check-in arrives in 5 seconds."
+            }
+            return result
+        case (.gym, true):
+            notify(category: Self.gymArrived, title: "At the gym", body: "Start a workout?", after: 5)
+            return "Gym notification in 5 seconds. Start workout really starts one; discard it after."
+        case (.gym, false):
+            notify(category: Self.gymLeft, title: "Left the gym", body: "Your workout is still going. Finish it?", after: 5)
+            return "Leaving-the-gym notification in 5 seconds."
+        default:
+            return "Nothing happens for that yet; it's only logged."
+        }
+    }
+
+    private func notify(category: String, title: String, body: String, after seconds: TimeInterval = 0) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
         content.categoryIdentifier = category
         content.interruptionLevel = .timeSensitive
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: category, content: content, trigger: nil))
+        let trigger = seconds > 0 ? UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false) : nil
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: category, content: content, trigger: trigger))
     }
 
     /// A gym notification answered: Start opens a new workout; a tap opens the one going.

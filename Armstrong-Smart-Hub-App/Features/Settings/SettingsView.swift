@@ -31,6 +31,15 @@ struct SettingsView: View {
                 }
                 PhoneFeaturesSettings()
                 GlassSection {
+                    NavigationLink {
+                        TestFeaturesView()
+                    } label: {
+                        Label("Test features", systemImage: "testtube.2")
+                    }
+                } footer: {
+                    Text("Set off check-ins, briefings, Health, places and background refresh now, to see how they work.")
+                }
+                GlassSection {
                     Button("Sign out", role: .destructive) {
                         Task {
                             await session.signOut()

@@ -128,6 +128,24 @@ final class HealthBriefing {
         keep(slot, await write(slot, facts: facts))
     }
 
+    /// Account › Test features: writes the slot now and sends it as the real notification would look.
+    func sendTest(_ slot: Slot, after seconds: TimeInterval = 5) async -> String {
+        await writeNow(slot)
+        guard isCurrent(slot), let brief = briefs[slot] else { return "No health data on the phone to write from yet." }
+        await notify(slot, brief.text, after: seconds)
+        return modelAvailable ? "Written by Apple Intelligence." : "Apple Intelligence is off, so this is the plain version."
+    }
+
+    /// Account › Test features: loads the newest snapshot and writes it to Apple Health now.
+    func syncHealthNow() async -> String {
+        let health = HealthSync.shared
+        guard health.enabled else { return "Turn on Write to Apple Health first." }
+        if let api { await fitness.load(api: api) }
+        await health.sync(fitness.snapshot, drinks: AlcoholStore.shared.entries)
+        if let error = health.lastError { return "Health said: \(error)" }
+        return "Done. \(health.writtenCount) items written so far; open Health › Browse to see them."
+    }
+
     /// Whether a slot's brief is from today (the night one counts until 3 am).
     func isCurrent(_ slot: Slot) -> Bool {
         guard let at = briefs[slot]?.at else { return false }
@@ -164,14 +182,14 @@ final class HealthBriefing {
         facts.prefix(4).map { $0.hasSuffix(".") ? $0 : $0 + "." }.joined(separator: " ")
     }
 
-    private func notify(_ slot: Slot, _ text: String) async {
+    private func notify(_ slot: Slot, _ text: String, after seconds: TimeInterval = 0) async {
         let content = UNMutableNotificationContent()
         content.title = slot.title
         content.body = text
         content.sound = .default
         content.categoryIdentifier = Self.category
         content.threadIdentifier = Self.category
-        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "briefing.\(slot.rawValue)", content: content, trigger: nil))
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "briefing.\(slot.rawValue)", content: content, trigger: seconds > 0 ? UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false) : nil))
     }
 
     nonisolated static let category = "briefing"
