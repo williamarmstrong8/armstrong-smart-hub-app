@@ -40,7 +40,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
     /// The evening one goes out on getting home (PlaceMonitor) once home is set,
     /// so its fixed time moves to 9 pm as a fallback for days you were home already.
     private static var times: [(slot: String, hour: Int)] {
-        [("morning", 8), ("evening", PlaceMonitor.shared.places[.home] != nil ? 21 : 18)]
+        [("morning", 8), ("evening", PlaceMonitor.shared.places[.home] != nil && PlaceMonitor.shared.homeCheckin ? 21 : 18)]
     }
     /// The day whose evening check-in already went out on getting home.
     private static let sentHomeKey = "checkin.evening.sentOnArrival"

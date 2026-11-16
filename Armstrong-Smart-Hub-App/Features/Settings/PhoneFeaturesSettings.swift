@@ -80,6 +80,10 @@ struct PhoneFeaturesSettings: View {
                     }
                 }
             }
+            if places.places[.home] != nil {
+                Toggle("Turn my lamp on when I get home", isOn: $places.homeLamp)
+                Toggle("Evening check-in when I get home", isOn: $places.homeCheckin)
+            }
             if places.places[.gym] != nil {
                 Toggle("Ask to start a workout at the gym", isOn: $places.gymPrompts)
             }
@@ -89,7 +93,7 @@ struct PhoneFeaturesSettings: View {
         } header: {
             Text("Places")
         } footer: {
-            Text("Type an address, or set a place while you're there. Arriving at the gym asks to start a workout; time at work and the gym goes in the night briefing. Needs location set to Always. Kept on this phone.")
+            Text("Type an address, or set a place while you're there. Getting home turns William's room lamp on and sends the evening check-in (after 3 pm; 9 pm if you were home all along). Arriving at the gym asks to start a workout; time at work and the gym goes in the night briefing. Needs location set to Always. Kept on this phone.")
         }
         .sheet(item: $searching) { kind in AddressSearchSheet(kind: kind) }
     }

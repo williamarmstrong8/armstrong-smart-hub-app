@@ -65,6 +65,17 @@ final class PlaceMonitor {
     var gymPrompts: Bool {
         didSet { UserDefaults.standard.set(gymPrompts, forKey: Self.gymPromptsKey) }
     }
+    /// Turn William's room lamp on when you get home.
+    var homeLamp: Bool {
+        didSet { UserDefaults.standard.set(homeLamp, forKey: "places.homeLamp") }
+    }
+    /// Send the evening check-in when you get home.
+    var homeCheckin: Bool {
+        didSet {
+            UserDefaults.standard.set(homeCheckin, forKey: "places.homeCheckin")
+            Task { await CheckinReminders.shared.schedule(CheckinStore.shared) }
+        }
+    }
 
     @ObservationIgnored private var monitor: CLMonitor?
     @ObservationIgnored private var session: CLServiceSession?
@@ -82,6 +93,8 @@ final class PlaceMonitor {
 
     init() {
         gymPrompts = UserDefaults.standard.object(forKey: Self.gymPromptsKey) as? Bool ?? true
+        homeLamp = UserDefaults.standard.object(forKey: "places.homeLamp") as? Bool ?? true
+        homeCheckin = UserDefaults.standard.object(forKey: "places.homeCheckin") as? Bool ?? true
         guard !Demo.isOn, let data = try? Data(contentsOf: Self.url), let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
         places = Dictionary(uniqueKeysWithValues: saved.places.compactMap { k, v in Kind(rawValue: k).map { ($0, v) } })
         visits = saved.visits
@@ -173,6 +186,8 @@ final class PlaceMonitor {
         }
         persist()
         if listening == nil { start() } else { await syncConditions() }
+        // Home moves the evening check-in to getting home.
+        if kind == .home { await CheckinReminders.shared.schedule(CheckinStore.shared) }
     }
 
     /// Saves a place from an address picked in the search sheet. The geofence
@@ -184,6 +199,8 @@ final class PlaceMonitor {
         if let i = visits.lastIndex(where: { $0.kind == kind && $0.left == nil }) { visits[i].left = .now }
         persist()
         if listening == nil { start() } else { await syncConditions() }
+        // Home moves the evening check-in to getting home.
+        if kind == .home { await CheckinReminders.shared.schedule(CheckinStore.shared) }
     }
 
     func remove(_ kind: Kind) async {
@@ -192,6 +209,7 @@ final class PlaceMonitor {
         if let i = visits.lastIndex(where: { $0.kind == kind && $0.left == nil }) { visits[i].left = .now }
         persist()
         await monitor?.remove(kind.rawValue)
+        if kind == .home { await CheckinReminders.shared.schedule(CheckinStore.shared) }
         if places.isEmpty {
             listening?.cancel()
             listening = nil
@@ -258,8 +276,32 @@ final class PlaceMonitor {
     }
 
     private func arrived(_ kind: Kind) {
+        if kind == .home { arrivedHome() }
         guard kind == .gym, gymPrompts, WorkoutStore.shared.active == nil else { return }
         notify(category: Self.gymArrived, title: "At the gym", body: "Start a workout?")
+    }
+
+    /// Home: William's room lamp on (through the hub, as the Home tab does) and the evening check-in.
+    private func arrivedHome() {
+        let task = UIApplication.shared.beginBackgroundTask(withName: "Arrived home")
+        Task {
+            defer { if task != .invalid { UIApplication.shared.endBackgroundTask(task) } }
+            if homeLamp, let api = Self.api() {
+                do {
+                    let _: Empty? = try await api.run("setLight", [.string(WakeAlarm.lampEntity), .object(["on": .bool(true)])])
+                } catch {
+                    notify(category: "place.home.lamp", title: "Welcome home", body: "Couldn't turn your lamp on: the hub didn't answer.")
+                }
+            }
+            if homeCheckin { await CheckinReminders.shared.arrivedHome() }
+        }
+    }
+
+    /// The hub, from the signed-in app or, in a background relaunch with no window, the saved session.
+    private static func api() -> APIClient? {
+        if let api = BackgroundRefresh.shared.api { return api }
+        let session = AppSession()
+        return session.isSignedIn ? session.api : nil
     }
 
     private func left(_ kind: Kind) {
