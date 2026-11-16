@@ -110,7 +110,7 @@ struct FinanceView: View {
         }
 
         if let next = store.tagQueue.first {
-            TagCard(transaction: next, remaining: store.tagQueue.count, quick: r.quickCategories) { category in
+            TagCard(transaction: next, remaining: store.tagQueue.count, quick: r.quickCategories, history: d.transactions) { category in
                 Task { await store.retag(next, to: category, api: session.api, toast: toast) }
             } onOther: {
                 retagging = next
@@ -136,60 +136,67 @@ struct FinanceView: View {
     }
 }
 
-/// One new transaction at a time with its three likeliest tags: tap one to
-/// replace the current card. "Other" opens the full list.
+/// One new transaction at a time, as plain text on the page: the merchant's logo, name,
+/// amount and when ("Friday night"), then its three likeliest tags as glass pills. Tap one
+/// to move to the next; "Something else" opens the full list.
 private struct TagCard: View {
     let transaction: Transaction
     let remaining: Int
     let quick: QuickCategories?
+    var history: [Transaction] = []
     let onTag: (String) -> Void
     let onOther: () -> Void
 
     var body: some View {
         let t = transaction
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Tag this").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                Spacer()
-                Text("\(remaining) left").font(.caption.weight(.semibold)).foregroundStyle(.secondary).monospacedDigit()
-            }
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(t.payee).font(.title3.weight(.semibold)).lineLimit(1)
-                    Text("\(Fmt.shortDate(t.date)) · \(t.accountName)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        let info = MerchantInfo.resolve(t, history: history)
+        VStack(spacing: 18) {
+            VStack(spacing: 10) {
+                MerchantLogo(info: info, category: t.category, size: 56)
+                VStack(spacing: 4) {
+                    Text(info.name)
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(HubDesign.ink)
+                        .lineLimit(2)
+                    Text(Fmt.signed(t.netEffect, t.currency))
+                        .font(.title2.weight(.semibold)).monospacedDigit()
+                        .foregroundStyle(t.netEffect > 0 ? Color.positive : HubDesign.ink)
+                    Text("\(Fmt.spokenTime(t.posted)) · \(t.accountName)")
+                        .font(.subheadline)
+                        .foregroundStyle(BrickLook.soft)
+                        .lineLimit(1)
                 }
-                Spacer()
-                Text(Fmt.signed(t.netEffect, t.currency))
-                    .font(.title3.weight(.semibold)).monospacedDigit()
-                    .foregroundStyle(t.netEffect > 0 ? Color.positive : .primary)
+                .multilineTextAlignment(.center)
             }
+            .accessibilityElement(children: .combine)
+
             HStack(spacing: 8) {
                 ForEach(likely, id: \.self) { c in
                     Button { onTag(c) } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: CategoryStyle.symbol(c)).font(.title3).foregroundStyle(.secondary)
-                            Text(c).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                        HStack(spacing: 5) {
+                            Image(systemName: CategoryStyle.symbol(c)).font(.caption).foregroundStyle(CategoryStyle.color(c))
+                            Text(c).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.75)
                         }
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.controlRadius))
+                        .foregroundStyle(HubDesign.ink)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .glassGlare(.regular.interactive(), in: .capsule)
                     }
                     .buttonStyle(CardPressStyle())
                 }
             }
-            Button(action: onOther) {
-                Text("Something else")
-                    .font(.footnote)
-                    .foregroundStyle(HubDesign.action)
-                    .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
-                    .contentShape(.rect)
+
+            HStack(spacing: 6) {
+                Button(action: onOther) {
+                    Text("Something else").font(.footnote.weight(.medium)).foregroundStyle(HubDesign.action)
+                }
+                .buttonStyle(.plain)
+                Text("· \(remaining) to tag").font(.footnote).foregroundStyle(BrickLook.soft).monospacedDigit()
             }
-            .buttonStyle(.plain)
+            .frame(minHeight: HubLayout.minHitTarget)
         }
-        .padding(HubLayout.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
         .sensoryFeedback(.selection, trigger: transaction.id)
     }
 

@@ -23,6 +23,51 @@ enum Fmt {
     }
 
     static func shortDate(_ date: Date) -> String { date.formatted(.dateTime.month(.abbreviated).day()) }
+
+    /// When a transaction happened, the way you'd say it: "This morning", "Last night",
+    /// "Friday night", "Nov 3, evening". Up to 5am counts as the night before. Banks that only
+    /// give a day stamp it at midnight, so those just get the day ("Friday"), read in UTC
+    /// when the stamp is UTC midnight so it doesn't slip back a day.
+    static func spokenTime(_ seconds: Double, now: Date = .now) -> String {
+        let date = Date(timeIntervalSince1970: seconds)
+        var cal = Calendar.current
+        let localMidnight = cal.startOfDay(for: date) == date
+        let utcMidnight = seconds.truncatingRemainder(dividingBy: 86_400) == 0
+        let dayOnly = localMidnight || utcMidnight
+        if utcMidnight, let utc = TimeZone(identifier: "UTC") { cal.timeZone = utc }
+
+        let hour = cal.component(.hour, from: date)
+        // Small hours belong to the evening before.
+        let day = cal.startOfDay(for: !dayOnly && hour < 5 ? date.addingTimeInterval(-6 * 3600) : date)
+        // Compare calendar days, carrying a UTC day stamp over as the same local date.
+        let local = Calendar.current
+        let sameDay = local.date(from: cal.dateComponents([.year, .month, .day], from: day)) ?? day
+        let days = local.dateComponents([.day], from: sameDay, to: local.startOfDay(for: now)).day ?? 0
+
+        let part: String? = if dayOnly { nil } else {
+            switch hour {
+            case 5..<12: "morning"
+            case 12..<17: "afternoon"
+            case 17..<21: "evening"
+            default: "night"
+            }
+        }
+        let weekday = day.formatted(Date.FormatStyle(timeZone: cal.timeZone).weekday(.wide))
+
+        switch days {
+        case ..<1:
+            guard let part else { return "Today" }
+            return part == "night" ? "Tonight" : "This \(part)"
+        case 1:
+            guard let part else { return "Yesterday" }
+            return part == "night" ? "Last night" : "Yesterday \(part)"
+        case 2...6:
+            return part.map { "\(weekday) \($0)" } ?? weekday
+        default:
+            let stamp = day.formatted(Date.FormatStyle(timeZone: cal.timeZone).month(.abbreviated).day())
+            return part.map { "\(stamp), \($0)" } ?? stamp
+        }
+    }
 }
 
 /// Today as the device's local "YYYY-MM-DD", like localDay() on the web.
