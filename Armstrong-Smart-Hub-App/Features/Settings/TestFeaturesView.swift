@@ -92,11 +92,9 @@ struct TestFeaturesView: View {
                 Text("The same pass iOS runs while the app is closed.")
             }
 
-            GlassSection {
+            GlassSection("Journaling Suggestions") {
                 Text("Open Reflection and tap ✨ next to New entry to pick a moment from your day. Needs a real iPhone.")
                     .font(.subheadline)
-            } header: {
-                Text("Journaling Suggestions")
             }
         }
         .navigationTitle("Test features")
