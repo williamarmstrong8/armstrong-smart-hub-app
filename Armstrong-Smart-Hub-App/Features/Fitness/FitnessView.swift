@@ -27,38 +27,53 @@ struct FitnessView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollViewReader { scroller in
+            withDemoCues
+                .sheet(isPresented: $showingWatch) { WatchSheet() }
+                .sheet(isPresented: $pairing) { PairWatchSheet() }
+        }
+    }
+
+    // The page is split into a few computed views so each modifier chain type-checks quickly.
+
+    /// The overview cards.
+    private var cards: some View {
+        LazyVStack(spacing: HubLayout.sectionGap) {
+            if watch.savedWatchID == nil {
+                AlcoholCard(fitness: store)
+                workoutsSection
+            } else {
+                if let error = store.error, !store.loaded {
+                    ErrorBanner(message: error)
+                }
+                VStack(spacing: HubLayout.sectionGap) {
+                    MorningCheckin(store: checkins)
+                        .id(AppRouter.Card.checkin)
+                    AlcoholCard(fitness: store)
+                    today
+                    BriefingCard()
+                        .id(AppRouter.Card.briefing)
+                }
+                // Live updates stay inside individual overview rows.
+                BrickCard(padding: 0) {
+                    OverviewList(store: store).padding(.horizontal, HubLayout.cardPadding)
+                }
+                // Keep the carousel's horizontal scroll targets together.
+                workoutsSection
+                syncStatus
+            }
+        }
+        .environment(\.fitnessCards, true)
+        .padding(.horizontal, HubLayout.gutter)
+    }
+
+    /// The scrolling page, which scrolls to a card when a notification asks for one.
+    private var scrollingPage: some View {
+        ScrollViewReader { scroller in
             ScrollView(.vertical) {
                 VStack(spacing: HubLayout.sectionGap) {
                     // Keep the hero and its account/watch presentation eagerly mounted.
                     sheet
-                    LazyVStack(spacing: HubLayout.sectionGap) {
-                        if watch.savedWatchID == nil {
-                            AlcoholCard(fitness: store)
-                            workoutsSection
-                        } else {
-                            if let error = store.error, !store.loaded {
-                                ErrorBanner(message: error)
-                            }
-                            VStack(spacing: HubLayout.sectionGap) {
-                                MorningCheckin(store: checkins)
-                                    .id(AppRouter.Card.checkin)
-                                AlcoholCard(fitness: store)
-                                today
-                                BriefingCard()
-                                    .id(AppRouter.Card.briefing)
-                            }
-                            // Live updates stay inside individual overview rows.
-                            BrickCard(padding: 0) {
-                                OverviewList(store: store).padding(.horizontal, HubLayout.cardPadding)
-                            }
-                            // Keep the carousel's horizontal scroll targets together.
-                            workoutsSection
-                            syncStatus
-                        }
-                    }
-                    .environment(\.fitnessCards, true)
-                    .padding(.horizontal, HubLayout.gutter)
+                    cards
                 }
                 .padding(.bottom, HubLayout.bottomInset)
                 .containerRelativeFrame(.horizontal)
@@ -75,13 +90,23 @@ struct FitnessView: View {
                 }
             }
             .demoScroll()
-            }
+        }
+    }
+
+    /// The page with its styling and the pages it opens.
+    private var routedPage: some View {
+        scrollingPage
             .hubPageStyle(backdrop: true)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }
             .navigationDestination(for: FitnessPage.self) { $0.view(store: store) }
             .navigationDestination(for: WorkoutRoute.self) { WorkoutDetailPage(id: $0.id, store: workouts) }
             .navigationDestination(for: ExerciseRoute.self) { ExerciseDetailPage(route: $0, store: workouts) }
+    }
+
+    /// Loading, syncing and refreshing.
+    private var loadedPage: some View {
+        routedPage
             // The workout screen opens from the tab bar (MainTabView), which needs this for zones.
             // The check-in day turns over at waking, so it follows the newest sleep.
             .onChange(of: store.lastNight?.endDate, initial: true) { _, end in
@@ -133,7 +158,12 @@ struct FitnessView: View {
                 // Last night's sleep only reaches the hub on a sync, and the guess needs it.
                 Task { await checkins.load(api: session.api) }
             }
-            #if DEBUG
+    }
+
+    /// Hooks for the scripted demo takes (debug builds only).
+    private var withDemoCues: some View {
+        loadedPage
+        #if DEBUG
             .onAppear {
                 DemoCue.on("sync") { Task { await watch.files.sync(api: session.api) } }
                 // `nav readiness|recovery|strain|sleep|heart|energy|training|health|workout|activity`, then `back`.
@@ -159,10 +189,7 @@ struct FitnessView: View {
                 DemoCue.on("workout.close") { workouts.isPresented = false }
                 DemoCue.on("workout.end") { workouts.isPresented = false; workouts.discard() }
             }
-            #endif
-            .sheet(isPresented: $showingWatch) { WatchSheet() }
-            .sheet(isPresented: $pairing) { PairWatchSheet() }
-        }
+        #endif
     }
 
     // MARK: Workouts
