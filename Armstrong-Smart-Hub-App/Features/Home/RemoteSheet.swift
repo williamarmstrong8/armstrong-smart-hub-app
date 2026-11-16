@@ -26,7 +26,7 @@ struct RemoteSheet: View {
                 }
 
                 ZStack {
-                    Circle().fill(HubDesign.raised).frame(width: 260, height: 260)
+                    Color.clear.glassGlare(.regular, in: Circle()).frame(width: 260, height: 260)
                     VStack(spacing: 0) {
                         key(.up, "Up", size: 70, plain: true) { Image(systemName: "chevron.up") }
                         HStack(spacing: 0) {
@@ -56,7 +56,7 @@ struct RemoteSheet: View {
                     key(.volumeUp, "Volume up", size: 56, plain: true) { Image(systemName: "speaker.wave.3.fill") }
                 }
                 .padding(.horizontal, 12)
-                .background(HubDesign.raised, in: .capsule)
+                .glassGlare(.regular, in: Capsule())
 
                 Spacer()
             }
@@ -84,7 +84,7 @@ struct RemoteSheet: View {
             press(command)
         } label: {
             ZStack {
-                if !plain { Circle().fill(HubDesign.track).shadow(color: .black.opacity(0.08), radius: 4, y: 1) }
+                if !plain { Color.clear.glassGlare(.regular.interactive(), in: Circle()) }
                 if sending == command { ProgressView() } else { label() }
             }
             .frame(width: size, height: size)

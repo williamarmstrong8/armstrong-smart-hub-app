@@ -827,19 +827,18 @@ struct ManualQuoteSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            GlassForm {
+                GlassSection {
                     TextField("The quote", text: $text, axis: .vertical)
                         .font(.system(.body, design: .serif))
                         .lineLimit(3...12)
                         .focused($focused)
                 }
-                Section {
+                GlassSection {
                     TextField("Your note (optional)", text: $note, axis: .vertical)
                         .lineLimit(1...5)
                 }
             }
-            .hubListStyle()
             .navigationTitle("Type a quote")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

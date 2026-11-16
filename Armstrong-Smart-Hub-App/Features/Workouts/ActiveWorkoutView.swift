@@ -840,26 +840,26 @@ private struct WorkoutSettingsSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Workout") {
+            GlassForm {
+                GlassSection("Workout") {
                     TextField("Workout name", text: Binding(get: { store.active?.name ?? "" }, set: { store.active?.name = $0 }))
                     TextField("Notes", text: Binding(get: { store.active?.notes ?? "" }, set: { store.active?.notes = $0 }), axis: .vertical)
                         .lineLimit(2...6)
                 }
-                .listRowBackground(BrickLook.card)
-                Section {
-                    Picker("Weight unit", selection: Binding(get: { store.active?.unit ?? defaultUnit }, set: { unit in
-                        store.setUnit(unit)
-                        defaultUnit = unit
-                    })) {
-                        ForEach(WeightUnit.allCases) { Text($0 == .lb ? "lbs" : "kg").tag($0) }
+                GlassSection {
+                    LabeledContent("Weight unit") {
+                        Picker("Weight unit", selection: Binding(get: { store.active?.unit ?? defaultUnit }, set: { unit in
+                            store.setUnit(unit)
+                            defaultUnit = unit
+                        })) {
+                            ForEach(WeightUnit.allCases) { Text($0 == .lb ? "lbs" : "kg").tag($0) }
+                        }
+                        .labelsHidden()
                     }
-                    .listRowBackground(BrickLook.card)
                 } footer: {
                     Text("Weights already typed are converted.")
                 }
             }
-            .brickList()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)

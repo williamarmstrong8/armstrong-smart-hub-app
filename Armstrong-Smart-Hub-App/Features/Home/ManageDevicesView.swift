@@ -15,31 +15,31 @@ struct ManageDevicesView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            GlassForm {
                 if let error {
-                    Text(error)
-                        .foregroundStyle(HubDesign.danger)
-                        .listRowBackground(HubDesign.raised)
+                    GlassSection { Text(error).foregroundStyle(HubDesign.danger) }
                 }
-                ForEach(filtered) { e in
-                    Button {
-                        if picked.contains(e.id) { picked.remove(e.id) } else { picked.insert(e.id) }
-                    } label: {
-                        HStack {
-                            Image(systemName: e.symbol).frame(width: 24).foregroundStyle(.secondary)
-                            VStack(alignment: .leading) {
-                                Text(e.name).foregroundStyle(.primary)
-                                Text(e.id).font(.caption).foregroundStyle(.secondary)
+                GlassSection {
+                    ForEach(filtered) { e in
+                        Button {
+                            if picked.contains(e.id) { picked.remove(e.id) } else { picked.insert(e.id) }
+                        } label: {
+                            HStack {
+                                Image(systemName: e.symbol).frame(width: 24).foregroundStyle(.secondary)
+                                VStack(alignment: .leading) {
+                                    Text(e.name).foregroundStyle(.primary)
+                                    Text(e.id).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: picked.contains(e.id) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(picked.contains(e.id) ? HubDesign.action : HubDesign.secondary)
                             }
-                            Spacer()
-                            Image(systemName: picked.contains(e.id) ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(picked.contains(e.id) ? HubDesign.action : HubDesign.secondary)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
-                    .listRowBackground(HubDesign.raised)
                 }
             }
-            .hubListStyle()
             .searchable(text: $search)
             .navigationTitle("\(picked.count) devices")
             .navigationBarTitleDisplayMode(.inline)

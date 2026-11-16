@@ -220,27 +220,34 @@ private struct NewExerciseSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Group {
-                TextField("Name", text: $name)
-                Picker("Muscle", selection: $muscle) {
-                    ForEach(ExercisePicker.muscles, id: \.self) { Text(WorkoutFormat.label($0)).tag($0) }
-                }
-                Picker("Equipment", selection: $equipment) {
-                    ForEach(ExercisePicker.equipmentKinds, id: \.self) {
-                        Text(WorkoutFormat.label($0)).tag($0)
+            GlassForm {
+                GlassSection {
+                    TextField("Name", text: $name)
+                    LabeledContent("Muscle") {
+                        Picker("Muscle", selection: $muscle) {
+                            ForEach(ExercisePicker.muscles, id: \.self) { Text(WorkoutFormat.label($0)).tag($0) }
+                        }
+                        .labelsHidden()
                     }
+                    LabeledContent("Equipment") {
+                        Picker("Equipment", selection: $equipment) {
+                            ForEach(ExercisePicker.equipmentKinds, id: \.self) {
+                                Text(WorkoutFormat.label($0)).tag($0)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+                    LabeledContent("Logged as") {
+                        Picker("Logged as", selection: $kind) {
+                            Text("Weight × reps").tag("weight_reps")
+                            Text("Reps").tag("reps")
+                            Text("Time").tag("duration")
+                        }
+                        .labelsHidden()
+                    }
+                    if let error { Text(error).foregroundStyle(HubDesign.danger).font(.footnote) }
                 }
-                Picker("Logged as", selection: $kind) {
-                    Text("Weight × reps").tag("weight_reps")
-                    Text("Reps").tag("reps")
-                    Text("Time").tag("duration")
-                }
-                if let error { Text(error).foregroundStyle(.red).font(.footnote) }
-                }
-                .listRowBackground(BrickLook.card)
             }
-            .brickList()
             .navigationTitle("New exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)

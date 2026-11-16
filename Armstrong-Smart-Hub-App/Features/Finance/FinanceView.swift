@@ -424,14 +424,12 @@ struct CategoryPicker: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
+            GlassForm {
+                GlassSection {
                     TransactionRow(transaction: transaction, history: history)
                 }
-                .listRowBackground(BrickLook.card)
                 details
-                .listRowBackground(BrickLook.card)
-                Section("Tag") {
+                GlassSection("Tag") {
                     ForEach(options, id: \.self) { c in
                         Button {
                             onPick(c)
@@ -442,19 +440,17 @@ struct CategoryPicker: View {
                                 Spacer()
                                 if c == transaction.category { Image(systemName: "checkmark").foregroundStyle(.tint) }
                             }
+                            .contentShape(Rectangle())
                         }
                     }
                 }
-                .listRowBackground(BrickLook.card)
-                Section("New tag") {
+                GlassSection("New tag") {
                     HStack {
                         TextField("Name", text: $custom).submitLabel(.done).onSubmit(addCustom)
                         Button("Add", action: addCustom).disabled(custom.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
-                .listRowBackground(BrickLook.card)
             }
-            .brickList()
             .navigationTitle("Transaction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
@@ -470,7 +466,7 @@ struct CategoryPicker: View {
         let raw = t.description.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         let others = history.filter { $0.id != t.id && !$0.hold && MerchantInfo.resolve($0).name == info.name }
         let total = (others + [t]).reduce(0) { $0 + $1.netEffect }
-        return Section("What is this?") {
+        return GlassSection("What is this?") {
             if let note = info.note {
                 Text(note).font(.body)
             }

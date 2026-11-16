@@ -219,8 +219,8 @@ struct BackgroundSettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            GlassForm {
+                GlassSection {
                     PhotosPicker(selection: $picked, matching: .any(of: [.images, .videos]), photoLibrary: .shared()) {
                         Label("Choose photo or video", systemImage: "photo.on.rectangle")
                     }
@@ -237,21 +237,17 @@ struct BackgroundSettingsView: View {
                         Button("Use default background", role: .destructive) { store.reset() }
                     }
                 }
-                .listRowBackground(HubDesign.raised)
 
-                Section {
+                GlassSection("Blur") {
                     HStack(spacing: 12) {
                         Image(systemName: "circle").accessibilityHidden(true)
                         Slider(value: $store.blur, in: 0...40)
                             .accessibilityLabel("Blur amount")
                         Image(systemName: "circle.dotted").accessibilityHidden(true)
                     }
-                } header: {
-                    Text("Blur")
                 }
-                .listRowBackground(HubDesign.raised)
 
-                Section {
+                GlassSection {
                     Toggle("Parallax", isOn: $store.parallax)
                         .disabled(store.kind != .motion)
                 } header: {
@@ -259,9 +255,7 @@ struct BackgroundSettingsView: View {
                 } footer: {
                     Text("Live Photos and video clips play on a loop and shift as you tilt your phone.")
                 }
-                .listRowBackground(HubDesign.raised)
             }
-            .hubListStyle()
             .navigationTitle("Background")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

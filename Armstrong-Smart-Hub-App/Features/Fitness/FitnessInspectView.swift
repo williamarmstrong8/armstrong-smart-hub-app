@@ -62,12 +62,12 @@ struct FitnessInspectView: View {
     }
 
     var body: some View {
-        List {
-            if let state { Text(state).foregroundStyle(.secondary) }
+        GlassForm {
+            if let state { GlassSection { Text(state).foregroundStyle(.secondary) } }
             ForEach(files) { file in
-                Section {
+                GlassSection {
                     if let error = file.error {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(HubDesign.danger)
                     }
                     ForEach(file.messages ?? []) { message in
                         VStack(alignment: .leading, spacing: 2) {
@@ -77,6 +77,8 @@ struct FitnessInspectView: View {
                     }
                 } header: {
                     Text("\(file.kind) · \(file.size) bytes")
+                } footer: {
+                    EmptyView()
                 }
             }
         }

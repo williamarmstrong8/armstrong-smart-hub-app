@@ -352,12 +352,12 @@ struct ManualBookSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            GlassForm {
+                GlassSection {
                     TextField("Title", text: $title).focused($titleFocused)
                     TextField("Author", text: $author)
                 }
-                Section("Optional") {
+                GlassSection("Optional") {
                     TextField("Year first published", text: $year).keyboardType(.numberPad)
                     TextField("Number of pages", text: $pages).keyboardType(.numberPad)
                     TextField("Publisher", text: $publisher)
@@ -367,7 +367,6 @@ struct ManualBookSheet: View {
                         .autocorrectionDisabled()
                 }
             }
-            .hubListStyle()
             .navigationTitle("Add a book")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

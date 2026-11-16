@@ -18,29 +18,25 @@ struct HabitEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    HStack {
-                        Spacer()
-                        ZStack {
-                            Circle().strokeBorder(Color(hex: color.isEmpty ? colors[0] : color), lineWidth: 5)
-                            Text(String(icon.prefix(2))).font(.system(size: 40))
-                        }
-                        .frame(width: 96, height: 96)
-                        Spacer()
+            GlassForm {
+                HStack {
+                    Spacer()
+                    ZStack {
+                        Circle().strokeBorder(Color(hex: color.isEmpty ? colors[0] : color), lineWidth: 5)
+                        Text(String(icon.prefix(2))).font(.system(size: 40))
                     }
+                    .frame(width: 96, height: 96)
+                    Spacer()
                 }
-                .listRowBackground(Color.clear)
 
-                Section {
+                GlassSection {
                     TextField("Name", text: $name)
                     TextField("Emoji (optional)", text: $icon)
                 } footer: {
                     Text("Shows as a circle you tap once it's done for the day.")
                 }
-                .listRowBackground(HubDesign.raised)
 
-                Section("Color") {
+                GlassSection("Color") {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 8), spacing: 12) {
                         ForEach(colors, id: \.self) { c in
                             Button {
@@ -54,23 +50,19 @@ struct HabitEditor: View {
                     }
                     .padding(.vertical, 6)
                 }
-                .listRowBackground(HubDesign.raised)
 
                 if let error {
-                    Section { Text(error).foregroundStyle(HubDesign.danger) }
-                        .listRowBackground(HubDesign.raised)
+                    GlassSection { Text(error).foregroundStyle(HubDesign.danger) }
                 }
 
                 if habit != nil {
-                    Section {
+                    GlassSection {
                         Button("Remove habit", role: .destructive) { confirmRemove = true }
                     } footer: {
                         Text("Its history is kept.")
                     }
-                    .listRowBackground(HubDesign.raised)
                 }
             }
-            .hubListStyle()
             .navigationTitle(habit == nil ? "New habit" : "Edit habit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

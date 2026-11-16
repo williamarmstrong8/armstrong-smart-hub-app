@@ -15,24 +15,21 @@ struct LoginView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    VStack(spacing: 10) {
-                        Image(systemName: "house.and.flag.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.tint)
-                        Text("Armstrong Hub").font(.title.bold())
-                        Text("Home, money, calendar and habits, with an agent that can use them all.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+            GlassForm {
+                VStack(spacing: 10) {
+                    Image(systemName: "house.and.flag.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(.tint)
+                    Text("Armstrong Hub").font(.title.bold())
+                    Text("Home, money, calendar and habits, with an agent that can use them all.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
-                .listRowBackground(Color.clear)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
 
-                Section {
+                GlassSection {
                     TextField("hub.your-tailnet.ts.net", text: $server)
                         .textContentType(.URL)
                         .keyboardType(.URL)
@@ -47,7 +44,7 @@ struct LoginView: View {
                     Text("The URL your hub is served on, for example its Tailscale address. Your phone needs to be on the tailnet.")
                 }
 
-                Section("Account") {
+                GlassSection("Account") {
                     TextField("Email", text: $email)
                         .textContentType(.username)
                         .keyboardType(.emailAddress)
@@ -64,24 +61,24 @@ struct LoginView: View {
                 }
 
                 if let error {
-                    Section {
+                    GlassSection {
                         Label(error, systemImage: "exclamationmark.circle.fill")
                             .foregroundStyle(.red)
                     }
                 }
 
-                Section {
+                GlassSection {
                     Button(action: signIn) {
                         HStack {
                             Spacer()
                             if busy { ProgressView() } else { Text("Sign in").bold() }
                             Spacer()
                         }
+                        .contentShape(Rectangle())
                     }
                     .disabled(busy || server.isEmpty || email.isEmpty || password.isEmpty)
                 }
             }
-            .hubListStyle()
             .onAppear {
                 if server.isEmpty { server = savedServer }
                 if let user = session.user, email.isEmpty { email = user.email }
