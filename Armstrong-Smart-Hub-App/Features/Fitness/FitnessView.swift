@@ -360,27 +360,11 @@ struct FitnessView: View {
 
 // MARK: Watch sheet
 
-/// Connection, pairing, files and the protocol log.
+/// The watch, its faces to send to it, and pairing.
 struct WatchSheet: View {
-    @Environment(AppSession.self) private var session
     @Environment(WatchLink.self) private var watch
     @Environment(\.dismiss) private var dismiss
     @State private var pairing = false
-    @State private var showingFaces = false
-    @State private var reparse: String?
-
-    /// Asks the hub to parse every file it has stored again, so data from before a parser fix shows up.
-    private func rereadHub() async {
-        reparse = "Working…"
-        struct Result: Decodable { var files: Int; var parsed: Int; var failed: Int }
-        do {
-            let request = session.api.request("/api/mobile/fitness/reparse?tz=\(TimeZone.current.secondsFromGMT())", method: "POST", timeout: 300)
-            let result: Result = try await session.api.send(request)
-            reparse = "\(result.parsed) of \(result.files) read\(result.failed > 0 ? ", \(result.failed) failed" : "")"
-        } catch {
-            reparse = error.localizedDescription
-        }
-    }
 
     var body: some View {
         NavigationStack {
@@ -389,7 +373,6 @@ struct WatchSheet: View {
                     LabeledContent("Watch", value: watch.identity?.model ?? watch.savedWatchName ?? "–")
                     if let identity = watch.identity { LabeledContent("Firmware", value: identity.firmware) }
                     LabeledContent("Status", value: status)
-                    Button("Watch faces", systemImage: "applewatch.watchface") { showingFaces = true }
                     switch watch.state {
                     case .connected, .connecting, .pairing, .handshaking:
                         Button("Disconnect", role: .destructive) { watch.disconnect() }
@@ -399,81 +382,11 @@ struct WatchSheet: View {
                 }
 
                 GlassSection {
-                    let files = watch.files
-                    Button {
-                        Task { await files.sync(api: session.api) }
-                    } label: {
-                        HStack {
-                            Text("Sync now")
-                            Spacer()
-                            if let progress = files.progress { Text(progress).foregroundStyle(.secondary).font(.caption) }
-                        }
-                    }
-                    .disabled(files.isSyncing || (watch.state != .connected && files.store.pendingUpload == 0))
-                    Button {
-                        Task { await rereadHub() }
-                    } label: {
-                        HStack {
-                            Text("Re-read stored files on the hub")
-                            Spacer()
-                            if let reparse { Text(reparse).foregroundStyle(.secondary).font(.caption) }
-                        }
-                    }
-                    .disabled(reparse == "Working…")
-                    NavigationLink("Inspect files") { FitnessInspectView() }
-                    LabeledContent("Files on this phone", value: "\(files.store.saved.count)")
-                    LabeledContent("Waiting to send", value: "\(files.store.pendingUpload)")
-                    if let last = files.lastSync {
-                        LabeledContent("Last sync", value: last.failed ?? "\(last.downloaded) copied, \(last.uploaded) sent")
-                        LabeledContent("On the watch", value: "\(last.listed) files")
-                    }
-                    Button {
-                        Task { await watch.settings.push(api: session.api) }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(watch.settings.isPushing ? "Updating glances…" : "Send hub values to the glances")
-                            if let result = watch.settings.lastResult {
-                                Text(result).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .disabled(watch.state != .connected || watch.settings.isPushing || files.isSyncing)
+                    WatchFacesCarousel()
                 } header: {
-                    Text("History")
+                    Text("Watch faces")
                 } footer: {
-                    Text("Each sync copies up to \(watch.files.perSyncLimit) of the newest activity, sleep and monitoring files, then sends them to the hub. Nothing on the watch is changed or removed.")
-                }
-
-                GlassSection {
-                    let files = watch.files
-                    if let last = files.lastSync {
-                        ForEach(last.byKind.sorted { $0.key < $1.key }, id: \.key) { kind, count in
-                            LabeledContent("Listed: \(kind)", value: "\(count)")
-                        }
-                    }
-                    let kinds = Dictionary(grouping: files.store.saved.values, by: \.kind)
-                    ForEach(kinds.keys.sorted(), id: \.self) { kind in
-                        let items = kinds[kind] ?? []
-                        LabeledContent("On phone: \(kind)", value: "\(items.count), \(items.filter { $0.uploadedAt != nil }.count) sent")
-                    }
-                    ForEach(files.store.saved.values.filter { $0.parseError != nil }.sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }.prefix(10), id: \.id) { item in
-                        Text("\(item.kind): \(item.parseError ?? "")").font(.caption).foregroundStyle(.red)
-                    }
-                } header: {
-                    Text("Data check")
-                } footer: {
-                    Text("Which file types the watch lists, what reached this phone, and any file the hub couldn't read.")
-                }
-
-                GlassSection("Connection log") {
-                    if watch.log.isEmpty { Text("Nothing yet.").foregroundStyle(.secondary) }
-                    ForEach(watch.log.suffix(80).reversed()) { line in
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(line.time, format: .dateTime.hour().minute().second()).foregroundStyle(.tertiary).monospacedDigit()
-                            Text(line.text)
-                        }
-                        .font(.caption)
-                    }
+                    Text("Swipe through the faces and glances, then send one to the watch. To use a face, hold Up on the watch, then Watch Face.")
                 }
 
                 GlassSection {
@@ -483,14 +396,13 @@ struct WatchSheet: View {
                         dismiss()
                     }
                 } footer: {
-                    Text("The log shows message types, never their contents. To fully unpair, also forget the watch in iOS Settings → Bluetooth.")
+                    Text("To fully unpair, also forget the watch in iOS Settings → Bluetooth.")
                 }
             }
             .navigationTitle("Watch")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $pairing) { PairWatchSheet() }
-            .sheet(isPresented: $showingFaces) { WatchFacesSheet() }
         }
     }
 

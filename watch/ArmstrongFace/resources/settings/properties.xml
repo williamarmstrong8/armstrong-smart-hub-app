@@ -1,0 +1,9 @@
+<!-- Written by the phone after each sync (WatchSettings.swift, from the hub's /api/mobile/weather),
+     for when the watch has no weather of its own: it only gets weather from Garmin Connect, and
+     this watch is paired to the Armstrong app instead. wAt = epoch s (-1 = never), wTemp = °F,
+     wSky = sun, cloud, rain or snow. -->
+<properties>
+    <property id="wAt" type="number">-1</property>
+    <property id="wTemp" type="number">0</property>
+    <property id="wSky" type="string"></property>
+</properties>

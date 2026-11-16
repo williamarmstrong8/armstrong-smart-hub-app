@@ -1,4 +1,5 @@
 import Toybox.ActivityMonitor;
+import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
@@ -219,22 +220,49 @@ class ArmstrongFaceView extends WatchUi.WatchFace {
         dc.drawText(x, iconY + 12, font, value, Graphics.TEXT_JUSTIFY_CENTER);
     }
 
-    // Temperature in the watch's units and a sky for the icon.
+    // Temperature in the watch's units and a sky for the icon. The watch's own weather
+    // comes from Garmin Connect, which this watch may not be paired with, so when it has
+    // none the face uses what the phone last pushed from the hub (up to 3 hours old).
     private function readWeather() as Void {
         var now = Time.now().value();
         if (_weatherAt >= 0 && now - _weatherAt < 60) { return; }
         _weatherAt = now;
         _temp = "--";
         _sky = :cloud;
-        if (!(Toybox has :Weather)) { return; }
-        var current = Weather.getCurrentConditions();
-        if (current == null) { return; }
-        if (current.temperature != null) {
-            var t = (current.temperature as Numeric).toFloat();
-            if (System.getDeviceSettings().temperatureUnits == System.UNIT_STATUTE) { t = t * 9.0 / 5.0 + 32.0; }
-            _temp = Math.round(t).toNumber().format("%d") + "°";
+        var statute = System.getDeviceSettings().temperatureUnits == System.UNIT_STATUTE;
+        if (Toybox has :Weather) {
+            var current = Weather.getCurrentConditions();
+            if (current != null && current.temperature != null) {
+                var c = (current.temperature as Numeric).toFloat();
+                _temp = degrees(statute ? c * 9.0 / 5.0 + 32.0 : c);
+                if (current.condition != null) { _sky = sky(current.condition as Number); }
+                return;
+            }
         }
-        if (current.condition != null) { _sky = sky(current.condition as Number); }
+        var at = property("wAt");
+        var f = property("wTemp");
+        if (at instanceof Number && at > 0 && now - at <= 3 * 3600 && f instanceof Number) {
+            var t = f.toFloat();
+            _temp = degrees(statute ? t : (t - 32.0) * 5.0 / 9.0);
+            var pushed = property("wSky");
+            if (pushed instanceof String) {
+                if (pushed.equals("sun")) { _sky = :sun; }
+                else if (pushed.equals("rain")) { _sky = :rain; }
+                else if (pushed.equals("snow")) { _sky = :snow; }
+            }
+        }
+    }
+
+    private function degrees(t as Float) as String {
+        return Math.round(t).toNumber().format("%d") + "°";
+    }
+
+    private function property(key as String) as PropertyValueType or Null {
+        try {
+            return Application.Properties.getValue(key);
+        } catch (e) {
+            return null;
+        }
     }
 
     private function sky(condition as Number) as Symbol {

@@ -31,7 +31,12 @@ final class WatchSettings {
     /// App -> status from AppConfigSetStatus (1 = saved).
     private var statuses: [UUID: UInt64] = [:]
 
-    /// Fetches the hub's values and writes them to each glance. Quietly does nothing while disconnected.
+    /// Armstrong Minimal (watch/ArmstrongFace/manifest.xml): gets the hub's weather for its top circle,
+    /// since the watch only has weather of its own when Garmin Connect syncs it.
+    static let minimalFace = UUID(uuidString: "99122c2f-4a24-4fa5-9291-b0eabcf1764c")!
+
+    /// Fetches the hub's values and writes them to each glance, and the weather to the Minimal face.
+    /// Quietly does nothing while disconnected.
     func push(api: APIClient) async {
         guard !isPushing, let link, link.state == .connected else { return }
         isPushing = true
@@ -39,37 +44,56 @@ final class WatchSettings {
             isPushing = false
             waiting = [:]
         }
-        let values: HubValues
-        do {
-            values = try await api.get("/api/mobile/fitness/watch")
-        } catch {
-            lastResult = "Couldn't get glance values from the hub: \(error.localizedDescription)"
-            link.note("Glance settings: hub fetch failed")
-            return
-        }
+        var writes: [(name: String, appID: UUID, fields: [String: HubValue])] = []
         var lines: [String] = []
-        for target in Self.targets {
-            let fields = values[keyPath: target.part].sorted { $0.key < $1.key }.map { ($0.key, $0.value.garmin) }
+        do {
+            let values: HubValues = try await api.get("/api/mobile/fitness/watch")
+            writes += Self.targets.map { ($0.name, $0.appID, values[keyPath: $0.part]) }
+        } catch {
+            lines.append("Couldn't get glance values from the hub: \(error.localizedDescription)")
+            link.note("Glance settings: hub fetch failed")
+        }
+        if let raw = try? await api.data(api.request("/api/mobile/weather", timeout: 20)),
+           let weather = try? APIClient.decoder.decode(WeatherData.self, from: raw) {
+            writes.append(("Armstrong Minimal weather", Self.minimalFace, [
+                "wAt": .int(Int32(Date.now.timeIntervalSince1970)),
+                "wTemp": .int(Int32(weather.current.temp)),
+                "wSky": .string(Self.sky(weather.current.code)),
+            ]))
+        }
+        for write in writes {
+            guard link.state == .connected else { break }
+            let fields = write.fields.sorted { $0.key < $1.key }.map { ($0.key, $0.value.garmin) }
             guard let config = try? GarminJSON.encode(fields) else {
-                lines.append("\(target.name): couldn't encode")
+                lines.append("\(write.name): couldn't encode")
                 continue
             }
             nextRequestID = 0xB000 + (nextRequestID &+ 1) % 0x1000
             let id = nextRequestID
-            waiting[id] = target.appID
-            statuses[target.appID] = nil
-            link.send(GarminFiles.protobufRequest(.protobufRequest, requestID: id, body: GarminAppConfig.set(appID: target.appID, config: config)))
-            link.note("→ \(target.name) settings (\(config.count) bytes)")
-            let outcome = switch await waitForStatus(target.appID) {
+            waiting[id] = write.appID
+            statuses[write.appID] = nil
+            link.send(GarminFiles.protobufRequest(.protobufRequest, requestID: id, body: GarminAppConfig.set(appID: write.appID, config: config)))
+            link.note("→ \(write.name) settings (\(config.count) bytes)")
+            let outcome = switch await waitForStatus(write.appID) {
             case 1: "saved"
             case 2: "not installed, or the installed build has no settings"
             case nil: "no answer from the watch"
             case let other?: "refused (status \(other))"
             }
-            lines.append("\(target.name): \(outcome)")
+            lines.append("\(write.name): \(outcome)")
         }
         lastResult = lines.joined(separator: "\n")
         link.note("Glance settings: \(lines.joined(separator: "; "))")
+    }
+
+    /// A WMO weather code as the face's four skies.
+    static func sky(_ code: Int) -> String {
+        switch code {
+        case 0, 1: "sun"
+        case 71...77, 85, 86: "snow"
+        case 51...67, 80...82, 95...99: "rain"
+        default: "cloud"
+        }
     }
 
     private func waitForStatus(_ app: UUID) async -> UInt64? {

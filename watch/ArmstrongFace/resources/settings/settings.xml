@@ -1,0 +1,6 @@
+<!-- Every pushed key needs a setting: the watch only accepts a settings write for an app that has settings. -->
+<settings>
+    <setting propertyKey="@Properties.wAt" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.wTemp" title="@Strings.HubValue"><settingConfig type="numeric"/></setting>
+    <setting propertyKey="@Properties.wSky" title="@Strings.HubValue"><settingConfig type="alphaNumeric"/></setting>
+</settings>

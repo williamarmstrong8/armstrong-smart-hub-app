@@ -2,7 +2,7 @@
 
 Two faces that share code in `shared/`:
 
-- **Armstrong Minimal** (`ArmstrongFace/`): an analog dial in the style of Apple's Meridian, with hollow hands, a red seconds hand that sweeps while the screen is awake, and four stat circles: current weather (temperature with a sun, cloud, rain or snow icon), heart rate, calories and watch battery.
+- **Armstrong Minimal** (`ArmstrongFace/`): an analog dial in the style of Apple's Meridian, with hollow hands, a red seconds hand that sweeps while the screen is awake, and four stat circles: current weather (temperature with a sun, cloud, rain or snow icon), heart rate, calories and watch battery. The watch only has weather of its own when Garmin Connect syncs it, so when it has none the face uses the hub's weather, which the phone pushes into the face's settings after each sync (`wAt`, `wTemp` in °F, `wSky`; used for 3 hours).
 - **Armstrong Data** (`ArmstrongData/`): the same, plus bezel gauges (left = steps toward the goal, right = body battery), stress, this week's intensity minutes and watch battery.
 
 Everything comes from the watch itself (activity history, ActivityMonitor, SensorHistory), because the app doesn't relay web requests from the watch the way Garmin Connect does. The workout rules match the hub's glance feed: a day counts when any activity started on it, push / pull / legs follows the number of strength sessions in the watch's history, and five days without a workout means "Ease back in".
@@ -51,6 +51,7 @@ The watch first answers with a RESPONSE (5000): `5043 LE16 | status | requestId 
 | Glance | Keys | Shown when |
 | --- | --- | --- |
 | Last Night | `at`, `sStart`, `sEnd` (epoch s), `score`, `deep` / `light` / `rem` / `awake` (min), `hrv`, `hrvWk` (ms), `hrvSt` | `sEnd` is under 20 h old: score in the row, stage bar, HRV and status, and the overnight charts use the detected sleep instead of the bed/wake setting |
+| Armstrong Minimal (face) | `wAt` (epoch s), `wTemp` (°F), `wSky` (`sun` / `cloud` / `rain` / `snow`), from the hub's `/api/mobile/weather` | the watch has no weather of its own and `wAt` is under 3 h old |
 | Training | `at`, `ready`, `readyLv`, `acute`, `chronic`, `loadSt`, `recH` (h), `vo2` (VO2max × 10) | `at` is under 36 h old: readiness in the row, a readiness / load line, and the hub's recovery and VO2max instead of the watch's |
 
 Sleep score is the watch's own when its sleep file has one, else the hub's; overnight HRV is the watch's hrv_status summary when there is one for that morning, else the hub's estimate.
@@ -68,7 +69,7 @@ Then:
 watch/build.sh --publish
 ```
 
-This compiles both faces into `watch/build/`, signs them with a developer key at `~/.garmin/developer_key.der` (created on the first run; keep it, since the watch ties an installed app to the key that signed it), and uploads them to the hub with the hub's `WATCH_TOKEN`. In the app, open Fitness, then the watch sheet, then Install to watch, and pick a face.
+This compiles both faces into `watch/build/`, signs them with a developer key at `~/.garmin/developer_key.der` (created on the first run; keep it, since the watch ties an installed app to the key that signed it), and uploads them to the hub with the hub's `WATCH_TOKEN`. In the app, open Fitness, tap the watch, swipe through the Watch faces carousel and tap Send to watch.
 
 Without `--publish` it only builds. To try a face in the simulator, open its folder in VS Code with the Monkey C extension and run "Monkey C: Build Current Project".
 
