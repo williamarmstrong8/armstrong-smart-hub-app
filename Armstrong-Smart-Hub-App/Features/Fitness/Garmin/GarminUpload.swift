@@ -14,6 +14,14 @@ import Foundation
 // None of this has run against a real Forerunner 965 yet.
 
 enum GarminUpload {
+    /// What's being put on the watch: a Connect IQ app, or a FIT workout
+    /// (Gadgetbridge's FileType WORKOUTS, 128/5), which lands in Training › Workouts.
+    enum FileKind {
+        case prg, workout
+        var type: UInt8 { self == .prg ? prgType : 128 }
+        var subType: UInt8 { self == .prg ? prgSubType : 5 }
+    }
+
     /// Data type and sub-type of a Connect IQ app (Gadgetbridge's FILETYPE.PRG).
     static let prgType: UInt8 = 255
     static let prgSubType: UInt8 = 17
@@ -53,11 +61,11 @@ enum GarminUpload {
 
     /// CREATE_FILE: size, type, sub-type, file index 0, reserved 0, sub-type mask 0,
     /// number mask 0xFFFF, empty path, random 64-bit file id.
-    static func createFile(size: Int, fileID: UInt64 = .random(in: .min ... .max)) -> [UInt8] {
+    static func createFile(size: Int, kind: FileKind = .prg, fileID: UInt64 = .random(in: .min ... .max)) -> [UInt8] {
         var payload: [UInt8] = []
         payload.appendLE(UInt32(size))
-        payload.append(prgType)
-        payload.append(prgSubType)
+        payload.append(kind.type)
+        payload.append(kind.subType)
         payload.appendLE(UInt16(0))
         payload.append(0)
         payload.append(0)

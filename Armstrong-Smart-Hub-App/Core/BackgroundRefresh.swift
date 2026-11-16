@@ -50,6 +50,8 @@ final class BackgroundRefresh {
         await CheckinStore.shared.load(api: api)
         // The briefing loads the Fitness snapshot, which also goes on to Health and the widgets.
         await HealthBriefing.shared.runIfDue()
+        // After the wake-up sync: today's workout onto the watch.
+        await TodayWorkout.shared.runIfDue(fitness: HealthBriefing.shared.fitnessStore)
         WidgetCenter.shared.reloadAllTimelines()
     }
 }

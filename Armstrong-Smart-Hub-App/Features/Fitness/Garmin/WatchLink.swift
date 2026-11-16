@@ -107,8 +107,12 @@ final class WatchLink: NSObject {
     private var lastClockNudge = Date.distantPast
     private var lastClockCheck = Date.distantPast
 
+    /// The app's one link, for work that runs outside the views (the morning workout).
+    nonisolated(unsafe) static weak var current: WatchLink?
+
     override init() {
         super.init()
+        Self.current = self
         files.link = self
         installer.link = self
         settings.link = self

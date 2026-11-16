@@ -6,6 +6,7 @@ struct PhoneFeaturesSettings: View {
     @State private var health = HealthSync.shared
     @State private var briefing = HealthBriefing.shared
     @State private var places = PlaceMonitor.shared
+    @State private var workout = TodayWorkout.shared
     /// The place whose address is being typed in.
     @State private var searching: PlaceMonitor.Kind?
 
@@ -34,11 +35,12 @@ struct PhoneFeaturesSettings: View {
         GlassSection {
             Toggle("Morning", isOn: $briefing.morningOn)
             Toggle("Night", isOn: $briefing.nightOn)
+            Toggle("Put today's workout on my watch", isOn: $workout.autoSend)
         } header: {
             Text("Health briefing")
         } footer: {
             Text(briefing.modelAvailable
-                 ? "Written on this phone by Apple Intelligence after your morning sync, and from 9:30 pm, and shown on Fitness under This week. Nothing leaves the phone."
+                 ? "Written on this phone by Apple Intelligence after your morning sync, and from 9:30 pm, and shown on Fitness under This week. Today's workout is picked from the same numbers and sent to the watch over Bluetooth after the morning sync. Nothing leaves the phone."
                  : "Apple Intelligence isn't on, so the briefing lists the numbers instead of writing them up. Turn it on in Settings › Apple Intelligence & Siri.")
         }
 

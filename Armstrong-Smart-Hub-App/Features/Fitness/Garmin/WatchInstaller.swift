@@ -25,9 +25,11 @@ final class WatchInstaller {
     private var transferReply: Result<Int, GarminUpload.Failure>?
     private var lastProgress = Date()
 
-    func install(_ data: [UInt8], name: String, busy: Bool) async {
-        guard !isInstalling else { return }
-        guard let link else { return }
+    /// Sends a file; true once the watch has acknowledged every byte.
+    @discardableResult
+    func install(_ data: [UInt8], name: String, busy: Bool, kind: GarminUpload.FileKind = .prg) async -> Bool {
+        guard !isInstalling else { return false }
+        guard let link else { return false }
         isInstalling = true
         fraction = 0
         lastResult = nil
@@ -41,12 +43,12 @@ final class WatchInstaller {
         do {
             guard !busy else { throw GarminUpload.Failure.busy }
             guard link.state == .connected else { throw GarminUpload.Failure.disconnected }
-            guard GarminUpload.looksLikePRG(data) else { throw GarminUpload.Failure.notPRG }
+            if kind == .prg { guard GarminUpload.looksLikePRG(data) else { throw GarminUpload.Failure.notPRG } }
             guard data.count <= GarminUpload.maxBytes else { throw GarminUpload.Failure.tooLarge }
 
             status = "Asking the watch for space"
             createReply = nil
-            link.send(GarminUpload.createFile(size: data.count))
+            link.send(GarminUpload.createFile(size: data.count, kind: kind))
             try await waitFor("create") { self.createReply != nil }
             let index = try createReply!.get().fileIndex
 
@@ -76,13 +78,17 @@ final class WatchInstaller {
             link.send(GFDIMessage.systemEvent(.syncComplete))
             status = nil
             // Hub glances are named "Glance: …"; everything else is a watch face.
-            let howTo = name.hasPrefix("Glance:")
+            let howTo = kind == .workout
+                ? "On the watch: Start, pick the activity, then hold Up › Training › Workouts."
+                : name.hasPrefix("Glance:")
                 ? "On the watch: swipe up to your glances, scroll to the bottom, Edit, then Add and pick it."
                 : "On the watch: hold Up, then Watch Face, and pick it."
-            lastResult = "Sent \(name) (\(data.count / 1024) KB). \(howTo)"
+            lastResult = "Sent \(name) (\(max(1, data.count / 1024)) KB). \(howTo)"
+            return true
         } catch {
             status = nil
             lastResult = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
         }
     }
 

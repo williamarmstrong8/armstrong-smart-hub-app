@@ -44,10 +44,14 @@ struct TestFeaturesView: View {
                 test("briefNight", "Send the night briefing", "moon.stars") {
                     await briefing.sendTest(.night)
                 }
+                test("workout", "Send today's workout to the watch", "applewatch.radiowaves.left.and.right") {
+                    if let api = briefing.api { await briefing.fitnessStore.load(api: api) }
+                    return await TodayWorkout.shared.send(fitness: briefing.fitnessStore)
+                }
             } header: {
                 Text("Health briefing")
             } footer: {
-                Text("Writes it now from the phone's data, shows it on the Fitness card, and sends the notification in 5 seconds.")
+                Text("Writes it now from the phone's data, shows it on the Fitness card, and sends the notification in 5 seconds. The workout picks today's session from the same numbers and sends it to the watch now (it must be connected).")
             }
 
             GlassSection {

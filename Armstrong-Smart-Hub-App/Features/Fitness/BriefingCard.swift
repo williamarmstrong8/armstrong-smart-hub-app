@@ -5,6 +5,7 @@ import SwiftUI
 /// the refresh button writes the current one again from the newest data.
 struct BriefingCard: View {
     @State private var briefing = HealthBriefing.shared
+    @State private var workout = TodayWorkout.shared
 
     /// Today's slots that have a brief, night first.
     private var shown: [HealthBriefing.Slot] {
@@ -35,6 +36,19 @@ struct BriefingCard: View {
                         .buttonStyle(.plain)
                         .disabled(briefing.writing)
                         .accessibilityLabel("Write the \(HealthBriefing.currentSlot == .morning ? "morning" : "night") briefing again")
+                    }
+                    if workout.sentToday, let sent = workout.sent {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "applewatch")
+                                Text("Today's session")
+                            }
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(BrickLook.soft)
+                            Text(sent.title).font(.body.weight(.semibold)).foregroundStyle(BrickLook.ink)
+                            Text(sent.why).font(.subheadline).foregroundStyle(BrickLook.soft)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     if shown.isEmpty {
                         Text(briefing.writing ? "Writing…" : "Your morning briefing comes after the watch syncs your sleep, and the night one from 9:30 pm.")

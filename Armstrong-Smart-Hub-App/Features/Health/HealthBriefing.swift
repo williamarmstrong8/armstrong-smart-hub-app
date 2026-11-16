@@ -42,6 +42,8 @@ final class HealthBriefing {
     static let nightMinute = 30
 
     @ObservationIgnored private let fitness = FitnessStore()
+    /// The phone's Fitness snapshot, loaded by each pass (also used to pick today's workout).
+    var fitnessStore: FitnessStore { fitness }
 
     init() {
         let d = UserDefaults.standard
