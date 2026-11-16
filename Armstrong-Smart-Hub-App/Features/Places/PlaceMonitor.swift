@@ -265,6 +265,7 @@ final class PlaceMonitor {
     private nonisolated static let gymArrived = "place.gym.arrived"
     private nonisolated static let gymLeft = "place.gym.left"
     private nonisolated static let startAction = "place.start"
+    private nonisolated static let lampFailed = "place.home.lamp"
     private nonisolated static let openAction = "place.open"
 
     /// Registered with the check-in categories (CheckinReminders.start).
@@ -290,7 +291,7 @@ final class PlaceMonitor {
                 do {
                     let _: Empty? = try await api.run("setLight", [.string(WakeAlarm.lampEntity), .object(["on": .bool(true)])])
                 } catch {
-                    notify(category: "place.home.lamp", title: "Welcome home", body: "Couldn't turn your lamp on: the hub didn't answer.")
+                    notify(category: Self.lampFailed, title: "Welcome home", body: "Couldn't turn your lamp on: the hub didn't answer.")
                 }
             }
             if homeCheckin { await CheckinReminders.shared.arrivedHome() }
@@ -355,14 +356,19 @@ final class PlaceMonitor {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: category, content: content, trigger: trigger))
     }
 
-    /// A gym notification answered: Start opens a new workout; a tap opens the one going.
-    func handle(action: String) async {
+    /// A place notification answered. Gym: Start opens a new workout, a tap opens
+    /// the one going. Home (the lamp didn't come on): the Home tab, with the lights.
+    func handle(category: String, action: String) async {
+        if category == Self.lampFailed {
+            await CheckinReminders.route(.home)
+            return
+        }
         let workouts = WorkoutStore.shared
         if action == Self.startAction, workouts.active == nil {
             let unit = WeightUnit(rawValue: UserDefaults.standard.string(forKey: "workouts.unit") ?? "") ?? .localDefault
             workouts.start(unit: unit)
         }
+        await CheckinReminders.route(.fitness)
         if workouts.active != nil { workouts.isPresented = true }
-        await CheckinReminders.open("fitness")
     }
 }

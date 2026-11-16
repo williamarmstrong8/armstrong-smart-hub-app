@@ -276,11 +276,11 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
         let category = content.categoryIdentifier
         let day = content.userInfo["day"] as? String
         if category.hasPrefix(PlaceMonitor.categoryPrefix) {
-            await PlaceMonitor.shared.handle(action: action)
+            await PlaceMonitor.shared.handle(category: category, action: action)
             return
         }
         if category == HealthBriefing.category {
-            await Self.open("fitness")
+            await Self.route(.fitness, card: .briefing)
             return
         }
         guard category == Self.category || category == Self.guessCategory || category.hasPrefix(Self.optionsPrefix), let day else { return }
@@ -289,7 +289,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             case Self.fine: await reportTest(feeling: "fine")
             case Self.sick: await reportTest(feeling: "sick")
             case let pick where pick.hasPrefix(Self.pickPrefix): await reportTest(feeling: String(pick.dropFirst(Self.pickPrefix.count)))
-            case Self.edit, UNNotificationDefaultActionIdentifier: await Self.open("fitness")
+            case Self.edit, UNNotificationDefaultActionIdentifier: await Self.route(.fitness, card: .checkin)
             default: break
             }
             return
@@ -301,7 +301,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             guard let guess = content.userInfo["guess"] as? String else { return }
             let offered = (content.userInfo["offered"] as? [String]) ?? [guess]
             await answer(day: day, feeling: action == Self.yes ? guess : "fine", offered: offered.contains(guess) ? offered : offered + [guess])
-        case Self.edit, UNNotificationDefaultActionIdentifier: await Self.open("fitness")
+        case Self.edit, UNNotificationDefaultActionIdentifier: await Self.route(.fitness, card: .checkin)
         case let pick where pick.hasPrefix(Self.pickPrefix):
             let feeling = String(pick.dropFirst(Self.pickPrefix.count))
             let offered = (content.userInfo["offered"] as? [String]) ?? [feeling]
@@ -328,9 +328,9 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
         await schedule(store)
     }
 
-    /// Opens one of the app's tabs (armstronghub://fitness), as the widgets do.
-    static func open(_ tab: String) async {
-        guard let url = URL(string: "armstronghub://\(tab)") else { return }
-        await UIApplication.shared.open(url)
+    /// Takes the app to a tab and the card on it (the app is already coming
+    /// to the front for a tap or a foreground button).
+    static func route(_ tab: HubTab, card: AppRouter.Card? = nil) async {
+        AppRouter.shared.open(tab, card: card)
     }
 }

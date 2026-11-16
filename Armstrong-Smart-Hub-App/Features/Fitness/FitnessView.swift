@@ -17,6 +17,8 @@ struct FitnessView: View {
     @State private var workouts = WorkoutStore.shared
     /// The pages open on top of the overview.
     @State private var path = NavigationPath()
+    /// Notification taps: the card to scroll to.
+    @State private var router = AppRouter.shared
     @AppStorage("workouts.unit") private var unit: WeightUnit = .localDefault
     /// When the watch last played its sync ring. It plays at most every 6 hours;
     /// syncs in between still run, just without it.
@@ -25,6 +27,7 @@ struct FitnessView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
+            ScrollViewReader { scroller in
             ScrollView(.vertical) {
                 VStack(spacing: HubLayout.sectionGap) {
                     // Keep the hero and its account/watch presentation eagerly mounted.
@@ -39,9 +42,11 @@ struct FitnessView: View {
                             }
                             VStack(spacing: HubLayout.sectionGap) {
                                 MorningCheckin(store: checkins)
+                                    .id(AppRouter.Card.checkin)
                                 AlcoholCard(fitness: store)
                                 today
                                 BriefingCard()
+                                    .id(AppRouter.Card.briefing)
                             }
                             // Live updates stay inside individual overview rows.
                             BrickCard(padding: 0) {
@@ -59,7 +64,18 @@ struct FitnessView: View {
                 .containerRelativeFrame(.horizontal)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            // A notification tapped: scroll to its card once the page has laid out.
+            .onChange(of: router.pendingCard, initial: true) { _, card in
+                guard let card else { return }
+                path.removeAll()
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    withAnimation(.snappy) { scroller.scrollTo(card, anchor: .top) }
+                    router.pendingCard = nil
+                }
+            }
             .demoScroll()
+            }
             .hubPageStyle(backdrop: true)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: FitnessActivity.self) { ActivityPage(activity: $0, store: store) }

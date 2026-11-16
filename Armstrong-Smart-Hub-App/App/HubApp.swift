@@ -111,6 +111,8 @@ struct MainTabView: View {
     @Environment(WatchLink.self) private var watch
     @State private var workouts = WorkoutStore.shared
     @State private var titles = TitleCardPresenter.shared
+    /// Notification taps: which tab to show.
+    @State private var router = AppRouter.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tab: HubTab = {
         #if DEBUG
@@ -202,6 +204,10 @@ struct MainTabView: View {
             })
         }
         #endif
+        // A notification tapped: its tab (the page scrolls to the card itself).
+        .onChange(of: router.request, initial: true) { _, request in
+            if let request { tab = request.tab }
+        }
         .onOpenURL { url in
             guard url.scheme == "armstronghub" else { return }
             switch url.host() {
