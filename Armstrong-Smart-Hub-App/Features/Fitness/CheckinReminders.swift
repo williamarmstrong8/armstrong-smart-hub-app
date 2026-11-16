@@ -41,12 +41,57 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
 
     private let center = UNUserNotificationCenter.current()
 
+    /// A morning with a guess: one button per card the hub offers (the guess
+    /// first, as "Yes, run down"), and "Something else…" to open the check-in.
+    /// Buttons belong to a category, so each set of cards gets its own,
+    /// remembered so a notification delivered earlier keeps its buttons.
+    private nonisolated static let optionsPrefix = "checkin.options."
+    private nonisolated static let pickPrefix = "checkin.pick."
+    private static let optionSetsKey = "checkin.optionSets"
+
     /// Registers the buttons and takes over notification answers. Call at launch.
     func start() {
         center.delegate = self
+        registerCategories()
+    }
+
+    /// Card sets in use, newest last: "key|label" per card.
+    private var optionSets: [[String]] {
+        get { UserDefaults.standard.array(forKey: Self.optionSetsKey) as? [[String]] ?? [] }
+        set { UserDefaults.standard.set(Array(newValue.suffix(12)), forKey: Self.optionSetsKey) }
+    }
+
+    private static func optionsCategory(_ cards: [String]) -> String {
+        optionsPrefix + cards.map { $0.split(separator: "|").first.map(String.init) ?? $0 }.joined(separator: ".")
+    }
+
+    /// The category for this morning's cards, registered if it's new.
+    private func category(for options: [CheckinOption], guess: String) -> String {
+        let cards = ([guess] + options.map(\.key).filter { $0 != guess }).prefix(3).map { key in
+            "\(key)|\(options.first { $0.key == key }?.label ?? Feeling.label(key))"
+        }
+        let id = Self.optionsCategory(Array(cards))
+        if !optionSets.contains(where: { Self.optionsCategory($0) == id }) {
+            optionSets = optionSets + [Array(cards)]
+            registerCategories()
+        }
+        return id
+    }
+
+    private func registerCategories() {
+        let something = UNNotificationAction(identifier: Self.edit, title: "Something else…", options: [.foreground],
+                                             icon: UNNotificationActionIcon(systemImageName: "square.and.pencil"))
+        let options = optionSets.map { cards in
+            UNNotificationCategory(identifier: Self.optionsCategory(cards), actions: cards.enumerated().map { i, card in
+                let parts = card.split(separator: "|", maxSplits: 1).map(String.init)
+                let key = parts[0], label = parts.count > 1 ? parts[1] : Feeling.label(key)
+                return UNNotificationAction(identifier: Self.pickPrefix + key, title: i == 0 ? "Yes, \(label.lowercased())" : label,
+                                            options: [], icon: UNNotificationActionIcon(systemImageName: Feeling.icon(key)))
+            } + [something], intentIdentifiers: [])
+        }
         let edit = UNNotificationAction(identifier: Self.edit, title: "Edit", options: [.foreground],
                                         icon: UNNotificationActionIcon(systemImageName: "square.and.pencil"))
-        center.setNotificationCategories([
+        center.setNotificationCategories(Set([
             UNNotificationCategory(identifier: Self.category, actions: [
                 UNNotificationAction(identifier: Self.fine, title: "I'm fine", options: [], icon: UNNotificationActionIcon(systemImageName: "face.smiling")),
                 UNNotificationAction(identifier: Self.sick, title: "I'm sick", options: [], icon: UNNotificationActionIcon(systemImageName: "thermometer.medium")),
@@ -59,7 +104,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             ], intentIdentifiers: []),
             PlaceMonitor.notificationCategory,
             HealthBriefing.notificationCategory,
-        ])
+        ]).union(options))
     }
 
     /// Replaces the next week of check-in notifications from what the store knows now.
@@ -85,11 +130,11 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
                 content.title = slot == "morning" ? "Morning check-in" : "Evening check-in"
                 // Only today's morning knows the guess; later days get the plain question.
                 if slot == "morning", offset == 0, let top = Self.topGuess(store) {
-                    content.categoryIdentifier = Self.guessCategory
+                    content.categoryIdentifier = category(for: store.options, guess: top.key)
                     content.userInfo["guess"] = top.key
-                    content.userInfo["offered"] = store.options.map(\.key)
-                    content.body = "Looks like you might be \(top.label.lowercased()). Right?"
-                    if let reason = top.reason, !reason.isEmpty { content.subtitle = reason }
+                    content.userInfo["offered"] = Array(Set(store.options.map(\.key) + [top.key]))
+                    content.title = "\(top.label)?"
+                    content.body = Self.why(top, store) + " Is that right, or how do you feel?"
                 } else {
                     content.categoryIdentifier = Self.category
                     content.body = Self.text(slot: slot, answer: answer, guessedFine: offset == 0 && store.guess != nil)
@@ -110,6 +155,19 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
         case false?: return "Still feeling fine?"
         case nil: return "How was today: fine or sick?"
         }
+    }
+
+    /// Why the hub thinks so, from the numbers behind the guess:
+    /// "Your HRV is 38 ms (usually 52 ms) and sleep 5h 40m (usually 7h 10m)."
+    private static func why(_ top: CheckinOption, _ store: CheckinStore) -> String {
+        let reasons = store.guess?.states.first { $0.state == top.key }?.reasons.prefix(3) ?? []
+        guard !reasons.isEmpty else {
+            if let reason = top.reason, !reason.isEmpty { return "Looks like you might be \(top.label.lowercased()): \(reason)." }
+            return "Looks like you might be \(top.label.lowercased())."
+        }
+        let parts = reasons.map { "\($0.label.lowercased()) \($0.value) (usually \($0.usual))" }
+        let list = parts.count == 1 ? parts[0] : parts.dropLast().joined(separator: ", ") + " and " + parts.last!
+        return "Looks like you might be \(top.label.lowercased()): \(list)."
     }
 
     /// The hub's likeliest card for this morning when it isn't "fine": the one to ask about.
@@ -145,7 +203,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             await Self.open("fitness")
             return
         }
-        guard category == Self.category || category == Self.guessCategory, let day else { return }
+        guard category == Self.category || category == Self.guessCategory || category.hasPrefix(Self.optionsPrefix), let day else { return }
         switch action {
         case Self.fine: await answer(day: day, feeling: "fine", offered: ["sick"])
         case Self.sick: await answer(day: day, feeling: "sick", offered: ["sick"])
@@ -154,6 +212,10 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             let offered = (content.userInfo["offered"] as? [String]) ?? [guess]
             await answer(day: day, feeling: action == Self.yes ? guess : "fine", offered: offered.contains(guess) ? offered : offered + [guess])
         case Self.edit, UNNotificationDefaultActionIdentifier: await Self.open("fitness")
+        case let pick where pick.hasPrefix(Self.pickPrefix):
+            let feeling = String(pick.dropFirst(Self.pickPrefix.count))
+            let offered = (content.userInfo["offered"] as? [String]) ?? [feeling]
+            await answer(day: day, feeling: feeling, offered: offered.contains(feeling) ? offered : offered + [feeling])
         default: break
         }
     }
@@ -163,7 +225,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         let category = notification.request.content.categoryIdentifier
         let shown = [Self.category, Self.guessCategory, HealthBriefing.category, "jarvis"].contains(category)
-            || category.hasPrefix(PlaceMonitor.categoryPrefix)
+            || category.hasPrefix(PlaceMonitor.categoryPrefix) || category.hasPrefix(Self.optionsPrefix)
         return shown ? [.banner, .sound] : []
     }
 

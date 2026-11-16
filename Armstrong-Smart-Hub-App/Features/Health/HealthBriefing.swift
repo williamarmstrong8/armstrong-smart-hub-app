@@ -28,8 +28,13 @@ final class HealthBriefing {
     var api: APIClient?
     var morningOn: Bool { didSet { UserDefaults.standard.set(morningOn, forKey: "briefing.morning.on") } }
     var nightOn: Bool { didSet { UserDefaults.standard.set(nightOn, forKey: "briefing.night.on") } }
-    /// The newest briefing written, whichever slot.
-    private(set) var latest: (slot: Slot, text: String, at: Date)?
+    /// The newest briefing of each slot, for the card on Fitness.
+    private(set) var briefs: [Slot: Brief] = [:]
+
+    struct Brief: Codable, Equatable {
+        var text: String
+        var at: Date
+    }
     private(set) var writing = false
 
     /// The hour (local) the night briefing goes out from.
@@ -42,9 +47,10 @@ final class HealthBriefing {
         let d = UserDefaults.standard
         morningOn = d.object(forKey: "briefing.morning.on") as? Bool ?? true
         nightOn = d.object(forKey: "briefing.night.on") as? Bool ?? true
-        if let raw = d.string(forKey: "briefing.latest.slot"), let slot = Slot(rawValue: raw),
-           let text = d.string(forKey: "briefing.latest.text"), let at = d.object(forKey: "briefing.latest.at") as? Date {
-            latest = (slot, text, at)
+        for slot in Slot.allCases {
+            if let data = d.data(forKey: "briefing.\(slot.rawValue).brief"), let brief = try? JSONDecoder().decode(Brief.self, from: data) {
+                briefs[slot] = brief
+            }
         }
     }
 
@@ -104,20 +110,34 @@ final class HealthBriefing {
         guard !facts.isEmpty else { return }
         let text = await write(slot, facts: facts)
         UserDefaults.standard.set(day, forKey: "briefing.\(slot.rawValue).sent")
-        latest = (slot, text, .now)
-        let d = UserDefaults.standard
-        d.set(slot.rawValue, forKey: "briefing.latest.slot")
-        d.set(text, forKey: "briefing.latest.text")
-        d.set(Date.now, forKey: "briefing.latest.at")
+        keep(slot, text)
         await notify(slot, text)
     }
 
-    /// Writes a briefing now, whatever the time, for the preview in Account.
-    func preview(_ slot: Slot) async -> String {
+    /// The slot for right now: morning until 3 pm, then night.
+    static var currentSlot: Slot { Calendar.current.component(.hour, from: .now) < 15 ? .morning : .night }
+
+    /// Writes a briefing now, whatever the time, without a notification (the card's refresh).
+    func writeNow(_ slot: Slot = currentSlot) async {
+        guard !writing else { return }
+        writing = true
+        defer { writing = false }
         if let api { await fitness.load(api: api) }
         let facts = facts(slot)
-        guard !facts.isEmpty else { return "No health data on the phone yet." }
-        return await write(slot, facts: facts)
+        guard !facts.isEmpty else { return }
+        keep(slot, await write(slot, facts: facts))
+    }
+
+    /// Whether a slot's brief is from today (the night one counts until 3 am).
+    func isCurrent(_ slot: Slot) -> Bool {
+        guard let at = briefs[slot]?.at else { return false }
+        return localDay(at.addingTimeInterval(-3 * 3600)) == localDay(Date.now.addingTimeInterval(-3 * 3600))
+    }
+
+    private func keep(_ slot: Slot, _ text: String) {
+        let brief = Brief(text: text, at: .now)
+        briefs[slot] = brief
+        if let data = try? JSONEncoder().encode(brief) { UserDefaults.standard.set(data, forKey: "briefing.\(slot.rawValue).brief") }
     }
 
     private func write(_ slot: Slot, facts: [String]) async -> String {

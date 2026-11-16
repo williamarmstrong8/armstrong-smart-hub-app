@@ -41,6 +41,7 @@ struct FitnessView: View {
                                 MorningCheckin(store: checkins)
                                 AlcoholCard(fitness: store)
                                 today
+                                BriefingCard()
                             }
                             // Live updates stay inside individual overview rows.
                             BrickCard(padding: 0) {

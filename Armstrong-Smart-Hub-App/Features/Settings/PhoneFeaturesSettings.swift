@@ -6,8 +6,8 @@ struct PhoneFeaturesSettings: View {
     @State private var health = HealthSync.shared
     @State private var briefing = HealthBriefing.shared
     @State private var places = PlaceMonitor.shared
-    @State private var preview: String?
-    @State private var previewing = false
+    /// The place whose address is being typed in.
+    @State private var searching: PlaceMonitor.Kind?
 
     var body: some View {
         if health.available {
@@ -34,46 +34,49 @@ struct PhoneFeaturesSettings: View {
         GlassSection {
             Toggle("Morning", isOn: $briefing.morningOn)
             Toggle("Night", isOn: $briefing.nightOn)
-            Button(previewing ? "Writing…" : "Write one now", systemImage: "text.badge.star") {
-                previewing = true
-                Task {
-                    let hour = Calendar.current.component(.hour, from: .now)
-                    preview = await briefing.preview(hour < 15 ? .morning : .night)
-                    previewing = false
-                }
-            }
-            .disabled(previewing)
-            if let preview {
-                Text(preview).font(.subheadline)
-            }
         } header: {
             Text("Health briefing")
         } footer: {
             Text(briefing.modelAvailable
-                 ? "Written on this phone by Apple Intelligence after your morning sync, and from 9:30 pm. Nothing leaves the phone."
+                 ? "Written on this phone by Apple Intelligence after your morning sync, and from 9:30 pm, and shown on Fitness under This week. Nothing leaves the phone."
                  : "Apple Intelligence isn't on, so the briefing lists the numbers instead of writing them up. Turn it on in Settings › Apple Intelligence & Siri.")
         }
 
         GlassSection {
             ForEach(PlaceMonitor.Kind.allCases) { kind in
                 HStack {
-                    Label(kind.title, systemImage: kind.symbol)
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(kind.title)
+                            if let place = places.places[kind] {
+                                Text(place.address ?? "Set from where you were")
+                                    .font(.footnote).foregroundStyle(HubDesign.secondary).lineLimit(2)
+                            }
+                        }
+                    } icon: {
+                        Image(systemName: kind.symbol)
+                    }
                     Spacer()
                     if places.setting == kind {
                         ProgressView()
-                    } else if places.places[kind] != nil {
+                    } else {
                         if places.inside.contains(kind) {
                             Text("Here").font(.footnote).foregroundStyle(HubDesign.secondary)
                         }
                         Menu {
-                            Button("Set to where I am", systemImage: "location") { Task { await places.setHere(kind) } }
-                            Button("Remove", systemImage: "trash", role: .destructive) { Task { await places.remove(kind) } }
+                            Button("Enter an address", systemImage: "magnifyingglass") { searching = kind }
+                            Button("Use where I am now", systemImage: "location") { Task { await places.setHere(kind) } }
+                            if places.places[kind] != nil {
+                                Button("Remove", systemImage: "trash", role: .destructive) { Task { await places.remove(kind) } }
+                            }
                         } label: {
-                            Image(systemName: "ellipsis.circle").frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
+                            if places.places[kind] == nil {
+                                Text("Set")
+                            } else {
+                                Image(systemName: "ellipsis.circle").frame(minWidth: HubLayout.minHitTarget, minHeight: HubLayout.minHitTarget)
+                            }
                         }
-                        .accessibilityLabel("Change \(kind.title)")
-                    } else {
-                        Button("Set to here") { Task { await places.setHere(kind) } }
+                        .accessibilityLabel(places.places[kind] == nil ? "Set \(kind.title)" : "Change \(kind.title)")
                     }
                 }
             }
@@ -86,7 +89,8 @@ struct PhoneFeaturesSettings: View {
         } header: {
             Text("Places")
         } footer: {
-            Text("Set each place while you're there. Arriving at the gym asks to start a workout; time at work and the gym goes in the night briefing. Needs location set to Always. Kept on this phone.")
+            Text("Type an address, or set a place while you're there. Arriving at the gym asks to start a workout; time at work and the gym goes in the night briefing. Needs location set to Always. Kept on this phone.")
         }
+        .sheet(item: $searching) { kind in AddressSearchSheet(kind: kind) }
     }
 }

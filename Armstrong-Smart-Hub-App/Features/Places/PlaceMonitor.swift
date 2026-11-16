@@ -42,6 +42,8 @@ final class PlaceMonitor {
         var latitude: Double
         var longitude: Double
         var radius: Double
+        /// The address it was set from; nil when set from where the phone was.
+        var address: String?
         var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
     }
 
@@ -169,6 +171,17 @@ final class PlaceMonitor {
             inside.insert(kind)
             visits.append(Visit(kind: kind, arrived: .now))
         }
+        persist()
+        if listening == nil { start() } else { await syncConditions() }
+    }
+
+    /// Saves a place from an address picked in the search sheet. The geofence
+    /// starts out assuming you're away; iOS corrects that within a few minutes if you're there.
+    func set(_ kind: Kind, coordinate: CLLocationCoordinate2D, address: String) async {
+        problem = nil
+        places[kind] = Place(latitude: coordinate.latitude, longitude: coordinate.longitude, radius: Self.defaultRadius, address: address)
+        inside.remove(kind)
+        if let i = visits.lastIndex(where: { $0.kind == kind && $0.left == nil }) { visits[i].left = .now }
         persist()
         if listening == nil { start() } else { await syncConditions() }
     }
