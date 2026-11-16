@@ -336,38 +336,15 @@ struct ReflectionView: View {
     private var quotesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             heading("Quotes")
-            if !store.quotes.isEmpty {
-                QuoteCarousel(quotes: store.quotes, attribution: attribution(for:))
-            }
             if looseQuotes.isEmpty {
                 Text("Quotes you add show up here. Ones scanned from a book live on its page.")
                     .font(.subheadline).foregroundStyle(HubDesign.secondary)
                     .padding(.horizontal, 4)
             } else {
-                GlassSection("Yours") {
-                    ForEach(looseQuotes) { q in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("\u{201C}\(q.text)\u{201D}").font(.system(.body, design: .serif))
-                            if !q.author.isEmpty {
-                                Text("\u{2014} \(q.author)").font(.subheadline).foregroundStyle(HubDesign.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(.rect)
-                        .contextMenu {
-                            Button("Copy", systemImage: "doc.on.doc") {
-                                UIPasteboard.general.string = q.author.isEmpty ? q.text : "\(q.text) \u{2014} \(q.author)"
-                            }
-                            Button("Delete", systemImage: "trash", role: .destructive) {
-                                quoteToDelete = q
-                                confirmQuoteDelete = true
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityHint("Touch and hold for options")
-                    }
-                }
+                QuoteCarousel(quotes: looseQuotes, onDelete: { q in
+                    quoteToDelete = q
+                    confirmQuoteDelete = true
+                })
             }
 
             Button { addingQuote = true } label: {
@@ -1068,15 +1045,15 @@ private struct StartSessionPage: View {
     }
 }
 
-/// Three quotes stacked in a glass card, always three, turning over every few seconds: the top one
-/// fades and lifts out while the next fades and rises in at the bottom. Draws from every saved
-/// quote, books' and your own; with three or fewer it just shows them.
+/// Your own quotes as three separate glass cards, always three, turning over every few seconds:
+/// the top card fades and lifts out while the next fades and rises in at the bottom. With three
+/// or fewer it just shows them.
 private struct QuoteCarousel: View {
     let quotes: [ReflectionQuote]
-    let attribution: (ReflectionQuote) -> String
+    let onDelete: (ReflectionQuote) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var start = Int.random(in: 0..<1000)
+    @State private var start = 0
     private static let visible = 3
 
     private var window: [ReflectionQuote] {
@@ -1085,26 +1062,33 @@ private struct QuoteCarousel: View {
     }
 
     var body: some View {
-        BrickCard {
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(window) { q in
-                    VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 12) {
+            ForEach(window) { q in
+                BrickCard {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("\u{201C}\(q.text)\u{201D}")
-                            .font(.system(.body, design: .serif))
-                            .lineLimit(3, reservesSpace: true)
-                        Text("\u{2014} \(attribution(q))")
-                            .font(.caption).foregroundStyle(HubDesign.secondary)
-                            .lineLimit(1)
+                            .font(.title3)
+                            .lineLimit(4, reservesSpace: false)
+                        if !q.author.isEmpty {
+                            Text("\u{2014} \(q.author)").font(.subheadline).foregroundStyle(HubDesign.secondary)
+                                .lineLimit(1)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityElement(children: .combine)
-                    .transition(reduceMotion ? .opacity : .asymmetric(
-                        insertion: .opacity.combined(with: .offset(y: 32)),
-                        removal: .opacity.combined(with: .offset(y: -32))))
                 }
+                .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
+                .contextMenu {
+                    Button("Copy", systemImage: "doc.on.doc") {
+                        UIPasteboard.general.string = q.author.isEmpty ? q.text : "\(q.text) \u{2014} \(q.author)"
+                    }
+                    Button("Delete", systemImage: "trash", role: .destructive) { onDelete(q) }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityHint("Touch and hold for options")
+                .transition(reduceMotion ? .opacity : .asymmetric(
+                    insertion: .opacity.combined(with: .offset(y: 40)),
+                    removal: .opacity.combined(with: .offset(y: -40))))
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .clipped()
         }
         .task(id: quotes.count) {
             guard quotes.count > Self.visible else { return }
