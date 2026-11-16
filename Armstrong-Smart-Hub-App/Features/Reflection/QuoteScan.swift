@@ -354,6 +354,8 @@ struct QuoteScanFlow: View {
     let store: ReflectionStore
     /// The book to file the quote under; nil lets the reader choose.
     let bookID: UUID?
+    /// The chapter to file it under; nil suggests the one the book's last quote went under.
+    var chapterID: UUID? = nil
     let onClose: () -> Void
 
     @State private var photo: UIImage?
@@ -362,7 +364,7 @@ struct QuoteScanFlow: View {
     var body: some View {
         Group {
             if let photo {
-                ParagraphPickView(store: store, bookID: bookID, photo: photo, paragraphs: paragraphs,
+                ParagraphPickView(store: store, bookID: bookID, chapterID: chapterID, photo: photo, paragraphs: paragraphs,
                                   onRetake: retake, onClose: onClose)
             } else {
                 PageCameraView(onPhoto: read, onClose: onClose)
@@ -396,6 +398,7 @@ struct QuoteScanFlow: View {
 private struct ParagraphPickView: View {
     let store: ReflectionStore
     let bookID: UUID?
+    let chapterID: UUID?
     let photo: UIImage
     /// nil while the page is still being read.
     let paragraphs: [ScanParagraph]?
@@ -423,11 +426,11 @@ private struct ParagraphPickView: View {
             }
             .hubPageStyle()
             .navigationDestination(item: $picked) { p in
-                QuoteTrimView(store: store, bookID: bookID, paragraphs: paragraphs ?? [], first: p, onSaved: onClose)
+                QuoteTrimView(store: store, bookID: bookID, chapterID: chapterID, paragraphs: paragraphs ?? [], first: p, onSaved: onClose)
             }
         }
         .sheet(isPresented: $typing) {
-            ManualQuoteSheet(store: store, bookID: bookID, onSaved: onClose)
+            ManualQuoteSheet(store: store, bookID: bookID, chapterID: chapterID, onSaved: onClose)
         }
     }
 
@@ -560,7 +563,7 @@ private struct QuoteTrimView: View {
 
     private static let space = "quote-words"
 
-    init(store: ReflectionStore, bookID: UUID?, paragraphs: [ScanParagraph], first: ScanParagraph, onSaved: @escaping () -> Void) {
+    init(store: ReflectionStore, bookID: UUID?, chapterID: UUID? = nil, paragraphs: [ScanParagraph], first: ScanParagraph, onSaved: @escaping () -> Void) {
         self.store = store
         self.bookID = bookID
         self.paragraphs = paragraphs
@@ -571,7 +574,7 @@ private struct QuoteTrimView: View {
         _lastParagraph = State(initialValue: paragraphs.firstIndex(of: first) ?? 0)
         let book = bookID ?? store.books.first?.id
         _chosenBook = State(initialValue: book)
-        _chapterID = State(initialValue: book.flatMap { store.lastChapter(in: $0) })
+        _chapterID = State(initialValue: chapterID ?? book.flatMap { store.lastChapter(in: $0) })
     }
 
     private var trimmed: Bool { start > 0 || end < words.count - 1 }
@@ -877,11 +880,11 @@ struct ManualQuoteSheet: View {
     @State private var chapterID: UUID?
     @FocusState private var focused: Bool
 
-    init(store: ReflectionStore, bookID: UUID?, onSaved: (() -> Void)? = nil) {
+    init(store: ReflectionStore, bookID: UUID?, chapterID: UUID? = nil, onSaved: (() -> Void)? = nil) {
         self.store = store
         self.bookID = bookID
         self.onSaved = onSaved
-        _chapterID = State(initialValue: bookID.flatMap { store.lastChapter(in: $0) })
+        _chapterID = State(initialValue: chapterID ?? bookID.flatMap { store.lastChapter(in: $0) })
     }
 
     private var chapters: [BookChapter] { bookID.flatMap { store.book($0)?.chapters } ?? [] }
