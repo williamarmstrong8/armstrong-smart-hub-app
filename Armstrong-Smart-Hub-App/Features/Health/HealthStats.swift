@@ -87,8 +87,9 @@ struct HealthStats {
         init?(_ values: [Double], min: Int = 7) {
             guard values.count >= min else { return nil }
             self.values = values
-            mean = values.reduce(0, +) / Double(values.count)
+            let mean = values.reduce(0, +) / Double(values.count)
             let variance = values.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(max(1, values.count - 1))
+            self.mean = mean
             sd = variance.squareRoot()
         }
 
