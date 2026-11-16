@@ -9,6 +9,9 @@ struct FinanceView: View {
     @State private var retagging: Transaction?
     /// All transactions, opened on top.
     @State private var showingAll = false
+    /// Brokerage positions, for the Investments card and page.
+    @State private var holdings = HoldingsStore()
+    @State private var showingInvestments = false
 
     var body: some View {
         NavigationStack {
@@ -19,10 +22,17 @@ struct FinanceView: View {
             }, mountains: true)
             .toolbarBackground(HubDesign.page, for: .navigationBar)
             .toolbar(.hidden, for: .navigationBar)
-            .task { if !store.fetched { await store.load(api: session.api) } }
+            .task {
+                if !store.fetched {
+                    async let finance: Void = store.load(api: session.api)
+                    async let positions: Void = holdings.load(api: session.api)
+                    _ = await (finance, positions)
+                }
+            }
             .refreshable {
                 if store.response?.configured == true { await store.sync(api: session.api, toast: toast) }
                 else { await store.load(api: session.api) }
+                await holdings.load(api: session.api)
             }
             .sheet(item: $retagging) { t in
                 CategoryPicker(transaction: t, options: store.categoryOptions, history: store.dashboard?.transactions ?? []) { category in
@@ -30,10 +40,14 @@ struct FinanceView: View {
                 }
             }
             .navigationDestination(isPresented: $showingAll) { TransactionsView(store: store, toast: toast) }
+            .navigationDestination(isPresented: $showingInvestments) { InvestmentsView(store: holdings, finance: store, toast: toast) }
             #if DEBUG
             .onAppear {
-                DemoCue.on("nav", arg: { name in if name == "transactions" { showingAll = true } })
-                DemoCue.on("back") { showingAll = false }
+                DemoCue.on("nav", arg: { name in
+                    if name == "transactions" { showingAll = true }
+                    if name == "investments" { showingInvestments = true }
+                })
+                DemoCue.on("back") { showingAll = false; showingInvestments = false }
                 // `tag`: the next card takes its first suggestion. `tag.other` opens the picker; `tag.pick <Tag>` chooses.
                 DemoCue.on("tag") {
                     guard let next = store.tagQueue.first else { return }
@@ -120,6 +134,13 @@ struct FinanceView: View {
         MonthBars(items: d.monthSpending.byCategory, currency: d.currency)
 
         AccountsCard(accounts: d.accounts)
+
+        if holdings.hasHoldings, let totals = holdings.response?.totals {
+            Button { showingInvestments = true } label: {
+                InvestmentsCard(totals: totals, positions: holdings.response?.positions ?? [])
+            }
+            .buttonStyle(.plain)
+        }
 
         Button { showingAll = true } label: {
             HStack {
@@ -271,6 +292,54 @@ private struct MonthBars: View {
             }
           }
         }
+    }
+}
+
+/// The way into Investments: what the positions are worth, their gain, and a
+/// strip of the biggest holdings in their asset-class colors.
+private struct InvestmentsCard: View {
+    let totals: HoldingsTotals
+    let positions: [Holding]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Investments").font(.headline)
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(Fmt.compact(totals.value)).font(.title2.weight(.semibold)).monospacedDigit()
+                if let pct = totals.gainPct {
+                    Text(Pct.signed(pct) + " all time").font(.footnote.weight(.semibold)).monospacedDigit()
+                        .foregroundStyle(totals.gain >= 0 ? Color.positive : .negative)
+                }
+                if let day = totals.dayChangePct {
+                    Text(Pct.signed(day) + " today").font(.footnote).monospacedDigit().foregroundStyle(.secondary)
+                }
+            }
+            // Each position's share of the portfolio, side by side.
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(positions.filter { $0.weight >= 0.004 }) { h in
+                        AssetClassColor.of(h.assetClass)
+                            .frame(width: max(geo.size.width * h.weight - 2, 2))
+                    }
+                }
+                .clipShape(.capsule)
+            }
+            .frame(height: 8)
+            HStack(spacing: 8) {
+                ForEach(positions.filter { !$0.isCash }.prefix(4)) { h in
+                    Text(h.symbol).font(.caption.weight(.semibold)).foregroundStyle(AssetClassColor.of(h.assetClass))
+                }
+                if positions.count > 4 { Text("+\(positions.count - 4) more").font(.caption).foregroundStyle(.secondary) }
+            }
+        }
+        .padding(HubLayout.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.cardRadius))
+        .contentShape(.rect)
     }
 }
 
