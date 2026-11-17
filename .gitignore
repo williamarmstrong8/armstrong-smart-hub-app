@@ -15,3 +15,6 @@ demo-video/raw/*
 !demo-video/raw/CLIPS.md
 demo-video/_reference/
 demo-video/.build/
+
+# The Mac's Screen Time passcode, shown in Brick only after a lockdown tag tap
+Armstrong-Smart-Hub-App/Features/Brick/MacPasscode.txt

@@ -50,8 +50,6 @@ struct FitnessView: View {
                         .id(AppRouter.Card.checkin)
                     AlcoholCard(fitness: store)
                     today
-                    BriefingCard()
-                        .id(AppRouter.Card.briefing)
                 }
                 // Live updates stay inside individual overview rows.
                 BrickCard(padding: 0) {

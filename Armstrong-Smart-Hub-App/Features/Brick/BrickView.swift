@@ -81,6 +81,10 @@ struct BrickView: View {
                                              set: { if !$0 { store.message = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(store.message ?? "") }
+        .alert("Mac Passcode", isPresented: Binding(get: { store.macPasscode != nil },
+                                                   set: { if !$0 { store.macPasscode = nil } })) {
+            Button("Done", role: .cancel) {}
+        } message: { Text("\(store.macPasscode ?? "")\n\nScreen Time passcode on your Mac. It unlocks the adult-website limit.") }
     }
 
     // MARK: Modes and schedules
@@ -118,6 +122,10 @@ struct BrickView: View {
                     BrickDivider()
                     NavigationLink(value: BrickRoute.emergency) {
                         BrickRow(icon: "lock.open", title: Demo.copy("Emergency Unbrick", "Emergency Unlock"), value: "\(store.emergencyLeft)")
+                    }
+                    BrickDivider()
+                    Button { store.revealMacPasscode() } label: {
+                        BrickRow(icon: "laptopcomputer", title: "Mac Passcode", value: "Tap tag")
                     }
                 }
                 .padding(.horizontal, 24)

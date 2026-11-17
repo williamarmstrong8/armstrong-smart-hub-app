@@ -354,6 +354,32 @@ final class BrickStore: NSObject {
         return (true, p.lockdown ? "\(p.name) lockdown on." : "Bricked \(p.name).")
     }
 
+    // MARK: Mac passcode
+
+    /// The Mac's Screen Time passcode, set while it's on screen after a lockdown tag tap.
+    var macPasscode: String?
+
+    /// The passcode locking the Mac's adult-website limit. Bundled from MacPasscode.txt, which is kept out of git.
+    private var bundledMacPasscode: String? {
+        guard let url = Bundle.main.url(forResource: "MacPasscode", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let code = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return code.isEmpty ? nil : code
+    }
+
+    /// Shows the Mac passcode, only for a tag paired with a lockdown (any registered tag if there are no lockdowns).
+    func revealMacPasscode() {
+        guard let code = bundledMacPasscode else { message = "This build has no Mac passcode."; return }
+        guard hasTag else { message = "Register your Brick first."; return }
+        let lockdownTags = Set(profiles.filter(\.lockdown).compactMap { pairedTag($0.id)?.id })
+        let allowed = lockdownTags.isEmpty ? Set(tags.map(\.id)) : lockdownTags
+        scan("Tap your lockdown tag to see the Mac passcode.") { [weak self] id in
+            guard allowed.contains(id) else { return "Wrong tag. Only your lockdown tag shows it." }
+            self?.macPasscode = code
+            return nil
+        }
+    }
+
     /// Non-strict modes can be ended without the tag.
     func unlockWithoutTag(_ id: UUID) {
         #if DEBUG
