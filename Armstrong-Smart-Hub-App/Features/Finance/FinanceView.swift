@@ -159,9 +159,9 @@ struct FinanceView: View {
     }
 }
 
-/// One new transaction at a time, as plain text on the page: the merchant's logo, name,
-/// amount and when ("Friday night"), then its three likeliest tags as glass pills. Tap one
-/// to move to the next; "Something else" opens the full list.
+/// One new transaction at a time, in a single glass card: the merchant's name, when it
+/// happened ("Friday night"), then one best guess at its tag. Tap the guess to confirm and
+/// move to the next; "Something else" opens the full list.
 private struct TagCard: View {
     let transaction: Transaction
     let remaining: Int
@@ -173,63 +173,73 @@ private struct TagCard: View {
     var body: some View {
         let t = transaction
         let info = MerchantInfo.resolve(t, history: history)
-        VStack(spacing: 18) {
-            VStack(spacing: 10) {
-                MerchantLogo(info: info, category: t.category, size: 56)
-                VStack(spacing: 4) {
+        let guess = bestGuess
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 12) {
+                MerchantLogo(info: info, category: t.category, size: 44)
+                VStack(alignment: .leading, spacing: 3) {
                     Text(info.name)
-                        .font(.title3.weight(.medium))
+                        .font(.headline)
                         .foregroundStyle(HubDesign.ink)
                         .lineLimit(2)
-                    Text(Fmt.signed(t.netEffect, t.currency))
-                        .font(.title2.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(t.netEffect > 0 ? Color.positive : HubDesign.ink)
-                    Text("\(Fmt.spokenTime(t.posted)) · \(t.accountName)")
+                    Text(Fmt.spokenTime(t.posted))
                         .font(.subheadline)
                         .foregroundStyle(BrickLook.soft)
                         .lineLimit(1)
                 }
-                .multilineTextAlignment(.center)
+                Spacer(minLength: 8)
+                Text(Fmt.signed(t.netEffect, t.currency))
+                    .font(.headline).monospacedDigit()
+                    .foregroundStyle(t.netEffect > 0 ? Color.positive : HubDesign.ink)
             }
             .accessibilityElement(children: .combine)
 
-            HStack(spacing: 8) {
-                ForEach(likely, id: \.self) { c in
-                    Button { onTag(c) } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: CategoryStyle.symbol(c)).font(.caption).foregroundStyle(CategoryStyle.color(c))
-                            Text(c).font(.subheadline.weight(.medium)).lineLimit(1).minimumScaleFactor(0.75)
-                        }
-                        .foregroundStyle(HubDesign.ink)
-                        .padding(.horizontal, 12)
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .glassGlare(.regular.interactive(), in: .capsule)
+            HStack(spacing: 10) {
+                Button { onTag(guess) } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: CategoryStyle.symbol(guess)).font(.subheadline)
+                            .foregroundStyle(CategoryStyle.color(guess))
+                        Text(guess).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
+                        Spacer(minLength: 4)
+                        Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(HubDesign.action)
                     }
-                    .buttonStyle(CardPressStyle())
+                    .foregroundStyle(HubDesign.ink)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .glassGlare(.regular.tint(CategoryStyle.color(guess).opacity(0.18)).interactive(), in: .capsule)
+                    .contentShape(.capsule)
                 }
-            }
+                .buttonStyle(CardPressStyle())
+                .accessibilityLabel("Tag as \(guess)")
 
-            HStack(spacing: 6) {
                 Button(action: onOther) {
-                    Text("Something else").font(.footnote.weight(.medium)).foregroundStyle(HubDesign.action)
+                    Text("Something else")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(HubDesign.action)
+                        .padding(.horizontal, 6)
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                Text("· \(remaining) to tag").font(.footnote).foregroundStyle(BrickLook.soft).monospacedDigit()
             }
-            .frame(minHeight: HubLayout.minHitTarget)
+
+            if remaining > 1 {
+                Text("\(remaining - 1) more to tag")
+                    .font(.caption).foregroundStyle(BrickLook.soft).monospacedDigit()
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(HubLayout.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassGlare(.regular, in: .rect(cornerRadius: HubLayout.cardRadius))
         .sensoryFeedback(.selection, trigger: transaction.id)
     }
 
-    /// The suggestion first, then the tags used most for money in or out.
-    private var likely: [String] {
+    /// The transaction's own tag when it has one, else the tag used most for money in or out.
+    private var bestGuess: String {
         let t = transaction
+        if t.category != "Uncategorized" { return t.category }
         let ranked = (t.netEffect > 0 ? quick?.in : quick?.out) ?? []
-        var list: [String] = t.category == "Uncategorized" ? [] : [t.category]
-        for c in ranked + builtInCategories where !list.contains(c) && c != "Uncategorized" && c != "Transfers" { list.append(c) }
-        return Array(list.prefix(3))
+        return (ranked + builtInCategories).first { $0 != "Uncategorized" && $0 != "Transfers" } ?? "Food & Drinks"
     }
 }
 
