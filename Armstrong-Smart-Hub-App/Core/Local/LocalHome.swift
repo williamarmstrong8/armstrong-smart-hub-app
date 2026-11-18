@@ -23,9 +23,24 @@ nonisolated enum LocalHome {
             var reply = await LocalHub.forwardJSON(req.original, timeout: 30)
             guard var body = reply.body as? [String: Any], reply.status == 200 else { return reply }
             body["visible"] = visible() ?? NSNull()
+            if let entities = body["entities"] as? [[String: Any]] { body["entities"] = entities.map(plugAsLight) }
             reply = .ok(body)
             return reply
         }
+    }
+
+    /// A smart plug driving lights (the Kasa "Copper Lights") is a switch to Home Assistant,
+    /// but it belongs with the lights: same toggle, counted as a light. The plug's own
+    /// indicator LED stays a switch.
+    static func plugAsLight(_ entity: [String: Any]) -> [String: Any] {
+        guard let id = entity["id"] as? String, id.hasPrefix("switch."), !id.hasSuffix("_led"),
+              entity["control"] as? String == "toggle",
+              let name = (entity["name"] as? String)?.lowercased(),
+              !name.hasSuffix(" led"),
+              name.contains("light") || name.contains("lamp") else { return entity }
+        var e = entity
+        e["control"] = "light"
+        return e
     }
 
     /// The picked devices, or nil before any were picked.
