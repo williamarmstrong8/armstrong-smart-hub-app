@@ -207,9 +207,10 @@ struct MediaShelf: View {
         return Poster(url: r.posterURL, width: 150)
             .overlay(alignment: .top) {
                 if waiting {
-                    // The dark part is whatever hasn't downloaded yet; it shrinks upward from the bottom.
+                    // The glass part is whatever hasn't downloaded yet; it shrinks upward from the bottom.
                     GeometryReader { geo in
-                        Rectangle().fill(.black.opacity(0.72))
+                        Color.clear
+                            .glassEffect(.regular.tint(.black.opacity(0.35)), in: .rect)
                             .frame(height: geo.size.height * (1 - fill))
                             .animation(HubMotion.animation(reduceMotion: reduceMotion), value: fill)
                     }

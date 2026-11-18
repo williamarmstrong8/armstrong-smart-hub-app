@@ -1422,129 +1422,11 @@
             "colorTempKelvin": 3000,
             "minKelvin": 2200,
             "maxKelvin": 6500
-          },
-          {
-            "$type": "HAEntity",
-            "id": "media_player.living_room_tv",
-            "name": "Living Room TV",
-            "state": "off",
-            "room": "Living Room",
-            "control": "mediaPlayer",
-            "icon": null,
-            "brightness": null,
-            "unit": null,
-            "device": null,
-            "remoteEntityId": null,
-            "mediaPlayerEntityId": null,
-            "colorModes": null,
-            "rgbColor": null,
-            "colorTempKelvin": null,
-            "minKelvin": null,
-            "maxKelvin": null
-          },
-          {
-            "$type": "HAEntity",
-            "id": "climate.hallway",
-            "name": "Thermostat",
-            "state": "heat",
-            "room": "Hallway",
-            "control": "climate",
-            "icon": null,
-            "brightness": null,
-            "unit": "°F",
-            "device": null,
-            "remoteEntityId": null,
-            "mediaPlayerEntityId": null,
-            "colorModes": null,
-            "rgbColor": null,
-            "colorTempKelvin": null,
-            "minKelvin": null,
-            "maxKelvin": null
-          },
-          {
-            "$type": "HAEntity",
-            "id": "lock.front_door",
-            "name": "Front Door",
-            "state": "unlocked",
-            "room": "Entry",
-            "control": "lock",
-            "icon": null,
-            "brightness": null,
-            "unit": null,
-            "device": null,
-            "remoteEntityId": null,
-            "mediaPlayerEntityId": null,
-            "colorModes": null,
-            "rgbColor": null,
-            "colorTempKelvin": null,
-            "minKelvin": null,
-            "maxKelvin": null
-          },
-          {
-            "$type": "HAEntity",
-            "id": "lock.garage",
-            "name": "Garage",
-            "state": "locked",
-            "room": "Garage",
-            "control": "lock",
-            "icon": null,
-            "brightness": null,
-            "unit": null,
-            "device": null,
-            "remoteEntityId": null,
-            "mediaPlayerEntityId": null,
-            "colorModes": null,
-            "rgbColor": null,
-            "colorTempKelvin": null,
-            "minKelvin": null,
-            "maxKelvin": null
-          },
-          {
-            "$type": "HAEntity",
-            "id": "switch.espresso",
-            "name": "Espresso Machine",
-            "state": "on",
-            "room": "Kitchen",
-            "control": "toggle",
-            "icon": null,
-            "brightness": null,
-            "unit": null,
-            "device": null,
-            "remoteEntityId": null,
-            "mediaPlayerEntityId": null,
-            "colorModes": null,
-            "rgbColor": null,
-            "colorTempKelvin": null,
-            "minKelvin": null,
-            "maxKelvin": null
-          },
-          {
-            "$type": "HAEntity",
-            "id": "switch.office_fan",
-            "name": "Office Fan",
-            "state": "off",
-            "room": "Office",
-            "control": "toggle",
-            "icon": null,
-            "brightness": null,
-            "unit": null,
-            "device": null,
-            "remoteEntityId": null,
-            "mediaPlayerEntityId": null,
-            "colorModes": null,
-            "rgbColor": null,
-            "colorTempKelvin": null,
-            "minKelvin": null,
-            "maxKelvin": null
           }
         ],
         "visible": [
           "light.living_room",
-          "light.kitchen",
-          "lock.front_door",
-          "lock.garage",
-          "switch.espresso",
-          "switch.office_fan"
+          "light.kitchen"
         ],
         "requests": [
           {
@@ -1567,8 +1449,8 @@
             "title": "Spirited Away",
             "mediaType": "movie",
             "posterURL": "DemoPoster2",
-            "stage": "approved",
-            "progress": null,
+            "stage": "available",
+            "progress": 1,
             "etaSeconds": null,
             "updatedAt": "2026-11-05T00:00:00Z",
             "statusMessage": null
@@ -1737,120 +1619,6 @@
           "colorTempKelvin": 3000,
           "minKelvin": 2200,
           "maxKelvin": 6500
-        },
-        {
-          "$type": "HAEntity",
-          "id": "media_player.living_room_tv",
-          "name": "Living Room TV",
-          "state": "off",
-          "room": "Living Room",
-          "control": "mediaPlayer",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
-          "id": "climate.hallway",
-          "name": "Thermostat",
-          "state": "heat",
-          "room": "Hallway",
-          "control": "climate",
-          "icon": null,
-          "brightness": null,
-          "unit": "°F",
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
-          "id": "lock.front_door",
-          "name": "Front Door",
-          "state": "unlocked",
-          "room": "Entry",
-          "control": "lock",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
-          "id": "lock.garage",
-          "name": "Garage",
-          "state": "locked",
-          "room": "Garage",
-          "control": "lock",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
-          "id": "switch.espresso",
-          "name": "Espresso Machine",
-          "state": "on",
-          "room": "Kitchen",
-          "control": "toggle",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
-          "id": "switch.office_fan",
-          "name": "Office Fan",
-          "state": "off",
-          "room": "Office",
-          "control": "toggle",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
         }
       ],
       "shownEntities": [
@@ -1896,82 +1664,6 @@
           "colorTempKelvin": 3000,
           "minKelvin": 2200,
           "maxKelvin": 6500
-        },
-        {
-          "$type": "HAEntity",
-          "id": "lock.front_door",
-          "name": "Front Door",
-          "state": "unlocked",
-          "room": "Entry",
-          "control": "lock",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
-          "id": "lock.garage",
-          "name": "Garage",
-          "state": "locked",
-          "room": "Garage",
-          "control": "lock",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
-          "id": "switch.espresso",
-          "name": "Espresso Machine",
-          "state": "on",
-          "room": "Kitchen",
-          "control": "toggle",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
-          "id": "switch.office_fan",
-          "name": "Office Fan",
-          "state": "off",
-          "room": "Office",
-          "control": "toggle",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": null,
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
         }
       ],
       "activeDownloads": [
@@ -1987,7 +1679,9 @@
           "etaSeconds": 840,
           "updatedAt": "2026-11-06T00:00:00Z",
           "statusMessage": null
-        },
+        }
+      ],
+      "ready": [
         {
           "$type": "MediaRequest",
           "id": 2,
@@ -1995,14 +1689,12 @@
           "title": "Spirited Away",
           "mediaType": "movie",
           "posterURL": "DemoPoster2",
-          "stage": "approved",
-          "progress": null,
+          "stage": "available",
+          "progress": 1,
           "etaSeconds": null,
           "updatedAt": "2026-11-05T00:00:00Z",
           "statusMessage": null
-        }
-      ],
-      "ready": [
+        },
         {
           "$type": "MediaRequest",
           "id": 3,
@@ -10664,6 +10356,527 @@
         }
       }
     },
+    "WorkoutDetailPage.loading": false,
+    "WorkoutDetailPage.detail": {
+      "$type": "WorkoutDetail",
+      "id": "w-1",
+      "name": "Push",
+      "routineId": "r-push",
+      "startedAt": "2026-11-05T17:30:00Z",
+      "endedAt": "2026-11-05T17:59:30Z",
+      "notes": null,
+      "volumeKg": 3870,
+      "avgHr": 128,
+      "maxHr": 156,
+      "hrSource": "activity",
+      "activityId": null,
+      "heartRate": [
+        [
+          0,
+          112
+        ],
+        [
+          40,
+          123
+        ],
+        [
+          80,
+          133
+        ],
+        [
+          120,
+          140
+        ],
+        [
+          160,
+          145
+        ],
+        [
+          200,
+          142
+        ],
+        [
+          240,
+          140
+        ],
+        [
+          280,
+          136
+        ],
+        [
+          320,
+          129
+        ],
+        [
+          360,
+          120
+        ],
+        [
+          400,
+          118
+        ],
+        [
+          440,
+          128
+        ],
+        [
+          480,
+          137
+        ],
+        [
+          520,
+          143
+        ],
+        [
+          560,
+          146
+        ],
+        [
+          600,
+          141
+        ],
+        [
+          640,
+          137
+        ],
+        [
+          680,
+          131
+        ],
+        [
+          720,
+          123
+        ],
+        [
+          760,
+          118
+        ],
+        [
+          800,
+          123
+        ],
+        [
+          840,
+          133
+        ],
+        [
+          880,
+          140
+        ],
+        [
+          920,
+          144
+        ],
+        [
+          960,
+          146
+        ],
+        [
+          1000,
+          139
+        ],
+        [
+          1040,
+          134
+        ],
+        [
+          1080,
+          126
+        ],
+        [
+          1120,
+          118
+        ],
+        [
+          1160,
+          123
+        ],
+        [
+          1200,
+          128
+        ],
+        [
+          1240,
+          137
+        ],
+        [
+          1280,
+          142
+        ],
+        [
+          1320,
+          145
+        ],
+        [
+          1360,
+          144
+        ],
+        [
+          1400,
+          135
+        ],
+        [
+          1440,
+          129
+        ],
+        [
+          1480,
+          121
+        ],
+        [
+          1520,
+          118
+        ],
+        [
+          1560,
+          129
+        ],
+        [
+          1600,
+          133
+        ],
+        [
+          1640,
+          140
+        ],
+        [
+          1680,
+          144
+        ],
+        [
+          1720,
+          144
+        ],
+        [
+          1760,
+          142
+        ],
+        [
+          1800,
+          132
+        ],
+        [
+          1840,
+          124
+        ],
+        [
+          1880,
+          115
+        ],
+        [
+          1920,
+          124
+        ],
+        [
+          1960,
+          134
+        ],
+        [
+          2000,
+          137
+        ],
+        [
+          2040,
+          142
+        ],
+        [
+          2080,
+          144
+        ],
+        [
+          2120,
+          143
+        ],
+        [
+          2160,
+          139
+        ],
+        [
+          2200,
+          127
+        ],
+        [
+          2240,
+          118
+        ],
+        [
+          2280,
+          118
+        ],
+        [
+          2320,
+          129
+        ],
+        [
+          2360,
+          138
+        ]
+      ],
+      "place": {
+        "$type": "WorkoutPlace",
+        "latitude": 37.7749,
+        "longitude": -122.4194,
+        "name": "Mission Cliffs Gym"
+      },
+      "exercises": [
+        {
+          "$type": "WorkoutDetail.Group",
+          "exerciseId": "bench-press-barbell",
+          "name": "Bench Press",
+          "superset": null,
+          "sets": [
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 80,
+              "reps": 6,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:34:50Z",
+              "startedAt": "2026-11-05T17:34:00Z",
+              "liveHr": 134,
+              "avgHr": 126,
+              "peakHr": 138,
+              "endHr": 136,
+              "recoveryBpm": 24,
+              "restSeconds": 120,
+              "e1rmKg": 96,
+              "pr": false
+            },
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 80,
+              "reps": 6,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:37:40Z",
+              "startedAt": "2026-11-05T17:36:50Z",
+              "liveHr": 140,
+              "avgHr": 132,
+              "peakHr": 144,
+              "endHr": 142,
+              "recoveryBpm": 25,
+              "restSeconds": 120,
+              "e1rmKg": 96,
+              "pr": false
+            },
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 82.5,
+              "reps": 5,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:40:30Z",
+              "startedAt": "2026-11-05T17:39:40Z",
+              "liveHr": 146,
+              "avgHr": 138,
+              "peakHr": 150,
+              "endHr": 148,
+              "recoveryBpm": 26,
+              "restSeconds": 120,
+              "e1rmKg": 96,
+              "pr": true
+            }
+          ]
+        },
+        {
+          "$type": "WorkoutDetail.Group",
+          "exerciseId": "overhead-press-barbell",
+          "name": "Overhead Press",
+          "superset": null,
+          "sets": [
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 45,
+              "reps": 8,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:43:20Z",
+              "startedAt": "2026-11-05T17:42:30Z",
+              "liveHr": 134,
+              "avgHr": 126,
+              "peakHr": 138,
+              "endHr": 136,
+              "recoveryBpm": 24,
+              "restSeconds": 120,
+              "e1rmKg": 57,
+              "pr": false
+            },
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 45,
+              "reps": 8,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:46:10Z",
+              "startedAt": "2026-11-05T17:45:20Z",
+              "liveHr": 140,
+              "avgHr": 132,
+              "peakHr": 144,
+              "endHr": 142,
+              "recoveryBpm": 25,
+              "restSeconds": 120,
+              "e1rmKg": 57,
+              "pr": false
+            },
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 45,
+              "reps": 7,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:49:00Z",
+              "startedAt": "2026-11-05T17:48:10Z",
+              "liveHr": 146,
+              "avgHr": 138,
+              "peakHr": 150,
+              "endHr": 148,
+              "recoveryBpm": 26,
+              "restSeconds": 120,
+              "e1rmKg": 56,
+              "pr": false
+            }
+          ]
+        },
+        {
+          "$type": "WorkoutDetail.Group",
+          "exerciseId": "chest-dip",
+          "name": "Dips",
+          "superset": null,
+          "sets": [
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 0,
+              "reps": 12,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:51:50Z",
+              "startedAt": "2026-11-05T17:51:00Z",
+              "liveHr": 134,
+              "avgHr": 126,
+              "peakHr": 138,
+              "endHr": 136,
+              "recoveryBpm": 24,
+              "restSeconds": 120,
+              "e1rmKg": 0,
+              "pr": false
+            },
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 0,
+              "reps": 12,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:54:40Z",
+              "startedAt": "2026-11-05T17:53:50Z",
+              "liveHr": 140,
+              "avgHr": 132,
+              "peakHr": 144,
+              "endHr": 142,
+              "recoveryBpm": 25,
+              "restSeconds": 120,
+              "e1rmKg": 0,
+              "pr": false
+            },
+            {
+              "$type": "WorkoutDetail.LoggedSet",
+              "kind": "normal",
+              "weightKg": 0,
+              "reps": 10,
+              "durationSeconds": null,
+              "rpe": 8,
+              "completedAt": "2026-11-05T17:57:30Z",
+              "startedAt": "2026-11-05T17:56:40Z",
+              "liveHr": 146,
+              "avgHr": 138,
+              "peakHr": 150,
+              "endHr": 148,
+              "recoveryBpm": 26,
+              "restSeconds": 120,
+              "e1rmKg": 0,
+              "pr": false
+            }
+          ]
+        }
+      ]
+    },
+    "AgentStore.shared": {
+      "$type": "AgentStore",
+      "modelID": "claude-sonnet",
+      "sending": false,
+      "modelsError": null,
+      "models": [
+        {
+          "$type": "AgentModel",
+          "id": "claude-sonnet",
+          "name": "Claude Sonnet",
+          "note": "Fast and capable",
+          "group": "Anthropic",
+          "inputPerM": 3,
+          "outputPerM": 15
+        }
+      ],
+      "messages": [
+        {
+          "$type": "AgentMessage",
+          "id": "00000000-0000-4000-8000-000000000201",
+          "role": "user",
+          "text": "Turn on the kitchen lights and tell me my next meeting.",
+          "steps": [],
+          "failed": false,
+          "costs": {},
+          "exact": []
+        },
+        {
+          "$type": "AgentMessage",
+          "id": "00000000-0000-4000-8000-000000000202",
+          "role": "assistant",
+          "text": "Kitchen lights are on at 80%. Your next meeting is the Design review at 10:30 AM in Studio 3.",
+          "steps": [
+            {
+              "$type": "AgentStep",
+              "id": "s1",
+              "label": "Set Kitchen to 80%",
+              "done": true
+            },
+            {
+              "$type": "AgentStep",
+              "id": "s2",
+              "label": "Checked your calendar",
+              "done": true
+            }
+          ],
+          "failed": false,
+          "costs": {
+            "claude-sonnet": 0.0031
+          },
+          "exact": [
+            "claude-sonnet"
+          ]
+        }
+      ]
+    },
+    "BackgroundStore.shared": {
+      "$type": "BackgroundStore",
+      "kind": "standard",
+      "image": null,
+      "player": null,
+      "tilt": {
+        "width": 0,
+        "height": 0
+      },
+      "importing": false,
+      "note": null,
+      "blur": 0,
+      "parallax": false
+    },
     "AlcoholStore.shared": {
       "$type": "AlcoholStore",
       "entries": [],
@@ -10946,6 +11159,158 @@
           "meridian"
         ]
       }
-    ]
+    ],
+    "BrickStore.week": {
+      "$byArgument": {
+        "0": [
+          {
+            "$type": "DayValue",
+            "date": "2026-11-01T00:00:00.000Z",
+            "value": 6840
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-11-02T00:00:00.000Z",
+            "value": 11880
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-11-03T00:00:00.000Z",
+            "value": 12240
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-11-04T00:00:00.000Z",
+            "value": 10800
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-11-05T00:00:00.000Z",
+            "value": 11160
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-11-06T00:00:00.000Z",
+            "value": 9000
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-11-07T00:00:00.000Z",
+            "value": 0
+          }
+        ],
+        "1": [
+          {
+            "$type": "DayValue",
+            "date": "2026-10-25T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-26T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-27T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-28T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-29T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-30T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-31T00:00:00.000Z",
+            "value": 13320
+          }
+        ],
+        "2": [
+          {
+            "$type": "DayValue",
+            "date": "2026-10-18T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-19T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-20T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-21T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-22T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-23T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-24T00:00:00.000Z",
+            "value": 0
+          }
+        ],
+        "3": [
+          {
+            "$type": "DayValue",
+            "date": "2026-10-11T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-12T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-13T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-14T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-15T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-16T00:00:00.000Z",
+            "value": 0
+          },
+          {
+            "$type": "DayValue",
+            "date": "2026-10-17T00:00:00.000Z",
+            "value": 0
+          }
+        ]
+      }
+    }
   }
 }
