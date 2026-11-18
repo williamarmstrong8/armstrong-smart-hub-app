@@ -1425,49 +1425,6 @@
           },
           {
             "$type": "HAEntity",
-            "id": "light.bedroom",
-            "name": "Bedroom",
-            "state": "off",
-            "room": "Bedroom",
-            "control": "light",
-            "icon": null,
-            "brightness": null,
-            "unit": null,
-            "device": null,
-            "remoteEntityId": null,
-            "mediaPlayerEntityId": null,
-            "colorModes": [
-              "color_temp",
-              "hs"
-            ],
-            "rgbColor": null,
-            "colorTempKelvin": 2400,
-            "minKelvin": 2200,
-            "maxKelvin": 6500
-          },
-          {
-            "$type": "HAEntity",
-            "id": "light.office",
-            "name": "Office Lamp",
-            "state": "on",
-            "room": "Office",
-            "control": "light",
-            "icon": null,
-            "brightness": 153,
-            "unit": null,
-            "device": null,
-            "remoteEntityId": null,
-            "mediaPlayerEntityId": null,
-            "colorModes": [
-              "brightness"
-            ],
-            "rgbColor": null,
-            "colorTempKelvin": null,
-            "minKelvin": null,
-            "maxKelvin": null
-          },
-          {
-            "$type": "HAEntity",
             "id": "media_player.living_room_tv",
             "name": "Living Room TV",
             "state": "off",
@@ -1584,8 +1541,6 @@
         "visible": [
           "light.living_room",
           "light.kitchen",
-          "light.bedroom",
-          "light.office",
           "lock.front_door",
           "lock.garage",
           "switch.espresso",
@@ -1595,8 +1550,8 @@
           {
             "$type": "MediaRequest",
             "id": 1,
-            "tmdbId": 910001,
-            "title": "Northbound",
+            "tmdbId": 693134,
+            "title": "Dune: Part Two",
             "mediaType": "movie",
             "posterURL": "DemoPoster1",
             "stage": "downloading",
@@ -1608,8 +1563,8 @@
           {
             "$type": "MediaRequest",
             "id": 2,
-            "tmdbId": 910002,
-            "title": "The Glass Orchard",
+            "tmdbId": 129,
+            "title": "Spirited Away",
             "mediaType": "movie",
             "posterURL": "DemoPoster2",
             "stage": "approved",
@@ -1621,8 +1576,8 @@
           {
             "$type": "MediaRequest",
             "id": 3,
-            "tmdbId": 910003,
-            "title": "Saltwater Hours",
+            "tmdbId": 157336,
+            "title": "Interstellar",
             "mediaType": "movie",
             "posterURL": "DemoPoster3",
             "stage": "available",
@@ -1634,8 +1589,8 @@
           {
             "$type": "MediaRequest",
             "id": 4,
-            "tmdbId": 910004,
-            "title": "Paper Lanterns",
+            "tmdbId": 238,
+            "title": "The Godfather",
             "mediaType": "movie",
             "posterURL": "DemoPoster4",
             "stage": "available",
@@ -1647,8 +1602,8 @@
           {
             "$type": "MediaRequest",
             "id": 5,
-            "tmdbId": 910005,
-            "title": "Signal Lost",
+            "tmdbId": 27205,
+            "title": "Inception",
             "mediaType": "movie",
             "posterURL": "DemoPoster5",
             "stage": "available",
@@ -1660,8 +1615,8 @@
           {
             "$type": "MediaRequest",
             "id": 6,
-            "tmdbId": 910006,
-            "title": "Last Light on Elm Street",
+            "tmdbId": 313369,
+            "title": "La La Land",
             "mediaType": "movie",
             "posterURL": "DemoPoster6",
             "stage": "available",
@@ -1782,49 +1737,6 @@
           "colorTempKelvin": 3000,
           "minKelvin": 2200,
           "maxKelvin": 6500
-        },
-        {
-          "$type": "HAEntity",
-          "id": "light.bedroom",
-          "name": "Bedroom",
-          "state": "off",
-          "room": "Bedroom",
-          "control": "light",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": [
-            "color_temp",
-            "hs"
-          ],
-          "rgbColor": null,
-          "colorTempKelvin": 2400,
-          "minKelvin": 2200,
-          "maxKelvin": 6500
-        },
-        {
-          "$type": "HAEntity",
-          "id": "light.office",
-          "name": "Office Lamp",
-          "state": "on",
-          "room": "Office",
-          "control": "light",
-          "icon": null,
-          "brightness": 153,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": [
-            "brightness"
-          ],
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
         },
         {
           "$type": "HAEntity",
@@ -1987,49 +1899,6 @@
         },
         {
           "$type": "HAEntity",
-          "id": "light.bedroom",
-          "name": "Bedroom",
-          "state": "off",
-          "room": "Bedroom",
-          "control": "light",
-          "icon": null,
-          "brightness": null,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": [
-            "color_temp",
-            "hs"
-          ],
-          "rgbColor": null,
-          "colorTempKelvin": 2400,
-          "minKelvin": 2200,
-          "maxKelvin": 6500
-        },
-        {
-          "$type": "HAEntity",
-          "id": "light.office",
-          "name": "Office Lamp",
-          "state": "on",
-          "room": "Office",
-          "control": "light",
-          "icon": null,
-          "brightness": 153,
-          "unit": null,
-          "device": null,
-          "remoteEntityId": null,
-          "mediaPlayerEntityId": null,
-          "colorModes": [
-            "brightness"
-          ],
-          "rgbColor": null,
-          "colorTempKelvin": null,
-          "minKelvin": null,
-          "maxKelvin": null
-        },
-        {
-          "$type": "HAEntity",
           "id": "lock.front_door",
           "name": "Front Door",
           "state": "unlocked",
@@ -2109,8 +1978,8 @@
         {
           "$type": "MediaRequest",
           "id": 1,
-          "tmdbId": 910001,
-          "title": "Northbound",
+          "tmdbId": 693134,
+          "title": "Dune: Part Two",
           "mediaType": "movie",
           "posterURL": "DemoPoster1",
           "stage": "downloading",
@@ -2122,8 +1991,8 @@
         {
           "$type": "MediaRequest",
           "id": 2,
-          "tmdbId": 910002,
-          "title": "The Glass Orchard",
+          "tmdbId": 129,
+          "title": "Spirited Away",
           "mediaType": "movie",
           "posterURL": "DemoPoster2",
           "stage": "approved",
@@ -2137,8 +2006,8 @@
         {
           "$type": "MediaRequest",
           "id": 3,
-          "tmdbId": 910003,
-          "title": "Saltwater Hours",
+          "tmdbId": 157336,
+          "title": "Interstellar",
           "mediaType": "movie",
           "posterURL": "DemoPoster3",
           "stage": "available",
@@ -2150,8 +2019,8 @@
         {
           "$type": "MediaRequest",
           "id": 4,
-          "tmdbId": 910004,
-          "title": "Paper Lanterns",
+          "tmdbId": 238,
+          "title": "The Godfather",
           "mediaType": "movie",
           "posterURL": "DemoPoster4",
           "stage": "available",
@@ -2163,8 +2032,8 @@
         {
           "$type": "MediaRequest",
           "id": 5,
-          "tmdbId": 910005,
-          "title": "Signal Lost",
+          "tmdbId": 27205,
+          "title": "Inception",
           "mediaType": "movie",
           "posterURL": "DemoPoster5",
           "stage": "available",
@@ -2176,8 +2045,8 @@
         {
           "$type": "MediaRequest",
           "id": 6,
-          "tmdbId": 910006,
-          "title": "Last Light on Elm Street",
+          "tmdbId": 313369,
+          "title": "La La Land",
           "mediaType": "movie",
           "posterURL": "DemoPoster6",
           "stage": "available",
@@ -2197,7 +2066,7 @@
           "id": "h-meditate",
           "name": "Meditate",
           "color": "#8B6CFF",
-          "icon": "🧘",
+          "icon": null,
           "position": 0,
           "createdAt": "2026-07-09T00:00:00.000Z"
         },
@@ -2206,7 +2075,7 @@
           "id": "h-read",
           "name": "Read",
           "color": "#FFB75C",
-          "icon": "📚",
+          "icon": null,
           "position": 1,
           "createdAt": "2026-07-09T00:00:00.000Z"
         },
@@ -2215,26 +2084,8 @@
           "id": "h-stretch",
           "name": "Stretch",
           "color": "#3DDC6E",
-          "icon": "🤸",
+          "icon": null,
           "position": 2,
-          "createdAt": "2026-07-09T00:00:00.000Z"
-        },
-        {
-          "$type": "Habit",
-          "id": "h-water",
-          "name": "Water",
-          "color": "#75B8FF",
-          "icon": "💧",
-          "position": 3,
-          "createdAt": "2026-07-09T00:00:00.000Z"
-        },
-        {
-          "$type": "Habit",
-          "id": "h-journal",
-          "name": "Journal",
-          "color": "#FF8288",
-          "icon": "✍️",
-          "position": 4,
           "createdAt": "2026-07-09T00:00:00.000Z"
         }
       ],
@@ -2266,32 +2117,12 @@
         },
         {
           "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-11-05"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
-          "date": "2026-11-05"
-        },
-        {
-          "$type": "Completion",
           "habitId": "h-meditate",
           "date": "2026-11-04"
         },
         {
           "$type": "Completion",
           "habitId": "h-read",
-          "date": "2026-11-04"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-11-04"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-11-04"
         },
         {
@@ -2311,11 +2142,6 @@
         },
         {
           "$type": "Completion",
-          "habitId": "h-journal",
-          "date": "2026-11-03"
-        },
-        {
-          "$type": "Completion",
           "habitId": "h-meditate",
           "date": "2026-11-02"
         },
@@ -2331,27 +2157,12 @@
         },
         {
           "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-11-02"
-        },
-        {
-          "$type": "Completion",
           "habitId": "h-read",
           "date": "2026-11-01"
         },
         {
           "$type": "Completion",
           "habitId": "h-stretch",
-          "date": "2026-11-01"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-11-01"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-11-01"
         },
         {
@@ -2362,16 +2173,6 @@
         {
           "$type": "Completion",
           "habitId": "h-stretch",
-          "date": "2026-10-31"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-10-31"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-10-31"
         },
         {
@@ -2382,16 +2183,6 @@
         {
           "$type": "Completion",
           "habitId": "h-read",
-          "date": "2026-10-30"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-10-30"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-10-30"
         },
         {
@@ -2407,11 +2198,6 @@
         {
           "$type": "Completion",
           "habitId": "h-stretch",
-          "date": "2026-10-29"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-10-29"
         },
         {
@@ -2427,11 +2213,6 @@
         {
           "$type": "Completion",
           "habitId": "h-stretch",
-          "date": "2026-10-28"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-water",
           "date": "2026-10-28"
         },
         {
@@ -2442,16 +2223,6 @@
         {
           "$type": "Completion",
           "habitId": "h-stretch",
-          "date": "2026-10-27"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-10-27"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-10-27"
         },
         {
@@ -2462,16 +2233,6 @@
         {
           "$type": "Completion",
           "habitId": "h-stretch",
-          "date": "2026-10-26"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-10-26"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-10-26"
         },
         {
@@ -2482,16 +2243,6 @@
         {
           "$type": "Completion",
           "habitId": "h-read",
-          "date": "2026-10-25"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-water",
-          "date": "2026-10-25"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-10-25"
         },
         {
@@ -2507,11 +2258,6 @@
         {
           "$type": "Completion",
           "habitId": "h-stretch",
-          "date": "2026-10-24"
-        },
-        {
-          "$type": "Completion",
-          "habitId": "h-journal",
           "date": "2026-10-24"
         }
       ],
@@ -10887,33 +10633,46 @@
     "PosterImages.cached": {
       "$byArgument": {
         "DemoPoster1": {
-          "$asset": "DemoPoster1"
+          "$imageURL": "https://image.tmdb.org/t/p/w342/6izwz7rsy95ARzTR3poZ8H6c5pp.jpg"
         },
         "DemoPoster2": {
-          "$asset": "DemoPoster2"
+          "$imageURL": "https://image.tmdb.org/t/p/w342/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg"
         },
         "DemoPoster3": {
-          "$asset": "DemoPoster3"
+          "$imageURL": "https://image.tmdb.org/t/p/w342/yQvGrMoipbRoddT0ZR8tPoR7NfX.jpg"
         },
         "DemoPoster4": {
-          "$asset": "DemoPoster4"
+          "$imageURL": "https://image.tmdb.org/t/p/w342/3bhkrj58Vtu7enYsRolD1fZdja1.jpg"
         },
         "DemoPoster5": {
-          "$asset": "DemoPoster5"
+          "$imageURL": "https://image.tmdb.org/t/p/w342/xlaY2zyzMfkhk0HSC5VUwzoZPU1.jpg"
         },
         "DemoPoster6": {
-          "$asset": "DemoPoster6"
+          "$imageURL": "https://image.tmdb.org/t/p/w342/uDO8zWDhfWwoFdKS4fzkUJt0Rf0.jpg"
         },
         "DemoBook1": {
-          "$asset": "DemoBook1"
+          "$imageURL": "https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg"
         },
         "DemoBook2": {
-          "$asset": "DemoBook2"
+          "$imageURL": "https://covers.openlibrary.org/b/isbn/9780062315007-L.jpg"
         },
         "DemoBook3": {
-          "$asset": "DemoBook3"
+          "$imageURL": "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg"
+        },
+        "DemoBook4": {
+          "$imageURL": "https://covers.openlibrary.org/b/isbn/9780812968255-L.jpg"
         }
       }
+    },
+    "AlcoholStore.shared": {
+      "$type": "AlcoholStore",
+      "entries": [],
+      "dryNights": [
+        "2026-11-05"
+      ],
+      "drankNights": [],
+      "battery": {},
+      "pending": []
     },
     "ReflectionStore.shared": {
       "$type": "ReflectionStore",
@@ -10924,7 +10683,7 @@
           "text": "You have power over your mind — not outside events. Realize this, and you will find strength.",
           "author": "Marcus Aurelius",
           "added": "2026-11-05T00:00:00Z",
-          "bookID": "00000000-0000-4000-9000-000000000101",
+          "bookID": "00000000-0000-4000-9000-000000000104",
           "note": "",
           "page": 71,
           "chapterID": null
@@ -10935,9 +10694,9 @@
           "text": "We suffer more often in imagination than in reality.",
           "author": "Seneca",
           "added": "2026-11-03T00:00:00Z",
-          "bookID": "00000000-0000-4000-9000-000000000102",
+          "bookID": null,
           "note": "",
-          "page": 34,
+          "page": null,
           "chapterID": null
         },
         {
@@ -10946,9 +10705,9 @@
           "text": "I went to the woods because I wished to live deliberately.",
           "author": "Henry David Thoreau",
           "added": "2026-11-01T00:00:00Z",
-          "bookID": "00000000-0000-4000-9000-000000000103",
+          "bookID": null,
           "note": "",
-          "page": 90,
+          "page": null,
           "chapterID": null
         },
         {
@@ -10957,7 +10716,7 @@
           "text": "The happiness of your life depends upon the quality of your thoughts.",
           "author": "Marcus Aurelius",
           "added": "2026-10-29T00:00:00Z",
-          "bookID": "00000000-0000-4000-9000-000000000101",
+          "bookID": "00000000-0000-4000-9000-000000000104",
           "note": "",
           "page": 118,
           "chapterID": null
@@ -11053,14 +10812,14 @@
           "$type": "Book",
           "id": "00000000-0000-4000-9000-000000000101",
           "sourceKey": "demo-1",
-          "title": "Meditations",
-          "author": "Marcus Aurelius",
+          "title": "Atomic Habits",
+          "author": "James Clear",
           "coverURL": "DemoBook1",
-          "year": "180",
-          "pages": 304,
-          "publisher": "Penguin Classics",
+          "year": "2018",
+          "pages": 320,
+          "publisher": "Avery",
           "notes": "",
-          "bookmarkPage": 142,
+          "bookmarkPage": 214,
           "bookmarkedAt": "2026-11-04T22:00:00Z",
           "added": "2026-10-28T00:00:00Z",
           "chapters": []
@@ -11069,14 +10828,14 @@
           "$type": "Book",
           "id": "00000000-0000-4000-9000-000000000102",
           "sourceKey": "demo-2",
-          "title": "Letters from a Stoic",
-          "author": "Seneca",
+          "title": "The Alchemist",
+          "author": "Paulo Coelho",
           "coverURL": "DemoBook2",
-          "year": "65",
-          "pages": 256,
-          "publisher": "Penguin Classics",
+          "year": "1988",
+          "pages": 208,
+          "publisher": "HarperOne",
           "notes": "",
-          "bookmarkPage": 88,
+          "bookmarkPage": 96,
           "bookmarkedAt": "2026-11-03T20:00:00Z",
           "added": "2026-10-19T00:00:00Z",
           "chapters": []
@@ -11085,16 +10844,32 @@
           "$type": "Book",
           "id": "00000000-0000-4000-9000-000000000103",
           "sourceKey": "demo-3",
-          "title": "Walden",
-          "author": "Henry David Thoreau",
+          "title": "Sapiens",
+          "author": "Yuval Noah Harari",
           "coverURL": "DemoBook3",
-          "year": "1854",
-          "pages": 352,
-          "publisher": "Ticknor and Fields",
+          "year": "2011",
+          "pages": 464,
+          "publisher": "Harper",
           "notes": "",
-          "bookmarkPage": 201,
+          "bookmarkPage": 131,
           "bookmarkedAt": "2026-11-02T18:00:00Z",
           "added": "2026-10-10T00:00:00Z",
+          "chapters": []
+        },
+        {
+          "$type": "Book",
+          "id": "00000000-0000-4000-9000-000000000104",
+          "sourceKey": "demo-4",
+          "title": "Meditations",
+          "author": "Marcus Aurelius",
+          "coverURL": "DemoBook4",
+          "year": "180",
+          "pages": 304,
+          "publisher": "Penguin Classics",
+          "notes": "",
+          "bookmarkPage": 142,
+          "bookmarkedAt": "2026-11-01T16:00:00Z",
+          "added": "2026-10-01T00:00:00Z",
           "chapters": []
         }
       ]
