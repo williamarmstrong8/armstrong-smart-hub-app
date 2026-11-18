@@ -46,12 +46,16 @@ nonisolated enum LocalHub {
         LocalWorkouts.register(&r)
         LocalFitness.register(&r)
         LocalFinance.register(&r)
+        LocalContext.register(&r)
         return r
     }()
 
     private static let asyncRoutes: [String: AsyncHandler] = {
         var r: [String: AsyncHandler] = [:]
         LocalFinance.registerAsync(&r)
+        LocalCalendar.registerAsync(&r)
+        LocalWeather.registerAsync(&r)
+        LocalContext.registerAsync(&r)
         return r
     }()
 

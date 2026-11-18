@@ -344,5 +344,138 @@
     return JSON.stringify({ category: normalizeCategory(JSON.parse(json)), builtIn: isBuiltInCategory(normalizeCategory(JSON.parse(json)) ?? "") });
   }
 
-  globalThis.Finance = { dashboard, syncRows, holdings, category };
+  // MARK: Fitness context (lib/fitness/context.ts, after its queries)
+
+  /** Local "YYYY-MM-DD" and minutes after midnight in a time zone (google-calendar.ts hubDay, hubMinutes). */
+  function zoned(timeZone) {
+    const dayFormat = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    const timeFormat = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", hour: "2-digit", minute: "2-digit" });
+    const day = (date) => {
+      const p = Object.fromEntries(dayFormat.formatToParts(date).map((x) => [x.type, x.value]));
+      return `${p.year}-${p.month}-${p.day}`;
+    };
+    const minutes = (date) => {
+      const p = Object.fromEntries(timeFormat.formatToParts(date).map((x) => [x.type, x.value]));
+      return (Number(p.hour) % 24) * 60 + Number(p.minute);
+    };
+    return { day, minutes };
+  }
+
+  /** Timed events that are meetings or plans: not all-day, not birthdays, not 8-hour blocks. */
+  function counts(e) {
+    if (e.allDay || e.birthday) return false;
+    const length = new Date(e.end).getTime() - new Date(e.start).getTime();
+    return length > 0 && length <= 8 * 3_600_000;
+  }
+
+  function calendarDays(events, tz) {
+    const byDay = new Map();
+    for (const e of events.filter(counts)) {
+      const start = new Date(e.start);
+      const end = new Date(e.end);
+      const day = tz.day(start);
+      const from = tz.minutes(start);
+      const to = tz.day(end) === day ? tz.minutes(end) : 24 * 60;
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push({ start: from, end: Math.max(from, to) });
+    }
+    return [...byDay.entries()]
+      .map(([day, list]) => {
+        list.sort((a, b) => a.start - b.start);
+        let minutes = 0;
+        let backToBack = 0;
+        let cursor = -1;
+        let previousEnd = null;
+        for (const m of list) {
+          if (previousEnd !== null && m.start - previousEnd >= 0 && m.start - previousEnd < 10) backToBack++;
+          const from = Math.max(m.start, cursor);
+          if (m.end > from) minutes += m.end - from;
+          cursor = Math.max(cursor, m.end);
+          previousEnd = previousEnd === null ? m.end : Math.max(previousEnd, m.end);
+        }
+        return {
+          day,
+          meetingHours: Math.round((minutes / 60) * 100) / 100,
+          meetings: list.length,
+          firstStart: list[0]?.start ?? null,
+          lastEnd: list.reduce((max, m) => Math.max(max, m.end), 0) || null,
+          backToBack,
+        };
+      })
+      .sort((a, b) => (a.day < b.day ? 1 : -1));
+  }
+
+  const DELIVERY = /doordash|uber ?eats|grubhub|seamless|caviar|postmates|gopuff/i;
+  const RIDESHARE = /\buber\b|lyft/i;
+  const NOT_DRINKS = /coffee|cafe|caf[eé]|espresso|bakery|tea\b|boba|juice|bagel|donut|doughnut|market|grocery|pharmacy|cvs|walgreens|deli\b|pizza|sushi|ramen|burrito|taco|shake shack|sweetgreen|chipotle|tatte|bluestone|equator/i;
+  const BARISH = /\bbar\b|\bpub\b|tavern|saloon|brew|taproom|tap ?room|tap ?house|ale ?house|cocktail|lounge|wine|liquor|spirits|beer|biergarten|beer garden|speakeasy|\bhall\b|social|\bclub\b|distill|cantina|izakaya|bodega bar/i;
+  const VENUE = /^(tst\s?\*|sq\s?\*|toast|resy)/i;
+
+  /** "TST*CITYSIDE TAVERN - BR" -> "Cityside Tavern". */
+  function merchantName(description) {
+    const cleaned = description
+      .replace(/^(tst\s?\*|sq\s?\*|aplpay\s+|dd\s?\*|sp\s?\*)/i, "")
+      .replace(/\s+-\s+.*$/, "")
+      .replace(/\s{2,}.*$/, "")
+      .replace(/\s+\d{2,}.*$/, "")
+      .trim();
+    return cleaned.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase()).slice(0, 40);
+  }
+
+  /** SimpleFIN's transacted_at is often a placeholder at midnight UTC; only other times are real. */
+  const realTime = (at) => at.getUTCHours() !== 0 || at.getUTCMinutes() !== 0;
+
+  function likelihood(row, merchant, memory, tz) {
+    const taught = memory.get(merchant);
+    if (taught && taught.yes + taught.no >= 1) return (taught.yes + 0.5) / (taught.yes + taught.no + 1);
+    const text = `${row.payee ?? ""} ${row.description}`;
+    const amount = -Number(row.amount);
+    if (DELIVERY.test(text) || RIDESHARE.test(text) || NOT_DRINKS.test(text) || amount < 12) return 0;
+    let p = BARISH.test(text) ? 0.6 : VENUE.test(row.description) ? 0.2 : 0;
+    if (p === 0) return 0;
+    if (realTime(row.at)) {
+      const minutes = tz.minutes(row.at);
+      if (minutes >= 17 * 60 || minutes < 4 * 60) p += 0.25;
+      else if (minutes < 15 * 60) p -= 0.15;
+    }
+    if (amount >= 40) p += 0.1;
+    return Math.max(0, Math.min(0.95, p));
+  }
+
+  /**
+   * Input: { now (ms), timeZone, events (CalendarEvent[] or null), rows: [{ id, at, amount, description, payee }],
+   * memory: [{ merchant, yes, no }], answered: [night] }.
+   */
+  function context(json) {
+    const I = JSON.parse(json);
+    const tz = zoned(I.timeZone);
+    const memory = new Map(I.memory.map((r) => [r.merchant, { yes: Number(r.yes), no: Number(r.no) }]));
+    const nightOf = (at) => tz.day(new Date(at.getTime() - 5 * 3_600_000));
+    const nights = new Map();
+    const candidates = [];
+    for (const raw of I.rows) {
+      const row = { ...raw, at: new Date(raw.at), payee: raw.payee || null };
+      const night = nightOf(row.at);
+      const amount = -Number(row.amount);
+      const merchant = row.payee ? merchantName(row.payee) : merchantName(row.description);
+      const text = `${row.payee ?? ""} ${row.description}`;
+      const n = nights.get(night) ?? { night, bar: 0, delivery: 0, rideshare: 0 };
+      const p = likelihood(row, merchant, memory, tz);
+      if (DELIVERY.test(text)) n.delivery += amount;
+      else if (RIDESHARE.test(text)) n.rideshare += amount;
+      else if (p >= 0.5) n.bar += amount;
+      nights.set(night, n);
+      if (p >= 0.35) candidates.push({ id: row.id, night, merchant, amount, likelihood: Math.round(p * 100) / 100 });
+    }
+    // Only the last four nights, and only ones the drinks log hasn't answered.
+    const recent = tz.day(new Date(I.now - 4 * 86_400_000));
+    const answered = new Set(I.answered);
+    const barCharges = candidates.filter((c) => c.night >= recent && !answered.has(c.night));
+    const spending = [...nights.values()]
+      .map((n) => ({ ...n, bar: round(n.bar), delivery: round(n.delivery), rideshare: round(n.rideshare) }))
+      .sort((a, b) => (a.night < b.night ? 1 : -1));
+    return JSON.stringify({ calendar: I.events ? calendarDays(I.events, tz) : null, spending, barCharges });
+  }
+
+  globalThis.Finance = { dashboard, syncRows, holdings, category, context };
 })();

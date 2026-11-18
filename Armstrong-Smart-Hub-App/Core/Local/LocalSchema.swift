@@ -132,6 +132,12 @@ nonisolated enum LocalSchema {
         -- The review queue only holds transactions synced after this, so the first sync's history doesn't all land in it.
         insert or ignore into app_settings (key, value) values ('review_since', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day'));
         """,
+        // 4: merchants the phone asked "Drinks at …?" about, and how often the answer was yes.
+        """
+        create table if not exists fitness_merchant_drinks (
+          merchant text primary key, yes integer not null default 0, no integer not null default 0, updated_at text not null
+        );
+        """,
     ]
 
     static func migrate(_ db: LocalDB) {

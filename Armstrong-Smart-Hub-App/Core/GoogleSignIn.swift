@@ -3,8 +3,8 @@ import CryptoKit
 import UIKit
 
 /// Google sign-in for Calendar, inside the app: a system sheet (no trip to Safari), PKCE and the
-/// iOS OAuth client, which has no secret. The app only gets a one-time code; the hub trades it
-/// for tokens and keeps them, so the app never holds a Google token.
+/// iOS OAuth client, which has no secret. The one-time code goes to /api/mobile/google/link, which
+/// LocalCalendar answers on the phone: it trades the code for tokens and keeps them in the Keychain.
 @MainActor
 enum GoogleSignIn {
     static let clientID = "1054880549796-srql0pu9h4ku37t2delvuhuqkk82corj.apps.googleusercontent.com"
@@ -24,7 +24,7 @@ enum GoogleSignIn {
 
     private static var holder: PresentationContext?
 
-    /// Runs the sheet and hands the code to the hub. Returns false when the user cancels.
+    /// Runs the sheet and hands the code to LocalCalendar. Returns false when the user cancels.
     static func connect(api: APIClient) async throws -> Bool {
         let verifier = randomString()
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URL

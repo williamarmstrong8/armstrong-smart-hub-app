@@ -7,8 +7,7 @@ import Foundation
 /// drops the raw file. Queries mirror the hub's, column for column, and the
 /// math runs in HubJS.fitness so the numbers are the same.
 ///
-/// Not here yet: /api/mobile/fitness/context (it needs the calendar and bank
-/// transactions, which are still on the hub).
+/// /api/mobile/fitness/context is LocalContext.
 nonisolated enum LocalFitness {
     static func register(_ r: inout [String: LocalHub.Handler]) {
         r["POST /api/mobile/fitness"] = upload
