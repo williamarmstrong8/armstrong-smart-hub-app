@@ -71,8 +71,9 @@ struct FinanceView: View {
     private var content: some View {
         if let r = store.response {
             if !r.configured {
-                MessageView(title: "Connect SimpleFIN", systemImage: "building.columns",
-                            message: "Set SIMPLEFIN_ACCESS_URL on the hub to see your accounts.")
+                SimpleFinConnectView(syncing: store.syncing) { token in
+                    await store.connect(token: token, api: session.api, toast: toast)
+                }
             } else if r.hasData != true {
                 MessageView(title: "No data yet", systemImage: "tray",
                             message: r.sync?.failureReason ?? "SimpleFIN is connected, but nothing has synced yet.",

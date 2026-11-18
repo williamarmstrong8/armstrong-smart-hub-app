@@ -1,54 +1,59 @@
 import Foundation
 import JavaScriptCore
 
-/// Runs the hub's fitness math on the phone: fitness.js is the hub's own
-/// lib/fitness modules (FIT decoding, scores, recovery, check-in models),
-/// bundled by scripts/fitness-js/build.mjs, so every number matches what the
-/// hub computed. Swift does the queries (LocalFitness); this does the math.
+/// Runs the hub's own math on the phone. Each script is the hub's pure
+/// TypeScript modules bundled by scripts/hub-js/build.mjs, so the numbers match
+/// what the hub computed; Swift does the queries (LocalFitness, LocalFinance).
 ///
-/// Every function in the script takes one JSON string and returns one, except
+/// - fitness.js (`Fitness`): FIT decoding, scores, recovery, check-in models.
+/// - finance.js (`Finance`): categories, the dashboard, recurring charges, the goal, investments.
+///
+/// Every function in a script takes one JSON string and returns one, except
 /// the file readers, which take the file's bytes as a Uint8Array.
-nonisolated final class FitnessJS: @unchecked Sendable {
-    static let shared = FitnessJS()
+nonisolated final class HubJS: @unchecked Sendable {
+    static let fitness = HubJS(resource: "fitness", object: "Fitness")
+    static let finance = HubJS(resource: "finance", object: "Finance")
 
     private let lock = NSLock()
     private let context: JSContext?
+    private let object: String
     private var lastError: String?
 
-    init(script: String? = FitnessJS.bundledScript()) {
-        guard let script, let context = JSContext() else {
+    init(resource: String, object: String) {
+        self.object = object
+        guard let script = Self.bundledScript(resource), let context = JSContext() else {
             self.context = nil
             return
         }
         self.context = context
-        context.name = "Fitness"
+        context.name = object
         context.exceptionHandler = { [weak self] _, exception in
             self?.lastError = exception?.toString() ?? "JavaScript error"
             #if DEBUG
-            print("FitnessJS:", self?.lastError ?? "")
+            print("HubJS:", self?.lastError ?? "")
             #endif
         }
         context.evaluateScript(script)
     }
 
-    static func bundledScript() -> String? {
-        guard let url = Bundle.main.url(forResource: "fitness", withExtension: "js") else { return nil }
+    static func bundledScript(_ resource: String) -> String? {
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "js") else { return nil }
         return try? String(contentsOf: url, encoding: .utf8)
     }
 
-    /// Calls `Fitness.<name>(JSON.stringify(input))` and parses what it returns.
+    /// Calls `<object>.<name>(JSON.stringify(input))` and parses what it returns.
     func call(_ name: String, _ input: Any) -> Any? {
         guard let data = try? JSONSerialization.data(withJSONObject: input, options: [.fragmentsAllowed]),
               let json = String(data: data, encoding: .utf8) else { return nil }
         lock.lock(); defer { lock.unlock() }
-        guard let fn = context?.objectForKeyedSubscript("Fitness")?.objectForKeyedSubscript(name) else { return nil }
+        guard let fn = context?.objectForKeyedSubscript(object)?.objectForKeyedSubscript(name) else { return nil }
         return Self.parse(fn.call(withArguments: [json]))
     }
 
-    /// Calls `Fitness.<name>(bytes, ...rest)` with the bytes as a Uint8Array.
+    /// Calls `<object>.<name>(bytes, ...rest)` with the bytes as a Uint8Array.
     func call(_ name: String, bytes: Data, _ rest: [Any] = []) -> Any? {
         lock.lock(); defer { lock.unlock() }
-        guard let context, let fn = context.objectForKeyedSubscript("Fitness")?.objectForKeyedSubscript(name),
+        guard let context, let fn = context.objectForKeyedSubscript(object)?.objectForKeyedSubscript(name),
               let array = Self.uint8Array(bytes, in: context) else { return nil }
         return Self.parse(fn.call(withArguments: [array] + rest))
     }

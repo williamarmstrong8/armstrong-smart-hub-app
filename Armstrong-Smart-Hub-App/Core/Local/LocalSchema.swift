@@ -101,6 +101,37 @@ nonisolated enum LocalSchema {
           primary key (kind, ref_id)
         );
         """,
+        // 3: money from SimpleFIN. Amounts and balances stay as the decimal strings SimpleFIN sends.
+        """
+        create table if not exists accounts (
+          id text primary key, name text not null, institution text not null default 'Connected account',
+          currency text not null default 'USD', balance text not null, available_balance text, balance_date text not null,
+          raw text not null, updated_at text not null
+        );
+        create table if not exists transactions (
+          id text primary key, account_id text not null, posted text not null, amount text not null,
+          description text not null default '', payee text, memo text, pending integer not null default 0, raw text,
+          created_at text not null, updated_at text not null
+        );
+        create index if not exists transactions_posted on transactions (posted desc);
+        create index if not exists transactions_account on transactions (account_id);
+        create table if not exists sync_runs (
+          id integer primary key autoincrement, started_at text not null, finished_at text, trigger text not null,
+          mode text not null, window_start text not null, status text not null, accounts_synced integer not null default 0,
+          transactions_upserted integer not null default 0, notices text, error text
+        );
+        create table if not exists category_overrides (transaction_id text primary key, category text not null, updated_at text not null);
+        create table if not exists custom_categories (name text primary key);
+        create table if not exists app_settings (key text primary key, value text not null);
+        create table if not exists recurring_ignored (id text primary key);
+        create table if not exists net_worth_snapshots (day text primary key, value text not null, updated_at text not null);
+        create table if not exists holding_snapshots (
+          day text not null, account_id text not null, symbol text not null, shares text not null, market_value text not null,
+          cost_basis text, updated_at text not null, primary key (day, account_id, symbol)
+        );
+        -- The review queue only holds transactions synced after this, so the first sync's history doesn't all land in it.
+        insert or ignore into app_settings (key, value) values ('review_since', strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day'));
+        """,
     ]
 
     static func migrate(_ db: LocalDB) {

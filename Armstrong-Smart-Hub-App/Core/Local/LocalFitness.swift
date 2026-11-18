@@ -3,9 +3,9 @@ import Foundation
 
 /// Fitness from the watch, on the phone (was lib/fitness/store.ts, checkins.ts
 /// and the /api/mobile/fitness routes). The phone reads each file the watch
-/// hands over (FitnessJS, the hub's own parser), stores what it says, and
+/// hands over (HubJS.fitness, the hub's own parser), stores what it says, and
 /// drops the raw file. Queries mirror the hub's, column for column, and the
-/// math runs in FitnessJS so the numbers are the same.
+/// math runs in HubJS.fitness so the numbers are the same.
 ///
 /// Not here yet: /api/mobile/fitness/context (it needs the calendar and bank
 /// transactions, which are still on the hub).
@@ -22,7 +22,7 @@ nonisolated enum LocalFitness {
             }
             row["metrics"] = LocalDB.parse(row["metrics"])
             row["heartRate"] = LocalDB.parse(row["heartRate"])
-            return FitnessJS.shared.call("activity", row).map(LocalHub.Reply.ok) ?? .notFound
+            return HubJS.fitness.call("activity", row).map(LocalHub.Reply.ok) ?? .notFound
         }
         r["GET /api/mobile/fitness/sleep"] = { _ in
             .ok(["sleep": db.query(
@@ -45,7 +45,7 @@ nonisolated enum LocalFitness {
                     """, [LocalDB.addDays(LocalDB.day(), -3)]),
                 "metricsInput": metricsInput(),
             ]
-            return FitnessJS.shared.call("watchSettings", input).map(LocalHub.Reply.ok) ?? .error("Couldn't work out the watch numbers.", 500)
+            return HubJS.fitness.call("watchSettings", input).map(LocalHub.Reply.ok) ?? .error("Couldn't work out the watch numbers.", 500)
         }
         r["GET /api/mobile/fitness/inspect"] = { _ in
             // Raw files aren't kept once read, so this lists what was read rather than laying it out.
@@ -66,7 +66,7 @@ nonisolated enum LocalFitness {
         r["GET /api/mobile/fitness/checkin"] = { req in
             guard let day = req.param("day"), LocalHub.isDay(day), let tz = offset(req.param("tz")) else { return .error("Not a valid day.") }
             let input: [String: Any] = ["dayInput": dayInput(tz), "entries": checkins(), "skips": db.query("select state, day from fitness_checkin_skips"), "day": day]
-            return FitnessJS.shared.call("checkinPage", input).map(LocalHub.Reply.ok) ?? .error("Couldn't work out the check-in.", 500)
+            return HubJS.fitness.call("checkinPage", input).map(LocalHub.Reply.ok) ?? .error("Couldn't work out the check-in.", 500)
         }
         r["PUT /api/mobile/fitness/checkin"] = putCheckin
         r["GET /api/mobile/fitness/feedback"] = { req in
@@ -117,7 +117,7 @@ nonisolated enum LocalFitness {
         if (db.one("select sha256 from fitness_files where file_id = ?", [id])?["sha256"] as? String) == sha {
             return .ok(["duplicate": true, "parsed": false])
         }
-        guard let parsed = FitnessJS.shared.call("parseFile", bytes: data, [tz]) as? [String: Any] else {
+        guard let parsed = HubJS.fitness.call("parseFile", bytes: data, [tz]) as? [String: Any] else {
             return .error("couldn't read the file", 500)
         }
         if parsed["invalid"] as? Bool == true { return .error(parsed["error"] as? String ?? "not a valid FIT file", 422) }
@@ -348,7 +348,7 @@ nonisolated enum LocalFitness {
             "metricsInput": metricsInput(now: now),
             "insightsInput": insightsInput(now: now, allDayEnd: end),
         ]
-        return FitnessJS.shared.call("snapshot", input)
+        return HubJS.fitness.call("snapshot", input)
     }
 
     /// What the Whoop, Oura, Garmin and Apple style scores need (store.ts fitnessInsights).
@@ -576,7 +576,7 @@ nonisolated enum LocalFitness {
         }
         let input: [String: Any] = ["kind": kind, "row": LocalHub.orNull(row), "utcOffset": tz,
                                     "dayInput": dayInput(tz), "entries": checkins()]
-        return FitnessJS.shared.call("sessionGuess", input)
+        return HubJS.fitness.call("sessionGuess", input)
     }
 
     static func feedback(kind: String, refId: String) -> [String: Any]? {

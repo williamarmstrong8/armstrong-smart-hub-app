@@ -50,6 +50,24 @@ final class FinanceStore {
         }
     }
 
+    /// Connects SimpleFIN with a setup token or access URL: the phone claims it, keeps the access
+    /// URL in its Keychain and pulls the last 89 days. Answers an error to show, or nil.
+    func connect(token: String, api: APIClient, toast: Toast) async -> String? {
+        syncing = true
+        defer { syncing = false }
+        struct Body: Encodable { let token: String }
+        struct Reply: Decodable { let ok: Bool; let message: String?; let error: String? }
+        do {
+            let r: Reply = try await api.post("/api/mobile/finance/connect", body: Body(token: token))
+            guard r.ok else { return r.error ?? "Couldn't connect to SimpleFIN." }
+            toast.show(r.message ?? "Connected")
+            await load(api: api)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// What the Tag card works through: the hub's review queue, then any other money out that is still
     /// Uncategorized, newest first. The queue alone misses anything that was never queued.
     var tagQueue: [Transaction] {

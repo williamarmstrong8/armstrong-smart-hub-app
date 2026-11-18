@@ -34,6 +34,8 @@ nonisolated enum LocalHub {
     }
 
     typealias Handler = @Sendable (Request) -> Reply
+    /// For routes that talk to another service first (SimpleFIN).
+    typealias AsyncHandler = @Sendable (Request) async -> Reply
 
     /// "METHOD /path" → handler.
     private static let routes: [String: Handler] = {
@@ -43,6 +45,13 @@ nonisolated enum LocalHub {
         LocalDrinks.register(&r)
         LocalWorkouts.register(&r)
         LocalFitness.register(&r)
+        LocalFinance.register(&r)
+        return r
+    }()
+
+    private static let asyncRoutes: [String: AsyncHandler] = {
+        var r: [String: AsyncHandler] = [:]
+        LocalFinance.registerAsync(&r)
         return r
     }()
 
@@ -50,6 +59,7 @@ nonisolated enum LocalHub {
     private static let actions: [String: @Sendable ([Any]) -> Any] = {
         var a: [String: @Sendable ([Any]) -> Any] = [:]
         LocalHabits.registerActions(&a)
+        LocalFinance.registerActions(&a)
         return a
     }()
 
@@ -68,13 +78,20 @@ nonisolated enum LocalHub {
             let args = call["args"] as? [Any] ?? []
             reply = .ok(await run { action(args) })
         } else {
-            guard let handler = routes["\(method) \(path)"] else { return nil }
+            let key = "\(method) \(path)"
+            let handler = routes[key]
+            let asyncHandler = asyncRoutes[key]
+            guard handler != nil || asyncHandler != nil else { return nil }
             var query: [String: String] = [:]
             for item in URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [] {
                 query[item.name] = item.value ?? ""
             }
             let request = Request(method: method, path: path, query: query, body: body, raw: req.httpBody)
-            reply = await run { handler(request) }
+            if let handler {
+                reply = await run { handler(request) }
+            } else {
+                reply = await Task.detached(priority: .userInitiated) { await asyncHandler!(request) }.value
+            }
         }
 
         let data = (try? JSONSerialization.data(withJSONObject: reply.body, options: [.fragmentsAllowed])) ?? Data("{}".utf8)

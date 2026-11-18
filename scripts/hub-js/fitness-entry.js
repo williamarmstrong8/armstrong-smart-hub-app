@@ -9,16 +9,16 @@
 // tables store milliseconds); `ms` and `iso` accept both.
 // ---------------------------------------------------------------------------
 (function () {
-  const { decodeFit, isFit, isPartialFit, FitError } = __require("fit");
-  const { summarize, inspect } = __require("summarize");
-  const { buildMetrics, preferWatch } = __require("metrics");
-  const { buildInsights } = __require("insight-metrics");
-  const { sleepScore } = __require("physiology");
-  const { buildWatchSnapshot } = __require("watch-snapshot");
-  const { buildWatchSettings } = __require("watch-settings");
+  const { decodeFit, isFit, isPartialFit, FitError } = __require("lib/fitness/fit");
+  const { summarize, inspect } = __require("lib/fitness/summarize");
+  const { buildMetrics, preferWatch } = __require("lib/fitness/metrics");
+  const { buildInsights } = __require("lib/fitness/insight-metrics");
+  const { sleepScore } = __require("lib/fitness/physiology");
+  const { buildWatchSnapshot } = __require("lib/fitness/watch-snapshot");
+  const { buildWatchSettings } = __require("lib/fitness/watch-settings");
   const {
     allInputs, energyDrivers, fitEnergy, fitState, guessDay, pastStretches, personalWeight, STATE_LABELS, STATES,
-  } = __require("checkin-engine");
+  } = __require("lib/fitness/checkin-engine");
 
   const DAY = 86_400_000;
   const ms = (v) => (typeof v === "number" ? v : Date.parse(v));
