@@ -112,6 +112,9 @@ final class ReflectionStore {
     private static let file = URL.applicationSupportDirectory.appending(path: "Reflection.json")
 
     init() {
+        #if DEBUG
+        if Demo.isOn { seedDemo(); return }
+        #endif
         guard let data = try? Data(contentsOf: Self.file),
               let saved = try? JSONDecoder().decode(Saved.self, from: data) else { return }
         quotes = saved.quotes
@@ -121,6 +124,8 @@ final class ReflectionStore {
     }
 
     private func persist() {
+        // Demo mode keeps its sample books and quotes in memory and never touches the saved file.
+        if Demo.isOn { return }
         let saved = Saved(quotes: quotes, entries: entries, sessions: sessions, books: books)
         guard let data = try? JSONEncoder().encode(saved) else { return }
         try? FileManager.default.createDirectory(at: Self.file.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -328,3 +333,76 @@ final class ReflectionStore {
         persist()
     }
 }
+
+#if DEBUG
+extension ReflectionStore {
+    /// Demo mode's shelf: public-domain books, quotes from them and a few on their own,
+    /// a couple of journal entries and some meditation. In memory only.
+    fileprivate func seedDemo() {
+        let day: TimeInterval = 86400
+        func book(_ key: String, _ title: String, _ author: String, _ year: String, _ pages: Int,
+                  chapters: [String], bookmark: Int?, daysAgo: Double) -> Book {
+            var b = Book(sourceKey: key, title: title, author: author)
+            b.year = year
+            b.pages = pages
+            b.chapters = chapters.map { BookChapter(title: $0) }
+            b.bookmarkPage = bookmark
+            b.bookmarkedAt = bookmark.map { _ in Date().addingTimeInterval(-daysAgo * day / 3) }
+            b.added = Date().addingTimeInterval(-daysAgo * day)
+            return b
+        }
+        let meditations = book("demo/meditations", "Meditations", "Marcus Aurelius", "180", 254,
+                               chapters: ["Book Two", "Book Four", "Book Six", "Book Eight"], bookmark: 142, daysAgo: 40)
+        let walden = book("demo/walden", "Walden", "Henry David Thoreau", "1854", 352,
+                          chapters: ["Economy", "Where I Lived, and What I Lived For", "Solitude", "Conclusion"], bookmark: 96, daysAgo: 21)
+        let seneca = book("demo/letters", "Letters from a Stoic", "Seneca", "65", 254,
+                          chapters: ["On Saving Time", "On the Shortness of Life", "On Old Age"], bookmark: 61, daysAgo: 9)
+        let emerson = book("demo/self-reliance", "Self-Reliance", "Ralph Waldo Emerson", "1841", 64,
+                           chapters: [], bookmark: nil, daysAgo: 3)
+        books = [emerson, seneca, walden, meditations]
+
+        func quote(_ text: String, _ b: Book?, author: String? = nil, page: Int? = nil, chapter: Int? = nil,
+                   note: String = "", daysAgo: Double) -> ReflectionQuote {
+            var q = ReflectionQuote(text: text, author: author ?? b?.author ?? "", bookID: b?.id)
+            q.page = page
+            q.chapterID = chapter.flatMap { b?.chapters?[$0].id }
+            q.note = note
+            q.added = Date().addingTimeInterval(-daysAgo * day)
+            return q
+        }
+        quotes = [
+            quote("Insist on yourself; never imitate.", emerson, page: 22, daysAgo: 1),
+            quote("Nothing can bring you peace but yourself.", emerson, page: 61, note: "Ending of the essay.", daysAgo: 2),
+            quote("Hold every hour in your grasp.", seneca, page: 3, chapter: 0, daysAgo: 6),
+            quote("Life is long if you know how to use it.", seneca, page: 18, chapter: 1, note: "Re-read on Sundays.", daysAgo: 8),
+            quote("I went to the woods because I wished to live deliberately.", walden, page: 90, chapter: 1, daysAgo: 12),
+            quote("Our life is frittered away by detail. Simplify, simplify.", walden, page: 92, chapter: 1, daysAgo: 14),
+            quote("I never found the companion that was so companionable as solitude.", walden, page: 135, chapter: 2, daysAgo: 17),
+            quote("You have power over your mind, not outside events. Realize this, and you will find strength.", meditations,
+                  page: 64, chapter: 1, daysAgo: 24),
+            quote("The best revenge is not to be like your enemy.", meditations, page: 88, chapter: 2, daysAgo: 29),
+            quote("Waste no more time arguing about what a good man should be. Be one.", meditations, page: 141, chapter: 3,
+                  note: "Pinned above the desk.", daysAgo: 33),
+            quote("Well done is better than well said.", nil, author: "Benjamin Franklin", daysAgo: 4),
+            quote("It is not the man who has too little, but the man who craves more, that is poor.", nil, author: "Seneca", daysAgo: 19),
+        ]
+
+        func entry(_ text: String, daysAgo: Double) -> JournalEntry {
+            var e = JournalEntry(text: text)
+            e.created = Date().addingTimeInterval(-daysAgo * day)
+            e.updated = e.created
+            return e
+        }
+        entries = [
+            entry("Long run before work, then a quiet morning. Phone stayed in the drawer until noon and the day felt twice as long.", daysAgo: 1),
+            entry("Finished Walden's Solitude chapter on the porch. Want to try one evening a week with no screens at all.", daysAgo: 5),
+            entry("Hard week. Slept badly, skipped two workouts. Tomorrow: bed by 10:30, stretch, read twenty pages.", daysAgo: 11),
+        ]
+        sessions = (0..<18).map { i in
+            var m = MeditationRecord(minutes: [10, 12, 15, 10, 20, 8][i % 6])
+            m.date = Date().addingTimeInterval(-Double(i) * 1.6 * day)
+            return m
+        }
+    }
+}
+#endif

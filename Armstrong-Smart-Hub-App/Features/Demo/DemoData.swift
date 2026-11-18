@@ -86,21 +86,12 @@ enum DemoHub {
 
     // MARK: Home
 
+    /// Two lights, nothing else, so Home reads simply.
     private static var entities: [[String: Any]] = [
-        ["id": "light.living_room", "name": "Living Room", "state": "off", "room": "Living Room", "control": "light",
-         "colorModes": ["color_temp", "hs"], "colorTempKelvin": 2700, "minKelvin": 2200, "maxKelvin": 6500],
-        ["id": "light.kitchen", "name": "Kitchen", "state": "on", "room": "Kitchen", "control": "light",
-         "brightness": 204.0, "colorModes": ["color_temp"], "colorTempKelvin": 3000, "minKelvin": 2200, "maxKelvin": 6500],
+        ["id": "light.living_room", "name": "Living Room", "state": "on", "room": "Living Room", "control": "light",
+         "brightness": 178.0, "colorModes": ["color_temp", "hs"], "colorTempKelvin": 2700, "minKelvin": 2200, "maxKelvin": 6500],
         ["id": "light.bedroom", "name": "Bedroom", "state": "off", "room": "Bedroom", "control": "light",
          "colorModes": ["color_temp", "hs"], "colorTempKelvin": 2400, "minKelvin": 2200, "maxKelvin": 6500],
-        ["id": "light.office", "name": "Office Lamp", "state": "on", "room": "Office", "control": "light",
-         "brightness": 153.0, "colorModes": ["brightness"]],
-        ["id": "media_player.living_room_tv", "name": "Living Room TV", "state": "off", "room": "Living Room", "control": "mediaPlayer"],
-        ["id": "climate.hallway", "name": "Thermostat", "state": "heat", "room": "Hallway", "control": "climate", "unit": "°F"],
-        ["id": "lock.front_door", "name": "Front Door", "state": "unlocked", "room": "Entry", "control": "lock"],
-        ["id": "lock.garage", "name": "Garage", "state": "locked", "room": "Garage", "control": "lock"],
-        ["id": "switch.espresso", "name": "Espresso Machine", "state": "on", "room": "Kitchen", "control": "toggle"],
-        ["id": "switch.office_fan", "name": "Office Fan", "state": "off", "room": "Office", "control": "toggle"],
     ]
 
     private static var automations: [[String: Any]] = [
@@ -113,10 +104,8 @@ enum DemoHub {
     private static func homeState() -> [String: Any] { [
         "configured": true,
         "entities": entities,
-        "requests": [Any](),
-        // The film's Home: lights, locks and switches on one screen (no TV remote or thermostat).
-        "visible": ["light.living_room", "light.kitchen", "light.bedroom", "light.office",
-                    "lock.front_door", "lock.garage", "switch.espresso", "switch.office_fan"],
+        "requests": DemoMovies.requests,
+        "visible": ["light.living_room", "light.bedroom"],
         "automations": [
             "automations": automations,
             "scenes": [["id": "scene.movie_night", "name": "Movie Night", "state": "scening", "lastTriggered": iso(daysAgo(3))],
@@ -156,6 +145,12 @@ enum DemoHub {
             if let i = automations.firstIndex(where: { $0["id"] as? String == id }), let on = args.dropFirst().first as? Bool {
                 automations[i]["state"] = on ? "on" : "off"
             }
+        case "mediaDetail":
+            let tmdb = args.dropFirst().first as? Int ?? (args.dropFirst().first as? Double).map(Int.init) ?? 0
+            let detail: Any = DemoMovies.detail(tmdb) ?? NSNull()
+            return ["ok": true, "data": detail, "status": "ok"]
+        case "discoverMedia", "searchMedia":
+            return ["ok": true, "data": DemoMovies.results, "status": "ok"]
         case "setCompletion":
             if let id, let date = args.dropFirst().first as? String, let done = args.dropFirst(2).first as? Bool {
                 completions.removeAll { $0["habitId"] == id && $0["date"] == date }
@@ -173,8 +168,6 @@ enum DemoHub {
         ("h-meditate", "Meditate", "#8B6CFF", "🧘"),
         ("h-read", "Read", "#FFB75C", "📚"),
         ("h-stretch", "Stretch", "#3DDC6E", "🤸"),
-        ("h-water", "Water", "#75B8FF", "💧"),
-        ("h-journal", "Journal", "#FF8288", "✍️"),
     ]
 
     private static var completions: [[String: String]] = {
@@ -182,8 +175,8 @@ enum DemoHub {
         for back in 0..<45 {
             let d = day(daysAgo(back))
             for (i, h) in habits.enumerated() {
-                // Today: three of five done so far; earlier days mostly done.
-                let done = back == 0 ? i < 3 : (back * 7 + i * 3) % 5 != 0
+                // Today: two of three done so far; earlier days mostly done.
+                let done = back == 0 ? i < 2 : (back * 7 + i * 3) % 5 != 0
                 if done { out.append(["habitId": h.0, "date": d]) }
             }
         }
@@ -283,11 +276,15 @@ enum DemoHub {
                     "posted": nowS - daysBack * 86400, "amount": amount, "netEffect": amount, "description": payee.uppercased(),
                     "payee": payee, "memo": NSNull(), "pending": daysBack < 1, "hold": false, "category": category, "categorySource": source]
         }
+        // Untagged (Uncategorized, set automatically) so Finance has something to sort.
         let review: [[String: Any]] = [
-            tx(0.2, "Blue Door Coffee", -6.50, "Food & Drinks"),
-            tx(0.6, "Hillside Market", -64.12, "Groceries"),
-            tx(1.1, "Metro Transit", -18.40, "Transport"),
-            tx(1.4, "Riverside Climbing", -22.00, "Lifestyle"),
+            tx(0.2, "Blue Door Coffee", -6.50, "Uncategorized"),
+            tx(0.5, "SQ *Pop-up Market", -27.40, "Uncategorized"),
+            tx(0.9, "Hillside Market", -64.12, "Groceries"),
+            tx(1.1, "Venmo · J. Park", -45.00, "Uncategorized", "Everyday Checking"),
+            tx(1.3, "Metro Transit", -18.40, "Transport"),
+            tx(1.6, "AMZN Mktp US", -38.99, "Uncategorized"),
+            tx(2.0, "Riverside Climbing", -22.00, "Lifestyle"),
         ]
         let rest: [[String: Any]] = [
             tx(1.8, "Luca's Trattoria", -58.30, "Food & Drinks", source: "manual"),

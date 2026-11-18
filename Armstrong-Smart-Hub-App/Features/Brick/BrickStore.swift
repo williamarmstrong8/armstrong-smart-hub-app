@@ -507,6 +507,15 @@ final class BrickStore: NSObject {
             BrickSession(profileName: "Deep Work", start: at(0, todayEnd - 1.25), end: at(0, todayEnd - 0.55)),
             BrickSession(profileName: "Evenings", start: at(0, todayEnd - 0.55), end: at(0, todayEnd)),
         ]
+        // Five more weeks behind that, so the lifetime stats under the circle have something to add up.
+        let older: [BrickSession] = (7...40).flatMap { back -> [BrickSession] in
+            let morning = 1.4 + Double((back * 7) % 5) * 0.3
+            var day = [BrickSession(profileName: "Deep Work", start: at(-back, 8.5), end: at(-back, 8.5 + morning))]
+            if back % 3 != 0 { day.append(BrickSession(profileName: "Evenings", start: at(-back, 20.5), end: at(-back, 21.4 + Double(back % 4) * 0.2))) }
+            if back % 7 == 3 { day.append(BrickSession(profileName: "Sunday Reset", start: at(-back, 10), end: at(-back, 12.5))) }
+            return day
+        }
+        sessions = (older + sessions).sorted { $0.start < $1.start }
         schedules = [BrickSchedule(name: "Weekday mornings", hour: 8, minute: 30, profileID: profiles.first?.id, enabled: true)]
         tags = [BrickTag(id: "04a3b2c1d4e580", name: "Desk", profileID: profiles.first?.id),
                 BrickTag(id: "04f1e2d3c4b5a6", name: "Nightstand", profileID: profiles[1].id)]

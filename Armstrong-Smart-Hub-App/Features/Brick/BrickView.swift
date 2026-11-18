@@ -198,8 +198,9 @@ private struct BrickSheet: View {
             // The stats sit centred in the room between the device and the button.
             Spacer(minLength: 8)
             // Smaller when a line under the button or a lockdown chip needs the room; gone when both do.
-            if !Demo.isOn, store.activeLockdowns.isEmpty || !hasSubline {
-                BrickLifeStats(store: store, size: store.activeLockdowns.isEmpty && !hasSubline ? 100 : 72)
+            // Demo mode keeps them small: the circle's title sits above them.
+            if store.activeLockdowns.isEmpty || !hasSubline {
+                BrickLifeStats(store: store, size: store.activeLockdowns.isEmpty && !hasSubline && !Demo.isOn ? 100 : 72)
                 Spacer(minLength: 8)
             }
             brickButton

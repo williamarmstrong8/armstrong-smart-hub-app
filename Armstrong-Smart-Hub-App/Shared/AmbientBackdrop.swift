@@ -1,7 +1,7 @@
 import AVFoundation
 import SwiftUI
 
-/// The chosen background (the snow-mountain photo by default) scaled to fill the screen, blurred by
+/// The chosen background (the orange and teal grain wave by default) scaled to fill the screen, blurred by
 /// the amount set in Home > More > Background. Live Photos and clips loop and can shift with tilt.
 struct AmbientBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -24,7 +24,7 @@ struct AmbientBackdrop: View {
         } else if let image = store.image, store.kind == .photo {
             Image(uiImage: image).resizable().scaledToFill()
         } else {
-            Image("SnowMountainWallpaper").resizable().scaledToFill()
+            Image("AmbientWallpaper").resizable().scaledToFill()
         }
     }
 }
