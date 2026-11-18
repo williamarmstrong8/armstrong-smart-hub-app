@@ -10571,6 +10571,40 @@
       "busy": null,
       "fresh": true
     },
+    "PosterLoader.image": {
+      "$byArgument": {
+        "DemoPoster1": {
+          "$imageURL": "https://image.tmdb.org/t/p/w342/6izwz7rsy95ARzTR3poZ8H6c5pp.jpg"
+        },
+        "DemoPoster2": {
+          "$imageURL": "https://image.tmdb.org/t/p/w342/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg"
+        },
+        "DemoPoster3": {
+          "$imageURL": "https://image.tmdb.org/t/p/w342/yQvGrMoipbRoddT0ZR8tPoR7NfX.jpg"
+        },
+        "DemoPoster4": {
+          "$imageURL": "https://image.tmdb.org/t/p/w342/3bhkrj58Vtu7enYsRolD1fZdja1.jpg"
+        },
+        "DemoPoster5": {
+          "$imageURL": "https://image.tmdb.org/t/p/w342/xlaY2zyzMfkhk0HSC5VUwzoZPU1.jpg"
+        },
+        "DemoPoster6": {
+          "$imageURL": "https://image.tmdb.org/t/p/w342/uDO8zWDhfWwoFdKS4fzkUJt0Rf0.jpg"
+        },
+        "DemoBook1": {
+          "$imageURL": "https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg"
+        },
+        "DemoBook2": {
+          "$imageURL": "https://covers.openlibrary.org/b/isbn/9780062315007-L.jpg"
+        },
+        "DemoBook3": {
+          "$imageURL": "https://covers.openlibrary.org/b/isbn/9780062316097-L.jpg"
+        },
+        "DemoBook4": {
+          "$imageURL": "https://covers.openlibrary.org/b/isbn/9780812968255-L.jpg"
+        }
+      }
+    },
     "PosterImages.cached": {
       "$byArgument": {
         "DemoPoster1": {
