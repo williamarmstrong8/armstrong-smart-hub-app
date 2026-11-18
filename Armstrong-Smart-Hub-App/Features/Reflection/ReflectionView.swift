@@ -141,7 +141,7 @@ private struct JournalLockedCard: View {
 
 /// Reflection: guided breathing that floods the screen with colour, quotes worth keeping, and a journal.
 struct ReflectionView: View {
-    @State private var store = ReflectionStore()
+    @State private var store = ReflectionStore.shared
     @State private var startingSession = false
     @State private var addingQuote = false
     @State private var quoteToDelete: ReflectionQuote?
@@ -154,7 +154,6 @@ struct ReflectionView: View {
     /// Apple's picker of moments from your day (workouts, places, photos, music).
     @State private var pickingMoment = false
     @Environment(\.scenePhase) private var scenePhase
-    @State private var heroQuoteIndex = Int.random(in: 0..<1000)
 
     var body: some View {
         NavigationStack {
@@ -225,63 +224,10 @@ struct ReflectionView: View {
     /// The quotes you added yourself (not ones saved from books), turning over one at a time and
     /// filling the hero. Tap the quote for the next one.
     private var hero: some View {
-        heroQuote
+        HeroQuote(store: store)
             .padding(.horizontal, 28)
             .frame(maxWidth: .infinity)
             .frame(height: HubLayout.heroHeight)
-    }
-
-    /// Your own quotes, oldest first, in the order they're shown.
-    private var heroQuotes: [ReflectionQuote] { store.quotes.filter { $0.bookID == nil }.sorted { $0.added < $1.added } }
-
-    @ViewBuilder
-    private var heroQuote: some View {
-        let quotes = heroQuotes
-        if quotes.isEmpty {
-            Text("\u{201C}Be still, and look closely.\u{201D}")
-                .font(.system(size: 34, weight: .light, design: .serif))
-                .multilineTextAlignment(.center)
-        } else {
-            let q = quotes[heroQuoteIndex % quotes.count]
-            VStack(spacing: 16) {
-                Text("\u{201C}\(q.text)\u{201D}")
-                    .font(.system(size: 34, weight: .light, design: .serif))
-                    .lineLimit(9).minimumScaleFactor(0.45)
-                Text("\u{2014} \(attribution(for: q))")
-                    .font(.subheadline).foregroundStyle(HubDesign.secondary)
-                    .lineLimit(1)
-            }
-            .multilineTextAlignment(.center)
-            .id(q.id)
-            .transition(.opacity.combined(with: .offset(y: 6)))
-            .contentShape(.rect)
-            .onTapGesture { advanceHeroQuote() }
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityHint(quotes.count > 1 ? "Shows the next quote" : "")
-            .task(id: quotes.count) {
-                guard quotes.count > 1 else { return }
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(9))
-                    if Task.isCancelled { break }
-                    advanceHeroQuote()
-                }
-            }
-        }
-    }
-
-    private func advanceHeroQuote() {
-        withAnimation(.easeInOut(duration: 0.6)) { heroQuoteIndex += 1 }
-    }
-
-    /// "Author, Book" for a book quote; "You" for one typed in without an author.
-    private func attribution(for q: ReflectionQuote) -> String {
-        let book = q.bookID.flatMap { id in store.books.first { $0.id == id } }
-        let author = q.author.isEmpty ? (book?.author ?? "") : q.author
-        if let book {
-            return author.isEmpty ? book.title : "\(author), \(book.title)"
-        }
-        return author.isEmpty ? "You" : author
     }
 
     private func heading(_ title: String) -> some View {
@@ -438,21 +384,88 @@ struct ReflectionView: View {
             } else {
                 ForEach(store.entries) { e in
                     Button { journal = .entry(e) } label: {
-                        BrickCard {
-                            VStack(alignment: .leading, spacing: 8) {
-                                BrickCaps(text: e.created.formatted(date: .abbreviated, time: .shortened))
-                                    .foregroundStyle(HubDesign.secondary)
-                                Text(JournalMarkdown.preview(e.text)).font(.body).lineLimit(5).multilineTextAlignment(.leading)
-                            }
-                        }
-                        .foregroundStyle(HubDesign.ink)
-                        .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
+                        JournalEntryCard(entry: e).equatable()
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Opens the entry to edit")
                 }
             }
         }
+    }
+}
+
+/// Your own quotes (not ones saved from books), oldest first, one at a time in the hero,
+/// turning over every 9 seconds; tap for the next. Its own view so the turning over redraws
+/// just the quote, not the whole page (and every journal entry's preview) under it.
+private struct HeroQuote: View {
+    let store: ReflectionStore
+    @State private var index = Int.random(in: 0..<1000)
+
+    var body: some View {
+        let quotes = store.quotes.filter { $0.bookID == nil }.sorted { $0.added < $1.added }
+        if quotes.isEmpty {
+            Text("\u{201C}Be still, and look closely.\u{201D}")
+                .font(.system(size: 34, weight: .light, design: .serif))
+                .multilineTextAlignment(.center)
+        } else {
+            let q = quotes[index % quotes.count]
+            VStack(spacing: 16) {
+                Text("\u{201C}\(q.text)\u{201D}")
+                    .font(.system(size: 34, weight: .light, design: .serif))
+                    .lineLimit(9).minimumScaleFactor(0.45)
+                Text("\u{2014} \(attribution(for: q))")
+                    .font(.subheadline).foregroundStyle(HubDesign.secondary)
+                    .lineLimit(1)
+            }
+            .multilineTextAlignment(.center)
+            .id(q.id)
+            .transition(.opacity.combined(with: .offset(y: 6)))
+            .contentShape(.rect)
+            .onTapGesture { advance() }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(quotes.count > 1 ? "Shows the next quote" : "")
+            .task(id: quotes.count) {
+                guard quotes.count > 1 else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(9))
+                    if Task.isCancelled { break }
+                    advance()
+                }
+            }
+        }
+    }
+
+    private func advance() {
+        withAnimation(.easeInOut(duration: 0.6)) { index += 1 }
+    }
+
+    /// "Author, Book" for a book quote; "You" for one typed in without an author.
+    private func attribution(for q: ReflectionQuote) -> String {
+        let book = q.bookID.flatMap { id in store.books.first { $0.id == id } }
+        let author = q.author.isEmpty ? (book?.author ?? "") : q.author
+        if let book {
+            return author.isEmpty ? book.title : "\(author), \(book.title)"
+        }
+        return author.isEmpty ? "You" : author
+    }
+}
+
+/// One journal entry's card on the page. Its own Equatable view, so the markdown preview is
+/// worked out again only when that entry changes, not on every redraw of the page.
+private struct JournalEntryCard: View, Equatable {
+    let entry: JournalEntry
+
+    var body: some View {
+        BrickCard {
+            VStack(alignment: .leading, spacing: 8) {
+                BrickCaps(text: entry.created.formatted(date: .abbreviated, time: .shortened))
+                    .foregroundStyle(HubDesign.secondary)
+                Text(JournalMarkdown.preview(entry.text)).font(.body).lineLimit(5).multilineTextAlignment(.leading)
+            }
+        }
+        .foregroundStyle(HubDesign.ink)
+        .contentShape(.rect(cornerRadius: HubLayout.cardRadius))
     }
 }
 

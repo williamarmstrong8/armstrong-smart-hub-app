@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 
 /// A full-page message with an optional retry, for empty and error states.
@@ -132,12 +133,17 @@ struct Poster: View {
     var radius: CGFloat = 18
     var symbol = "film"
 
+    /// The cover once loaded, and for which link (a reused view can be handed another).
+    @State private var loaded: (url: URL, image: UIImage)?
+
     private var inset: CGFloat { (width ?? 100) >= 120 ? 5 : 4 }
+    private var link: URL? { url.flatMap(URL.init(string:)) }
 
     var body: some View {
-        AsyncImage(url: url.flatMap(URL.init(string:))) { phase in
-            if let image = phase.image {
-                image.resizable().scaledToFill()
+        Group {
+            // A cover seen before shows at once, with no placeholder in between.
+            if let image = link.flatMap(PosterImages.cached) ?? loaded.flatMap({ $0.url == link ? $0.image : nil }) {
+                Image(uiImage: image).resizable().scaledToFill()
             } else {
                 ZStack {
                     Color(.tertiarySystemFill)
@@ -145,10 +151,52 @@ struct Poster: View {
                 }
             }
         }
+        .task(id: url) {
+            guard let link else { loaded = nil; return }
+            if let image = await PosterImages.load(link) { loaded = (link, image) }
+        }
         .frame(width: width.map { $0 - inset * 2 }, height: width.map { $0 * 1.5 - inset * 2 })
         .aspectRatio(2 / 3, contentMode: .fit)
         .clipShape(.rect(cornerRadius: max(radius - inset, 4), style: .continuous))
         .padding(inset)
         .glassGlare(.regular, in: .rect(cornerRadius: radius, style: .continuous))
+    }
+}
+
+/// Posters and book covers: fetched once, scaled down to about the size they show at and
+/// decoded off the main thread, then kept in memory. AsyncImage fetched and decoded the full
+/// picture on the main thread again every time a cover scrolled back into view.
+enum PosterImages {
+    private static let memory: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 300
+        return cache
+    }()
+
+    /// The longest side kept: a 220-point poster is 330 points tall, 990 pixels at 3x.
+    private static let maxPixels = 1000
+
+    static func cached(_ url: URL) -> UIImage? { memory.object(forKey: url as NSURL) }
+
+    static func load(_ url: URL) async -> UIImage? {
+        if let image = cached(url) { return image }
+        guard let data = try? await URLSession.shared.data(from: url).0 else { return nil }
+        let limit = maxPixels
+        let image = await Task.detached(priority: .userInitiated) { downsample(data, maxPixels: limit) }.value
+        if let image { memory.setObject(image, forKey: url as NSURL) }
+        return image
+    }
+
+    /// Decoded now, at the smaller size, so drawing it later costs nothing.
+    nonisolated private static func downsample(_ data: Data, maxPixels: Int) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixels,
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: image)
     }
 }

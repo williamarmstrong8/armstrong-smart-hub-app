@@ -82,6 +82,10 @@ struct MeditationRecord: Codable, Identifiable, Hashable {
 @MainActor
 @Observable
 final class ReflectionStore {
+    /// The Reflection tab's store. One for the app's life: the tab's view is made again
+    /// every time the tab bar redraws, and each new store would read and decode the file again.
+    static let shared = ReflectionStore()
+
     private(set) var quotes: [ReflectionQuote] = []
     private(set) var entries: [JournalEntry] = []
     private(set) var sessions: [MeditationRecord] = []

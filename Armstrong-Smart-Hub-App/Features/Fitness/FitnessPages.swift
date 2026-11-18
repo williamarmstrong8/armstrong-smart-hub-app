@@ -116,6 +116,9 @@ struct TodayScores: View {
             ring(.sleep, sleep, Self.faceBlue, "Sleep")
             ring(.energy, energy, Self.faceGreen, "Energy")
         }
+        .hubAnimation(value: readiness)
+        .hubAnimation(value: sleep)
+        .hubAnimation(value: energy)
     }
 
     // The watch face's red, blue and green (watch/shared/Draw.mc, Apple system colors).

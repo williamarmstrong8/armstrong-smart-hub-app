@@ -52,8 +52,14 @@ final class WorkoutStore {
         didSet {
             save(active, to: Self.activeURL)
             changed()
+            if (active != nil) != isActive { isActive = active != nil }
         }
     }
+
+    /// Whether a workout is in progress. Set only when one starts or ends, so a view that
+    /// just needs to know (the tab bar's mini card) doesn't redraw with every heartbeat
+    /// and set that changes `active`.
+    private(set) var isActive = false
 
     /// Whether the full-screen workout is showing (closed, it's the mini card).
     var isPresented = false
@@ -86,6 +92,8 @@ final class WorkoutStore {
     private init() {
         // Demo mode starts with no workout in progress, so every take matches.
         active = Demo.isOn ? nil : Self.read(ActiveWorkout.self, from: Self.activeURL)
+        // didSet doesn't run in init.
+        isActive = active != nil
         pending = Self.read([ActiveWorkout].self, from: Self.pendingURL) ?? []
         libraryCache = Self.read([Exercise].self, from: Self.libraryURL) ?? []
         if !Demo.isOn {

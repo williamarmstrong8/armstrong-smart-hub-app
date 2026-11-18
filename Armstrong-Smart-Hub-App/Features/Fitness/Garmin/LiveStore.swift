@@ -25,6 +25,9 @@ final class LiveStore {
     private(set) var revision = 0
 
     @ObservationIgnored private var samples: [String: Sample] = [:]
+    /// The newest reading of each kind, so `latest` doesn't search two days of readings.
+    /// Views ask for it on every redraw, several times over on Fitness.
+    @ObservationIgnored private var newest: [Kind: Sample] = [:]
     /// Keys of readings the hub doesn't have yet.
     @ObservationIgnored private var unsent: Set<String> = []
     @ObservationIgnored private var dirty = false
@@ -41,6 +44,7 @@ final class LiveStore {
             unsent = Set(file.unsent).intersection(samples.keys)
         }
         prune()
+        findNewest()
     }
 
     private static func key(_ sample: Sample) -> String { "\(sample.kind.rawValue)|\(Int(sample.at.timeIntervalSince1970))" }
@@ -55,6 +59,7 @@ final class LiveStore {
         let isNew = samples[key] == nil
         guard samples[key] != sample else { return }
         samples[key] = sample
+        if newest[kind].map({ $0.at <= minute }) ?? true { newest[kind] = sample }
         unsent.insert(key)
         WidgetSync.live(kind, value, at: minute)
         if isNew {
@@ -94,6 +99,14 @@ final class LiveStore {
             unsent.remove(key)
         }
         dirty = true
+        findNewest()
+    }
+
+    private func findNewest() {
+        newest = [:]
+        for sample in samples.values where Self.isValid(sample) && (newest[sample.kind].map { $0.at < sample.at } ?? true) {
+            newest[sample.kind] = sample
+        }
     }
 
     // MARK: Hub
@@ -130,7 +143,6 @@ final class LiveStore {
     /// The newest reading of a kind, if it's under `maxAge` old.
     func latest(_ kind: Kind, maxAge: TimeInterval = 600) -> Sample? {
         _ = revision
-        return samples.values.filter { $0.kind == kind && Self.isValid($0) }.max { $0.at < $1.at }
-            .flatMap { Date.now.timeIntervalSince($0.at) < maxAge ? $0 : nil }
+        return newest[kind].flatMap { Date.now.timeIntervalSince($0.at) < maxAge ? $0 : nil }
     }
 }

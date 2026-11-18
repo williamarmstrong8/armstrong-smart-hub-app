@@ -5,6 +5,11 @@ import Observation
 @MainActor
 @Observable
 final class FitnessStore {
+    /// The Fitness tab's store. One for the app's life: the tab's view is made again
+    /// every time the tab bar redraws, and each new store would read and decode the
+    /// saved snapshot again on the main thread.
+    static let shared = FitnessStore()
+
     private(set) var snapshot: FitnessSnapshot? {
         didSet { seriesCache = [:]; shareSleep() }
     }

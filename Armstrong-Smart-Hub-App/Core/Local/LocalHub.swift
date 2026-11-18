@@ -80,7 +80,16 @@ nonisolated enum LocalHub {
     }()
 
     /// Answers a request locally, or nil when it still belongs to a server.
+    ///
+    /// All of it runs off the main thread. A nonisolated async function runs on its caller's
+    /// actor (approachable concurrency), and APIClient calls from the main actor, so reading the
+    /// body and writing the answer as JSON (a fitness snapshot is hundreds of kilobytes) used to
+    /// block scrolling while a page loaded.
     static func respond(_ req: URLRequest) async -> (Data, URLResponse)? {
+        await Task.detached(priority: .userInitiated) { await answer(req) }.value
+    }
+
+    private static func answer(_ req: URLRequest) async -> (Data, URLResponse)? {
         guard let url = req.url else { return nil }
         let method = (req.httpMethod ?? "GET").uppercased()
         let path = url.path

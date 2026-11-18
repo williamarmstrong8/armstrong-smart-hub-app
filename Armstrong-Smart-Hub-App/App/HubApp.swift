@@ -108,8 +108,11 @@ enum HubTab: Hashable {
 }
 
 /// The iPhone's tabs.
+///
+/// Every redraw of this view makes each tab's view again (and with it each tab's
+/// `@State` stores), so its body reads nothing that changes often: the live heart
+/// rate and the title card's drag each have their own small view below.
 struct MainTabView: View {
-    @Environment(WatchLink.self) private var watch
     @State private var workouts = WorkoutStore.shared
     @State private var titles = TitleCardPresenter.shared
     /// Notification taps: which tab to show.
@@ -154,19 +157,14 @@ struct MainTabView: View {
             }
         }
         // The workout in progress, closed: a card above the tab bar that opens it again.
-        .tabViewBottomAccessory(isEnabled: workouts.active != nil) {
+        .tabViewBottomAccessory(isEnabled: workouts.isActive) {
             MiniWorkoutBar(store: workouts)
         }
         // Keep the tab layout stable without re-rendering it through a live blur.
         // These modifiers apply only to the underlying tabs, not the modal overlay.
         .allowsHitTesting(titles.pick == nil)
         .accessibilityHidden(titles.pick != nil)
-        .overlay {
-            Color.black.opacity(0.4 * min(max(titles.reveal, 0), 1))
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
+        .overlay { TitleCardDim(titles: titles) }
         .overlay {
             GeometryReader { geometry in
                 if let p = titles.pick {
@@ -232,9 +230,7 @@ struct MainTabView: View {
             SessionFeedbackSheet(kind: "workout", id: finished.id, title: finished.name)
         }
         // Live readings go into the workout in progress, whichever screen is showing.
-        .onChange(of: watch.heartRateAt) { _, at in
-            if let at, let bpm = watch.heartRate?.bpm, workouts.active != nil { workouts.record(bpm: bpm, at: at) }
-        }
+        .background { WorkoutHeartRateFeed(workouts: workouts) }
         // The rest runs out with the workout closed too.
         .task(id: workouts.restEndsAt) {
             guard let end = workouts.restEndsAt else { return }
@@ -242,5 +238,35 @@ struct MainTabView: View {
             guard !Task.isCancelled, workouts.restEndsAt == end else { return }
             workouts.skipRest()
         }
+    }
+}
+
+/// Hands each live heart rate to the workout in progress. Its own view: the reading
+/// changes every second, and reading it in MainTabView redrew the whole tab bar (and
+/// remade every tab's stores, each reading its saved file) once a second.
+private struct WorkoutHeartRateFeed: View {
+    @Environment(WatchLink.self) private var watch
+    let workouts: WorkoutStore
+
+    var body: some View {
+        Color.clear
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .onChange(of: watch.heartRateAt) { _, at in
+                if let at, let bpm = watch.heartRate?.bpm, workouts.isActive { workouts.record(bpm: bpm, at: at) }
+            }
+    }
+}
+
+/// The dim behind an open title card. Its own view: `reveal` changes on every frame
+/// of the card's drag.
+private struct TitleCardDim: View {
+    let titles: TitleCardPresenter
+
+    var body: some View {
+        Color.black.opacity(0.4 * min(max(titles.reveal, 0), 1))
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }

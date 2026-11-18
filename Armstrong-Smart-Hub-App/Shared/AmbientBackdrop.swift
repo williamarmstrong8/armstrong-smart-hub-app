@@ -8,20 +8,28 @@ struct AmbientBackdrop: View {
     private let store = BackgroundStore.shared
 
     var body: some View {
-        let moves = store.kind == .motion && store.parallax && !reduceMotion
-        media
-            .scaleEffect(moves ? 1.15 : 1)
-            .offset(moves ? store.tilt : .zero)
-            .blur(radius: store.blur, opaque: true)
-            .ignoresSafeArea()
-            .accessibilityHidden(true)
+        Group {
+            if let player = store.player, store.kind == .motion {
+                let moves = store.parallax && !reduceMotion
+                LoopingVideo(player: player)
+                    .scaleEffect(moves ? 1.15 : 1)
+                    .offset(moves ? store.tilt : .zero)
+                    .blur(radius: store.blur, opaque: true)
+            } else {
+                // A still picture and its blur are drawn once into one bitmap. As a live blur,
+                // the whole screen was blurred again on every frame of a scroll, under the glass.
+                still
+                    .blur(radius: store.blur, opaque: true)
+                    .drawingGroup(opaque: true)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder
-    private var media: some View {
-        if let player = store.player, store.kind == .motion {
-            LoopingVideo(player: player)
-        } else if let image = store.image, store.kind == .photo {
+    private var still: some View {
+        if let image = store.image, store.kind == .photo {
             Image(uiImage: image).resizable().scaledToFill()
         } else {
             Image("AmbientWallpaper").resizable().scaledToFill()

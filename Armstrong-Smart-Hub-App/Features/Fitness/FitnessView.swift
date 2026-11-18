@@ -10,7 +10,7 @@ struct FitnessView: View {
     @Environment(WatchLink.self) private var watch
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var store = FitnessStore()
+    @State private var store = FitnessStore.shared
     @State private var checkins = CheckinStore.shared
     @State private var showingWatch = false
     @State private var pairing = false
@@ -224,15 +224,7 @@ struct FitnessView: View {
 
     /// Sync status, centered at the bottom of the page.
     private var syncStatus: some View {
-        Button { showingWatch = true } label: {
-            Text(watch.files.progress ?? watchStatus)
-                .font(.caption).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Opens watch details")
+        WatchSyncStatus(store: store) { showingWatch = true }
     }
 
     /// A good sync stays fresh this long; opening the page or returning to the
@@ -264,34 +256,11 @@ struct FitnessView: View {
             waited += 0.5
             if Task.isCancelled { return }
         }
+        let before = files.lastSync
         await files.sync(api: session.api)
-        await store.load(api: session.api)
-    }
-
-    private var watchStatus: String {
-        // No hub: say so, rather than an error, since the page still works from the phone.
-        if store.isOffline {
-            let since = store.updatedAt.map { " from \($0.formatted(.relative(presentation: .named)))" } ?? ""
-            return "Offline · hub data\(since), today from the watch"
-        }
-        if let last = watch.files.lastSync, let failed = last.failed { return failed }
-        // Part of the hub's answer didn't read: say which, since that part of the page is stale or empty.
-        if let problem = store.snapshot?.problems.first { return "Couldn't read part of the hub's data (\(problem))" }
-        switch watch.state {
-        case .connected:
-            if let last = watch.files.lastSync {
-                let when = last.finishedAt.formatted(.relative(presentation: .named))
-                // Say so when a sync finished without everything: the page would otherwise look up to date.
-                let waiting = watch.files.store.pendingUpload
-                if waiting > 0 { return "Synced \(when) · \(waiting) file\(waiting == 1 ? "" : "s") waiting for the hub" }
-                if last.remaining > 0 { return "Synced \(when) · \(last.remaining) more on the watch" }
-                return "Synced \(when)"
-            }
-            return "Connected"
-        case .connecting, .pairing, .handshaking: return "Connecting…"
-        case let .failed(reason), let .bluetoothOff(reason): return reason
-        default: return "Not connected"
-        }
+        // A sync that finished loads the page through onChange(of: lastSync); loading here as
+        // well decoded the whole snapshot twice at once. Pull-to-refresh waits for its own load.
+        if force || files.lastSync == before { await store.load(api: session.api) }
     }
 
     // MARK: Today
@@ -325,8 +294,7 @@ struct FitnessView: View {
             Color.clear.frame(height: HubLayout.minHitTarget)
                 .padding(.top, HubLayout.topInset)
             Button { if watch.savedWatchID != nil { showingWatch = true } else { pairing = true } } label: {
-                WatchHero(progress: showSyncRing && watch.files.isSyncing ? (watch.files.fraction ?? 0.02) : nil,
-                          time: store.updatedAt ?? watch.files.lastSync?.finishedAt)
+                SyncingWatchHero(store: store, showRing: showSyncRing)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -344,10 +312,9 @@ struct FitnessView: View {
                 .accessibilityHint("Opens watch details")
                 .padding(.top, HubLayout.topInset + 14)
                 Spacer(minLength: HubLayout.sectionGap)
+                // The rings animate their own changes (TodayScores), so the live Body Battery
+                // redraws just them rather than the whole page.
                 TodayScores(store: store)
-                    .hubAnimation(value: store.snapshot?.watch?.readiness?.score ?? store.snapshot?.metrics?.readiness.score)
-                    .hubAnimation(value: store.snapshot?.watch?.sleep?.overall ?? store.lastNight?.score)
-                    .hubAnimation(value: store.currentBodyBattery ?? store.snapshot?.metrics?.bodyBattery?.current ?? store.snapshot?.insights?.stress.bodyBattery?.current)
                     .transaction { transaction in
                         // ScoreRing also has its own animation in the shared component.
                         if reduceMotion {
@@ -381,6 +348,68 @@ struct FitnessView: View {
                          trailingTint: streak > 1 ? Fit.action : nil)
     }
 
+}
+
+// MARK: Sync
+
+/// The watch hero with its sync ring. Its own view: the ring moves with every file the
+/// watch hands over, and reading it in FitnessView redrew the whole page each time.
+private struct SyncingWatchHero: View {
+    @Environment(WatchLink.self) private var watch
+    var store: FitnessStore
+    var showRing: Bool
+
+    var body: some View {
+        let files = watch.files
+        WatchHero(progress: showRing && files.isSyncing ? (files.fraction ?? 0.02) : nil,
+                  time: store.updatedAt ?? files.lastSync?.finishedAt)
+    }
+}
+
+/// The sync line at the bottom of the page. Its own view for the same reason: its text
+/// changes with every file during a sync.
+private struct WatchSyncStatus: View {
+    @Environment(WatchLink.self) private var watch
+    var store: FitnessStore
+    var onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(watch.files.progress ?? status)
+                .font(.caption).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: HubLayout.minHitTarget)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens watch details")
+    }
+
+    private var status: String {
+        // No hub: say so, rather than an error, since the page still works from the phone.
+        if store.isOffline {
+            let since = store.updatedAt.map { " from \($0.formatted(.relative(presentation: .named)))" } ?? ""
+            return "Offline · hub data\(since), today from the watch"
+        }
+        if let last = watch.files.lastSync, let failed = last.failed { return failed }
+        // Part of the hub's answer didn't read: say which, since that part of the page is stale or empty.
+        if let problem = store.snapshot?.problems.first { return "Couldn't read part of the hub's data (\(problem))" }
+        switch watch.state {
+        case .connected:
+            if let last = watch.files.lastSync {
+                let when = last.finishedAt.formatted(.relative(presentation: .named))
+                // Say so when a sync finished without everything: the page would otherwise look up to date.
+                let waiting = watch.files.store.pendingUpload
+                if waiting > 0 { return "Synced \(when) · \(waiting) file\(waiting == 1 ? "" : "s") waiting for the hub" }
+                if last.remaining > 0 { return "Synced \(when) · \(last.remaining) more on the watch" }
+                return "Synced \(when)"
+            }
+            return "Connected"
+        case .connecting, .pairing, .handshaking: return "Connecting…"
+        case let .failed(reason), let .bluetoothOff(reason): return reason
+        default: return "Not connected"
+        }
+    }
 }
 
 // MARK: Watch sheet
