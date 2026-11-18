@@ -13,6 +13,19 @@ enum Demo {
     static let isOn = false
     #endif
 
+    /// Account's switch: stored in the app's own defaults, read at the next launch
+    /// (a `-DemoMode` launch argument still wins over it).
+    static func setOnAtNextLaunch(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: "DemoMode")
+    }
+
+    /// Closes the app so the switch applies on reopening. Demo mode is read once
+    /// at launch because every store decides on it as it starts.
+    static func restart() {
+        UserDefaults.standard.synchronize()
+        exit(0)
+    }
+
     /// The tab the app opens on: `-DemoTab fitness|home|focus`.
     static var startTab: String? { isOn ? UserDefaults.standard.string(forKey: "DemoTab") : nil }
 
