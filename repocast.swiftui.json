@@ -11078,6 +11078,7 @@
       "blur": 0,
       "parallax": false
     },
+    "AlcoholStore.promptNight": null,
     "AlcoholStore.shared": {
       "$type": "AlcoholStore",
       "entries": [],
