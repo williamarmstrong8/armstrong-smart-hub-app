@@ -147,6 +147,11 @@ nonisolated enum LocalSchema {
         create table if not exists voice_memories (id text primary key, text text not null, updated_at text not null);
         create unique index if not exists voice_memories_text on voice_memories (lower(text));
         """,
+        // 6: which devices Home shows (once picked), and small settings.
+        """
+        create table if not exists home_visible (entity_id text primary key);
+        create table if not exists settings (key text primary key, value text not null);
+        """,
     ]
 
     static func migrate(_ db: LocalDB) {

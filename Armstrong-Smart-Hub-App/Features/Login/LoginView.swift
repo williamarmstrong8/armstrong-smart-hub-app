@@ -1,17 +1,16 @@
 import SwiftUI
 
-/// Signs in to a hub with the same email and password as the website.
+/// Pairs this device with the house hub on the Pi: just its address. The phone makes its own
+/// key and keeps it in the Keychain; the hub is only reachable on the tailnet.
 struct LoginView: View {
     @Environment(AppSession.self) private var session
     @AppStorage("hub.serverURL") private var savedServer = ""
     @State private var server = ""
-    @State private var email = ""
-    @State private var password = ""
     @State private var error: String?
     @State private var busy = false
     @FocusState private var focus: Field?
 
-    private enum Field { case server, email, password }
+    private enum Field { case server }
 
     var body: some View {
         NavigationStack {
@@ -36,28 +35,12 @@ struct LoginView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($focus, equals: .server)
-                        .submitLabel(.next)
-                        .onSubmit { focus = .email }
+                        .submitLabel(.go)
+                        .onSubmit(signIn)
                 } header: {
                     Text("Hub address")
                 } footer: {
                     Text("The URL your hub is served on, for example its Tailscale address. Your phone needs to be on the tailnet.")
-                }
-
-                GlassSection("Account") {
-                    TextField("Email", text: $email)
-                        .textContentType(.username)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($focus, equals: .email)
-                        .submitLabel(.next)
-                        .onSubmit { focus = .password }
-                    SecureField("Password", text: $password)
-                        .textContentType(.password)
-                        .focused($focus, equals: .password)
-                        .submitLabel(.go)
-                        .onSubmit(signIn)
                 }
 
                 if let error {
@@ -71,17 +54,16 @@ struct LoginView: View {
                     Button(action: signIn) {
                         HStack {
                             Spacer()
-                            if busy { ProgressView() } else { Text("Sign in").bold() }
+                            if busy { ProgressView() } else { Text("Connect").bold() }
                             Spacer()
                         }
                         .contentShape(Rectangle())
                     }
-                    .disabled(busy || server.isEmpty || email.isEmpty || password.isEmpty)
+                    .disabled(busy || server.isEmpty)
                 }
             }
             .onAppear {
                 if server.isEmpty { server = savedServer }
-                if let user = session.user, email.isEmpty { email = user.email }
             }
         }
     }
@@ -93,8 +75,7 @@ struct LoginView: View {
         Task {
             defer { busy = false }
             do {
-                try await session.signIn(server: server, email: email, password: password)
-                password = ""
+                try await session.signIn(server: server)
             } catch {
                 self.error = error.localizedDescription
             }

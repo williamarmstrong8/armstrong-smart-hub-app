@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import Security
+import UIKit
 
 struct HubUser: Codable, Equatable, Sendable {
     let id: String
@@ -34,6 +36,7 @@ final class AppSession {
         api = APIClient(baseURL: url ?? URL(string: "https://localhost")!, token: token)
         wire()
         shareWithWidgets()
+        importHistory()
     }
 
     /// The widgets and controls call the hub with the same sign-in. A token saved before they
@@ -41,6 +44,13 @@ final class AppSession {
     private func shareWithWidgets() {
         SharedHub.setServerURL(token == nil ? nil : serverURL)
         if let token, SharedHub.token != token { Keychain.write(token, for: "token") }
+    }
+
+    /// The old database's history, once it's been exported to the Pi (LocalImport).
+    private func importHistory() {
+        guard !Demo.isOn, token != nil, serverURL != nil else { return }
+        let template = api.request("/api/mobile/import")
+        Task.detached(priority: .utility) { await LocalImport.runIfNeeded(template: template) }
     }
 
     private func wire() {
@@ -84,15 +94,23 @@ final class AppSession {
         return url
     }
 
-    func signIn(server: String, email: String, password: String) async throws {
+    /// Pairs this device with the hub: a long random key made here, kept in the Keychain and
+    /// sent as the bearer token from then on. Pairing again (after signing out) makes a new one.
+    func signIn(server: String) async throws {
         guard let url = Self.normalize(server) else { throw APIError(message: "Enter the hub's address.") }
-        struct Body: Encodable { let email: String; let password: String }
+        struct Body: Encodable { let key: String; let device: String }
         struct Reply: Decodable { let token: String?; let user: HubUser?; let error: String? }
 
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            throw APIError(message: "Couldn't make a key for this device.")
+        }
+        let key = Data(bytes).base64EncodedString().replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
         let client = APIClient(baseURL: url, token: nil)
-        let reply: Reply = try await client.post("/api/mobile/login", body: Body(email: email, password: password))
+        let reply: Reply = try await client.post("/api/mobile/login", body: Body(key: key, device: UIDevice.current.name))
         guard let token = reply.token, let user = reply.user else {
-            throw APIError(message: reply.error ?? "That email and password didn't match.")
+            throw APIError(message: reply.error ?? "The hub didn't pair this device.")
         }
 
         UserDefaults.standard.set(url.absoluteString, forKey: Self.serverKey)
@@ -105,6 +123,7 @@ final class AppSession {
         wire()
         shareWithWidgets()
         WidgetSync.reloadAll()
+        importHistory()
     }
 
     func updateUser(_ user: HubUser) {
@@ -112,7 +131,7 @@ final class AppSession {
         UserDefaults.standard.set(try? JSONEncoder().encode(user), forKey: Self.userKey)
     }
 
-    /// Revokes the session on the hub, then forgets it here.
+    /// Unpairs this device on the hub, then forgets its key here.
     func signOut() async {
         let _: Empty? = try? await api.post("/api/mobile/logout")
         signOutLocally()

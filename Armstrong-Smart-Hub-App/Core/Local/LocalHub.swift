@@ -66,6 +66,7 @@ nonisolated enum LocalHub {
     private static let maybeRoutes: [String: MaybeHandler] = {
         var r: [String: MaybeHandler] = [:]
         LocalJarvis.registerMaybe(&r)
+        LocalHome.registerMaybe(&r)
         return r
     }()
 
@@ -74,6 +75,7 @@ nonisolated enum LocalHub {
         var a: [String: @Sendable ([Any]) -> Any] = [:]
         LocalHabits.registerActions(&a)
         LocalFinance.registerActions(&a)
+        LocalHome.registerActions(&a)
         return a
     }()
 
