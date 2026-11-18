@@ -15,6 +15,8 @@ nonisolated enum LocalHub {
         let query: [String: String]
         /// The decoded JSON body (dictionary, array or scalar), NSNull when there isn't one.
         let body: Any
+        /// The body as sent, for uploads that aren't JSON (watch files).
+        let raw: Data?
 
         func param(_ name: String) -> String? { query[name] }
         var object: [String: Any] { body as? [String: Any] ?? [:] }
@@ -40,6 +42,7 @@ nonisolated enum LocalHub {
         LocalHabits.register(&r)
         LocalDrinks.register(&r)
         LocalWorkouts.register(&r)
+        LocalFitness.register(&r)
         return r
     }()
 
@@ -55,7 +58,8 @@ nonisolated enum LocalHub {
         guard let url = req.url else { return nil }
         let method = (req.httpMethod ?? "GET").uppercased()
         let path = url.path
-        let body = req.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed]) } ?? NSNull()
+        let isJSON = (req.value(forHTTPHeaderField: "Content-Type") ?? "application/json").contains("json")
+        let body = isJSON ? req.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0, options: [.fragmentsAllowed]) } ?? NSNull() : NSNull()
 
         let reply: Reply
         if path == "/api/mobile/action", method == "POST" {
@@ -69,7 +73,7 @@ nonisolated enum LocalHub {
             for item in URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [] {
                 query[item.name] = item.value ?? ""
             }
-            let request = Request(method: method, path: path, query: query, body: body)
+            let request = Request(method: method, path: path, query: query, body: body, raw: req.httpBody)
             reply = await run { handler(request) }
         }
 

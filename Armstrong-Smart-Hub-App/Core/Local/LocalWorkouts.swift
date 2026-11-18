@@ -257,9 +257,8 @@ nonisolated enum LocalWorkouts {
             if let e = row["exercise_id"] as? String, let v = LocalHub.number(row["e1rm"]) { best[e] = v }
         }
 
-        // The watch's activity file (second-by-second) is preferred when one overlaps; until
-        // fitness data lives on the phone, the live stream recorded during the workout is used.
-        let activity = LocalWorkouts.overlappingActivity?(startedAt, endedAt)
+        // The watch's activity file (second by second) is preferred when one overlaps the workout.
+        let activity = LocalFitness.overlappingActivity(startedAt: start, endedAt: end)
         let activitySeries = activity.map { series(start: ms($0.start), points: $0.points) } ?? []
         let live = series(start: start, points: LocalDB.parse(w["hr_series"]))
         let useActivity = !activitySeries.isEmpty && activitySeries.count >= live.count
@@ -314,10 +313,6 @@ nonisolated enum LocalWorkouts {
             "heartRate": chart, "exercises": exercises,
         ]
     }
-
-    /// Set once the watch's activities are stored on the phone: the activity overlapping a
-    /// workout the most (id, start ISO, `[seconds from start, bpm]` points).
-    nonisolated(unsafe) static var overlappingActivity: ((String, String) -> (id: String, start: String, points: Any)?)?
 
     // MARK: History
 

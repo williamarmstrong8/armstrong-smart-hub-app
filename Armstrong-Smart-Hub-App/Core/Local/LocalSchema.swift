@@ -52,6 +52,55 @@ nonisolated enum LocalSchema {
         );
         create index if not exists workout_sets_exercise on workout_sets (exercise_id);
         """,
+        // 2: fitness from the watch. Raw files aren't kept: `fitness_files` only remembers what was
+        // read. Readings that come by the minute store `at` as epoch milliseconds, to stay small.
+        """
+        create table if not exists fitness_files (
+          file_id text primary key, kind text not null, size integer not null, recorded_at text,
+          sha256 text not null, received_at text not null, parsed_at text, parse_error text
+        );
+        create table if not exists fitness_activities (
+          file_id text primary key, sport text not null, sub_sport text, start_time text not null, start_ms integer not null,
+          utc_offset integer, elapsed_s real, moving_s real, distance_m real, calories integer, avg_hr integer, max_hr integer,
+          ascent_m real, avg_speed real, training_effect real, hr_series text not null default '[]', metrics text
+        );
+        create index if not exists fitness_activities_start on fitness_activities (start_ms desc);
+        create table if not exists fitness_daily (
+          day text primary key, steps integer, step_goal integer, resting_hr integer, distance_m integer,
+          active_kcal integer, resting_kcal integer, active_s integer, ascent_m real, descent_m real,
+          moderate_min integer, vigorous_min integer, updated_at text not null
+        );
+        create table if not exists fitness_heart_rate (at integer primary key, bpm integer not null);
+        create table if not exists fitness_sleep (
+          file_id text primary key, start_time text not null, end_time text not null, start_ms integer not null, end_ms integer not null,
+          deep_s integer, light_s integer, rem_s integer, awake_s integer, score integer, levels text not null default '[]'
+        );
+        create index if not exists fitness_sleep_end on fitness_sleep (end_ms desc);
+        create table if not exists fitness_hrv (
+          file_id text primary key, day text not null, weekly_avg real, last_night_avg real, last_night_high real,
+          baseline_low_upper real, baseline_balanced_lower real, baseline_balanced_upper real, status text,
+          readings text not null default '[]'
+        );
+        create index if not exists fitness_hrv_day on fitness_hrv (day desc);
+        create table if not exists fitness_vitals (
+          kind text not null, at integer not null, value real not null, primary key (kind, at)
+        ) without rowid;
+        create table if not exists fitness_watch_metrics (
+          kind text not null, at integer not null, data text not null, primary key (kind, at)
+        ) without rowid;
+        create table if not exists fitness_connect_daily (day text primary key, data text not null);
+        create table if not exists fitness_checkins (
+          day text primary key, energy integer, mood integer, soreness integer,
+          tags text not null default '[]', rejected text not null default '[]', note text, guess text,
+          created_at text not null, updated_at text not null
+        );
+        create table if not exists fitness_checkin_skips (state text not null, day text not null, primary key (state, day));
+        create table if not exists fitness_session_feedback (
+          kind text not null, ref_id text not null, feel integer, effort integer, vs_expected integer,
+          tags text not null default '[]', note text, guess text, updated_at text not null,
+          primary key (kind, ref_id)
+        );
+        """,
     ]
 
     static func migrate(_ db: LocalDB) {

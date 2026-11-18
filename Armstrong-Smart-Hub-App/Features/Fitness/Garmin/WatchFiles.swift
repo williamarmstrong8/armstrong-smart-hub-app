@@ -912,6 +912,20 @@ final class FitStore {
         try? url.setResourceValues(values)
         saved = load("saved.json") ?? [:]
         listing = load("listing.json") ?? []
+        rereadForLocalHub()
+    }
+
+    /// Fitness data moved from the hub into the phone's own database (LocalFitness).
+    /// Once, every file still on the phone is marked unsent, so the next sync reads it
+    /// into that database and the history comes back without the server.
+    private func rereadForLocalHub() {
+        let key = "fitness.localReread.v1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        for (id, item) in saved where FileManager.default.fileExists(atPath: url(item).path) {
+            saved[id]?.uploadedAt = nil
+        }
+        write(saved, to: "saved.json")
+        UserDefaults.standard.set(true, forKey: key)
     }
 
     func has(_ file: GarminFiles.ListedFile) -> Bool { saved[file.id] != nil }
@@ -959,9 +973,12 @@ final class FitStore {
         write(saved, to: "saved.json")
     }
 
+    /// Once a file is read into the database the raw copy isn't kept; the record stays, so
+    /// the file isn't downloaded again. One that couldn't be read is kept to look at.
     func markUploaded(_ id: String, parseError: String?) {
         saved[id]?.uploadedAt = .now
         saved[id]?.parseError = parseError
+        if parseError == nil, let item = saved[id] { try? FileManager.default.removeItem(at: url(item)) }
         write(saved, to: "saved.json")
     }
 
