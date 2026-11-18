@@ -27,7 +27,7 @@ const TABLES = {
   todos: `select id::text as id, text, done, ${iso("done_at")} as done_at, ${iso("created_at")} as created_at from todos`,
   habits: `select id::text as id, name, color, icon, position, archived, ${iso("created_at")} as created_at from habits`,
   habit_completions: `select habit_id::text as habit_id, ${day("date")} as date from habit_completions`,
-  fitness_drinks: `select id::text as id, ${day("night")} as night, ${iso("at")} as at, kind, count, time_of_day, ${iso("logged_at")} as logged_at, ${iso("updated_at")} as updated_at from fitness_drinks`,
+  fitness_drinks: `select id::text as id, ${day("night")} as night, ${iso("\"at\"")} as at, kind, count, time_of_day, ${iso("logged_at")} as logged_at, ${iso("updated_at")} as updated_at from fitness_drinks`,
   fitness_dry_nights: `select ${day("night")} as night from fitness_dry_nights`,
   fitness_drank_nights: `select ${day("night")} as night from fitness_drank_nights`,
   workout_exercises: `select id::text as id, name, muscle, equipment, kind, archived, ${iso("created_at")} as created_at from workout_exercises`,
@@ -72,10 +72,12 @@ for (const [name, sql] of Object.entries(TABLES)) {
     console.log(`${name}: skipped (${error.message.split("\n")[0]})`);
   }
 }
-// bigint comes back as text from pg; the millisecond columns are numbers on the phone.
-for (const t of Object.values(tables)) {
+// bigint comes back as text from pg; the millisecond columns are numbers on the phone
+// (`at` only in the minute tables: elsewhere it's ISO text).
+const MS_AT = new Set(["fitness_heart_rate", "fitness_vitals", "fitness_watch_metrics"]);
+for (const [name, t] of Object.entries(tables)) {
   t.columns.forEach((c, i) => {
-    if (["at", "start_ms", "end_ms"].includes(c)) for (const r of t.rows) r[i] = r[i] === null ? null : Number(r[i]);
+    if (c === "start_ms" || c === "end_ms" || (c === "at" && MS_AT.has(name))) for (const r of t.rows) r[i] = r[i] === null ? null : Number(r[i]);
   });
 }
 // Home's picked devices only count once some were picked.
