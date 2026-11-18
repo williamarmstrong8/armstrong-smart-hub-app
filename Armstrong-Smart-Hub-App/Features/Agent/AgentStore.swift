@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 
-private struct AgentErrorBody: Decodable { let error: String? }
 
 struct AgentModel: Decodable, Identifiable, Hashable {
     let id: String
@@ -121,30 +120,16 @@ final class AgentStore {
 
     private static let stopped = "Stopped."
 
-    private struct Body: Encodable {
-        let messages: [[String: String]]
-        let model: String
-    }
-
     private func update(_ id: UUID, _ change: (inout AgentMessage) -> Void) {
         guard let i = messages.firstIndex(where: { $0.id == id }) else { return }
         change(&messages[i])
     }
 
     private func run(reply id: UUID, history: [[String: String]], model: String, api: APIClient) async {
-        var request = api.request("/api/mobile/agent", method: "POST", body: Body(messages: history, model: model), timeout: 300)
-        request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
+        // The tool loop runs on the phone (LocalAgent); each model step goes through the Pi's relay.
+        let template = api.request("/api/mobile/llm", method: "POST", timeout: 300)
         do {
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
-            guard let http = response as? HTTPURLResponse else { throw APIError(message: "No response from the hub.") }
-            if http.statusCode == 401 { api.onUnauthorized?(); throw APIError.unauthorized }
-            guard http.statusCode == 200 else {
-                var raw = ""
-                for try await line in bytes.lines { raw += line }
-                let message = (try? JSONDecoder().decode(AgentErrorBody.self, from: Data(raw.utf8)))?.error
-                throw APIError(message: message ?? "The hub couldn't answer (\(http.statusCode)). Does it have the agent route yet?")
-            }
-            for try await line in bytes.lines {
+            for try await line in LocalAgent.stream(history: history, model: model, template: template) {
                 guard let data = line.data(using: .utf8),
                       let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let kind = event["t"] as? String else { continue }

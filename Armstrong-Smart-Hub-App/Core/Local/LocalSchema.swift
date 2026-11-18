@@ -138,6 +138,15 @@ nonisolated enum LocalSchema {
           merchant text primary key, yes integer not null default 0, no integer not null default 0, updated_at text not null
         );
         """,
+        // 5: Jarvis's memory: every exchange, and the short durable facts learned from them.
+        """
+        create table if not exists voice_log (
+          id integer primary key autoincrement, heard text not null, reply text not null, created_at text not null
+        );
+        create index if not exists voice_log_created on voice_log (created_at desc);
+        create table if not exists voice_memories (id text primary key, text text not null, updated_at text not null);
+        create unique index if not exists voice_memories_text on voice_memories (lower(text));
+        """,
     ]
 
     static func migrate(_ db: LocalDB) {

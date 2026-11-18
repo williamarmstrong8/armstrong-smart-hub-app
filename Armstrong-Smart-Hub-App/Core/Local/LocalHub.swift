@@ -17,6 +17,8 @@ nonisolated enum LocalHub {
         let body: Any
         /// The body as sent, for uploads that aren't JSON (watch files).
         let raw: Data?
+        /// The request as the app made it, for routes that pass part of the work on to the Pi.
+        let original: URLRequest
 
         func param(_ name: String) -> String? { query[name] }
         var object: [String: Any] { body as? [String: Any] ?? [:] }
@@ -36,6 +38,8 @@ nonisolated enum LocalHub {
     typealias Handler = @Sendable (Request) -> Reply
     /// For routes that talk to another service first (SimpleFIN).
     typealias AsyncHandler = @Sendable (Request) async -> Reply
+    /// For routes the phone answers only sometimes (Jarvis's tools): nil sends the request on to the Pi.
+    typealias MaybeHandler = @Sendable (Request) async -> Reply?
 
     /// "METHOD /path" → handler.
     private static let routes: [String: Handler] = {
@@ -56,6 +60,12 @@ nonisolated enum LocalHub {
         LocalCalendar.registerAsync(&r)
         LocalWeather.registerAsync(&r)
         LocalContext.registerAsync(&r)
+        return r
+    }()
+
+    private static let maybeRoutes: [String: MaybeHandler] = {
+        var r: [String: MaybeHandler] = [:]
+        LocalJarvis.registerMaybe(&r)
         return r
     }()
 
@@ -85,16 +95,20 @@ nonisolated enum LocalHub {
             let key = "\(method) \(path)"
             let handler = routes[key]
             let asyncHandler = asyncRoutes[key]
-            guard handler != nil || asyncHandler != nil else { return nil }
+            let maybeHandler = maybeRoutes[key]
+            guard handler != nil || asyncHandler != nil || maybeHandler != nil else { return nil }
             var query: [String: String] = [:]
             for item in URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [] {
                 query[item.name] = item.value ?? ""
             }
-            let request = Request(method: method, path: path, query: query, body: body, raw: req.httpBody)
+            let request = Request(method: method, path: path, query: query, body: body, raw: req.httpBody, original: req)
             if let handler {
                 reply = await run { handler(request) }
+            } else if let asyncHandler {
+                reply = await Task.detached(priority: .userInitiated) { await asyncHandler(request) }.value
             } else {
-                reply = await Task.detached(priority: .userInitiated) { await asyncHandler!(request) }.value
+                guard let answer = await Task.detached(priority: .userInitiated, operation: { await maybeHandler!(request) }).value else { return nil }
+                reply = answer
             }
         }
 
@@ -107,6 +121,47 @@ nonisolated enum LocalHub {
     /// Database work runs off the main thread.
     private static func run<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
         await Task.detached(priority: .userInitiated) { work() }.value
+    }
+
+    // MARK: Passing on to the Pi
+
+    /// Sends a request to the hub the app is signed in to (the Pi), with the app's session,
+    /// at `path` (the original path when nil) with a JSON `body` (the original body when nil).
+    static func forward(_ original: URLRequest, path: String? = nil, method: String? = nil, body: Any? = nil,
+                        timeout: TimeInterval = 60) async throws -> (Data, HTTPURLResponse) {
+        guard let url = original.url, var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { throw URLError(.badURL) }
+        if let path {
+            let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
+            c.path = parts[0]
+            c.percentEncodedQuery = parts.count > 1 ? parts[1] : nil
+        }
+        guard let target = c.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: target, timeoutInterval: timeout)
+        request.httpMethod = method ?? original.httpMethod ?? "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let auth = original.value(forHTTPHeaderField: "Authorization") { request.setValue(auth, forHTTPHeaderField: "Authorization") }
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } else if path == nil {
+            request.httpBody = original.httpBody
+            if original.httpBody != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        return (data, http)
+    }
+
+    /// A forwarded JSON answer, passed through as this route's reply.
+    static func forwardJSON(_ original: URLRequest, path: String? = nil, method: String? = nil, body: Any? = nil,
+                            timeout: TimeInterval = 60) async -> Reply {
+        do {
+            let (data, http) = try await forward(original, path: path, method: method, body: body, timeout: timeout)
+            let value = (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) ?? ["error": "The Pi sent something unexpected."]
+            return Reply(status: http.statusCode, body: value)
+        } catch {
+            return .error("Can't reach the Pi. Check that you're on the tailnet.", 502)
+        }
     }
 
     // MARK: Helpers for handlers

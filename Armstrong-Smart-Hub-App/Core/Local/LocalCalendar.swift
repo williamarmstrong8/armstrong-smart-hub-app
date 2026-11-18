@@ -123,8 +123,7 @@ nonisolated enum LocalCalendar {
             for (index, cal) in calendars.enumerated() {
                 group.addTask {
                     let id = cal["id"] as? String ?? ""
-                    let path = "calendars/\(id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? id)/events"
-                    let page = try await google(token, path, ["timeMin": iso(from), "timeMax": iso(to), "singleEvents": "true",
+                    let page = try await google(token, "calendars/\(encoded(id))/events", ["timeMin": iso(from), "timeMax": iso(to), "singleEvents": "true",
                                                               "orderBy": "startTime", "maxResults": "250"])
                     let events = (page["items"] as? [[String: Any]] ?? []).compactMap { e -> [String: Any]? in
                         if (e["status"] as? String) == "cancelled" { return nil }
@@ -169,18 +168,112 @@ nonisolated enum LocalCalendar {
     /// Google's Birthdays calendar, made from your contacts.
     static func isBirthdays(_ c: [String: Any]) -> Bool { (c["id"] as? String ?? "").contains("#contacts@") }
 
-    static func google(_ token: String, _ path: String, _ params: [String: String]) async throws -> [String: Any] {
+    static func google(_ token: String, _ path: String, _ params: [String: String] = [:], body: Any? = nil,
+                       method: String? = nil) async throws -> [String: Any] {
         var c = URLComponents(string: "https://www.googleapis.com/calendar/v3/\(path)")!
-        c.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
+        if !params.isEmpty { c.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) } }
         var request = URLRequest(url: c.url!, timeoutInterval: 30)
+        request.httpMethod = method ?? (body == nil ? "GET" : "POST")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
             throw Failure(message: "Google refused calendar access. Reconnect Google on the Calendar page.", status: "missing_scope")
         }
+        if status == 404 || status == 410 { throw Failure(message: "That event doesn't exist anymore.", status: "failed") }
         guard (200..<300).contains(status) else { throw Failure(message: "Google Calendar returned \(status).", status: "failed") }
+        // DELETE answers 204 with no body.
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    // MARK: Writing (Jarvis)
+
+    static let eventsScope = "https://www.googleapis.com/auth/calendar.events"
+
+    /// A token that may add and change events; older links were read-only.
+    static func writeToken() async throws -> String {
+        let scopes = (GoogleCredential.read()?.scope ?? "").split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
+        guard scopes.contains(eventsScope) else {
+            throw Failure(message: "Jarvis can only read your calendar. Reconnect Google on the Calendar page to let it add events.", status: "missing_scope")
+        }
+        return try await GoogleCredential.accessToken()
+    }
+
+    static func encoded(_ id: String) -> String { id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? id }
+
+    /// A hub event id ("<calendarId>:<eventId>") split back into its parts.
+    static func split(_ id: String) throws -> (calendar: String, event: String) {
+        guard let i = id.lastIndex(of: ":"), i != id.startIndex else { throw Failure(message: "That isn't a calendar event id.", status: "failed") }
+        return (String(id[..<i]), String(id[id.index(after: i)...]))
+    }
+
+    /// Adds a timed event to the primary calendar.
+    static func createEvent(title: String, start: Date, end: Date) async throws -> [String: Any] {
+        let token = try await writeToken()
+        let tz = timeZone.identifier
+        let created = try await google(token, "calendars/primary/events", body: [
+            "summary": title, "start": ["dateTime": LocalDB.iso(start), "timeZone": tz], "end": ["dateTime": LocalDB.iso(end), "timeZone": tz],
+        ])
+        let primary = (try? await google(token, "users/me/calendarList/primary")) ?? [:]
+        let s = created["start"] as? [String: Any] ?? [:], e = created["end"] as? [String: Any] ?? [:]
+        return [
+            "id": "\(primary["id"] as? String ?? "primary"):\(created["id"] as? String ?? "")",
+            "title": (created["summary"] as? String)?.trimmingCharacters(in: .whitespaces) ?? title,
+            "start": s["dateTime"] ?? LocalDB.iso(start), "end": e["dateTime"] ?? LocalDB.iso(end), "allDay": false,
+            "location": NSNull(), "calendar": primary["summaryOverride"] ?? primary["summary"] ?? "Calendar",
+            "color": primary["backgroundColor"] ?? "#4285F4", "url": created["htmlLink"] ?? NSNull(), "birthday": false,
+        ]
+    }
+
+    /// One event by hub id, as stored in Google.
+    static func getEvent(_ id: String) async throws -> (title: String, start: Date?, end: Date?, allDay: Bool) {
+        let token = try await GoogleCredential.accessToken()
+        let (cal, event) = try split(id)
+        let e = try await google(token, "calendars/\(encoded(cal))/events/\(encoded(event))")
+        let s = e["start"] as? [String: Any] ?? [:], en = e["end"] as? [String: Any] ?? [:]
+        let title = (e["summary"] as? String)?.trimmingCharacters(in: .whitespaces)
+        return ((title?.isEmpty ?? true) ? "(No title)" : title!, LocalDB.date(s["dateTime"] as? String),
+                LocalDB.date(en["dateTime"] as? String), s["dateTime"] == nil)
+    }
+
+    /// Renames and/or moves a timed event. Recurring events change only this occurrence.
+    static func updateEvent(_ id: String, title: String?, start: Date?, end: Date?) async throws {
+        let token = try await writeToken()
+        let (cal, event) = try split(id)
+        let tz = timeZone.identifier
+        var body: [String: Any] = [:]
+        if let title { body["summary"] = title }
+        if let start { body["start"] = ["dateTime": LocalDB.iso(start), "timeZone": tz] }
+        if let end { body["end"] = ["dateTime": LocalDB.iso(end), "timeZone": tz] }
+        _ = try await google(token, "calendars/\(encoded(cal))/events/\(encoded(event))", body: body, method: "PATCH")
+    }
+
+    /// Deletes an event (Google keeps it in the calendar's trash for 30 days).
+    static func deleteEvent(_ id: String) async throws {
+        let token = try await writeToken()
+        let (cal, event) = try split(id)
+        _ = try await google(token, "calendars/\(encoded(cal))/events/\(encoded(event))", method: "DELETE")
+    }
+
+    /// The instant of a local wall time, e.g. ("2026-10-12", 18 * 60) for 6 PM.
+    static func instant(_ day: String, _ minutes: Int) -> Date {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+        let p = day.split(separator: "-").compactMap { Int($0) }
+        let midnight = cal.date(from: DateComponents(year: p.first, month: p.count > 1 ? p[1] : 1, day: p.count > 2 ? p[2] : 1)) ?? Date()
+        return cal.date(byAdding: .minute, value: minutes, to: midnight) ?? midnight
+    }
+
+    /// Minutes since local midnight.
+    static func minutes(_ date: Date) -> Int {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+        let c = cal.dateComponents([.hour, .minute], from: date)
+        return (c.hour ?? 0) * 60 + (c.minute ?? 0)
     }
 
     /// Trades the app's authorization code for tokens and keeps them.

@@ -477,5 +477,238 @@
     return JSON.stringify({ calendar: I.events ? calendarDays(I.events, tz) : null, spending, barCharges });
   }
 
-  globalThis.Finance = { dashboard, syncRows, holdings, category, context };
+  // MARK: Jarvis (lib/agent/voice.ts showFinance, lib/agent/tools.ts finance tools)
+
+  const { isCountable, isSpendingOffset } = __require("lib/finance");
+  const round2 = (n) => Math.round(n * 100) / 100;
+
+  /** The instant of a local wall time in a time zone (google-calendar.ts hubInstant). */
+  function zonedInstant(day, minutes, timeZone) {
+    const offsetMinutes = (at) => {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+      }).formatToParts(at);
+      const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+      const wall = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour") % 24, get("minute"), get("second"));
+      return Math.round((wall - at.getTime()) / 60_000);
+    };
+    const naive = new Date(`${day}T00:00:00Z`).getTime() + minutes * 60_000;
+    return new Date(naive - offsetMinutes(new Date(naive)) * 60_000);
+  }
+
+  /** The dashboard's transactions etc., as buildDashboard made them (input: dashboard()'s rows). */
+  function board(I) {
+    const page = JSON.parse(dashboard(JSON.stringify(I)));
+    if (!page.hasData) throw new Error("No finance data has been synced yet.");
+    return page;
+  }
+
+  /** Input: { rows (dashboard's), input: { focus, period, category?, text? }, timeZone }. */
+  function voiceFinance(json) {
+    const { rows, input, timeZone } = JSON.parse(json);
+    let d;
+    try {
+      d = board(rows).dashboard;
+    } catch (error) {
+      return JSON.stringify({ output: { error: error.message } });
+    }
+    const tz = zoned(timeZone);
+    const today = tz.day(new Date());
+    const [y, m] = today.split("-").map(Number);
+    const pad = (n) => String(n).padStart(2, "0");
+    const at = (day) => zonedInstant(day, 0, timeZone).getTime() / 1000;
+    const now = Date.now() / 1000;
+    const range = {
+      thisMonth: () => ({ from: at(`${y}-${pad(m)}-01`), to: now, label: "This month" }),
+      lastMonth: () => {
+        const py = m === 1 ? y - 1 : y;
+        const pm = m === 1 ? 12 : m - 1;
+        return { from: at(`${py}-${pad(pm)}-01`), to: at(`${y}-${pad(m)}-01`), label: "Last month" };
+      },
+      last30Days: () => ({ from: now - 30 * 86_400, to: now, label: "Last 30 days" }),
+      last90Days: () => ({ from: now - 90 * 86_400, to: now, label: "Last 90 days" }),
+      thisYear: () => ({ from: at(`${y}-01-01`), to: now, label: "This year" }),
+    };
+    const { from, to, label } = (range[input.period] ?? range.thisMonth)();
+    const monthLabel = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+    const rowOf = (t) => {
+      const date = new Date(t.posted * 1000).toLocaleString("en-US", { month: "short", day: "numeric", timeZone });
+      return { title: t.payee || t.description, subtitle: `${date} · ${t.category}`, amount: round2(t.netEffect) };
+    };
+    const monthlySpend = (category, months = 6) => {
+      const sums = new Map();
+      for (const t of d.transactions) {
+        if (!isCountable(t) || (t.netEffect >= 0 && !isSpendingOffset(t))) continue;
+        if (category && t.category.toLowerCase() !== category.toLowerCase()) continue;
+        const ym = tz.day(new Date(t.posted * 1000)).slice(0, 7);
+        sums.set(ym, (sums.get(ym) ?? 0) - t.netEffect);
+      }
+      const out = [];
+      for (let i = months - 1; i >= 0; i--) {
+        const ym = new Date(Date.UTC(y, m - 1 - i, 1)).toISOString().slice(0, 7);
+        out.push({ label: monthLabel(ym), value: round2(Math.max(0, sums.get(ym) ?? 0)) });
+      }
+      return out;
+    };
+    const inPeriod = d.transactions.filter((t) => t.posted >= from && t.posted < to);
+    const category = input.category?.trim() || null;
+    let view;
+    switch (input.focus) {
+      case "netWorth": {
+        const series = d.netWorthSeries;
+        const step = Math.max(1, Math.ceil(series.length / 30));
+        view = {
+          kind: "finance", title: "Net worth", subtitle: "Assets minus debts", currency: d.currency,
+          stats: [
+            { label: "Net worth", value: round2(d.netWorth), format: "currency", detail: `${d.netWorthChange >= 0 ? "Up" : "Down"} ${Math.abs(Math.round(d.netWorthChange)).toLocaleString("en-US")}`, tone: d.netWorthChange >= 0 ? "positive" : "negative" },
+            { label: "Assets", value: round2(d.totalAssets), format: "currency" },
+            { label: "Debts", value: round2(d.totalLiabilities), format: "currency" },
+          ],
+          chart: {
+            style: "line",
+            points: series.filter((_, i) => i % step === 0 || i === series.length - 1)
+              .map((p) => ({ label: new Date(p.date).toLocaleString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }), value: round2(p.value) })),
+          },
+          rows: [],
+        };
+        break;
+      }
+      case "spending": {
+        const spent = inPeriod.filter((t) => isCountable(t) && (t.netEffect < 0 || isSpendingOffset(t)) && (!category || t.category.toLowerCase() === category.toLowerCase()));
+        const total = Math.max(0, spent.reduce((s, t) => s - t.netEffect, 0));
+        if (category) {
+          view = {
+            kind: "finance", title: category, subtitle: label, currency: d.currency,
+            stats: [{ label: `${category} · ${label.toLowerCase()}`, value: round2(total), format: "currency" }, { label: "Transactions", value: spent.length, format: "count" }],
+            chart: { style: "bar", points: monthlySpend(category) },
+            rows: [...spent].sort((a, b) => a.netEffect - b.netEffect).slice(0, 5).map(rowOf),
+          };
+        } else {
+          const byCategory = new Map();
+          for (const t of spent) byCategory.set(t.category, (byCategory.get(t.category) ?? 0) - t.netEffect);
+          view = {
+            kind: "finance", title: "Spending", subtitle: label, currency: d.currency,
+            stats: [{ label: `Spent · ${label.toLowerCase()}`, value: round2(total), format: "currency" }],
+            chart: { style: "hbar", points: [...byCategory.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([c, v]) => ({ label: c, value: round2(v) })) },
+            rows: [],
+          };
+        }
+        break;
+      }
+      case "income": {
+        const earned = inPeriod.filter((t) => isCountable(t) && t.netEffect > 0 && !isSpendingOffset(t));
+        const total = earned.reduce((s, t) => s + t.netEffect, 0);
+        view = {
+          kind: "finance", title: "Income", subtitle: label, currency: d.currency,
+          stats: [{ label: `Income · ${label.toLowerCase()}`, value: round2(total), format: "currency", tone: "positive" }],
+          chart: { style: "bar", points: d.cashFlow.slice(-6).map((mo) => ({ label: monthLabel(mo.month), value: round2(mo.income) })) },
+          rows: [...earned].sort((a, b) => b.netEffect - a.netEffect).slice(0, 5).map(rowOf),
+        };
+        break;
+      }
+      case "cashFlow":
+        view = {
+          kind: "finance", title: "Cash flow", subtitle: "Last 30 days", currency: d.currency,
+          stats: [
+            { label: "In", value: round2(d.income30d), format: "currency", tone: "positive" },
+            { label: "Out", value: round2(d.spending30d), format: "currency" },
+            { label: "Net", value: round2(d.netFlow30d), format: "currency", tone: d.netFlow30d >= 0 ? "positive" : "negative" },
+          ],
+          chart: { style: "bar", points: d.cashFlow.slice(-6).map((mo) => ({ label: monthLabel(mo.month), value: round2(mo.net) })) },
+          rows: [],
+        };
+        break;
+      case "accounts":
+        view = {
+          kind: "finance", title: "Accounts", subtitle: `${d.accounts.length} connected`, currency: d.currency,
+          stats: [{ label: "Cash", value: round2(d.cash), format: "currency" }, { label: "Debts", value: round2(d.totalLiabilities), format: "currency" }],
+          chart: null,
+          rows: d.accounts.slice(0, 8).map((a) => ({ title: a.name, subtitle: a.institution, amount: round2(a.contribution) })),
+        };
+        break;
+      case "transactions": {
+        const needle = input.text?.toLowerCase();
+        const matched = inPeriod.filter((t) => (!category || t.category.toLowerCase() === category.toLowerCase())
+          && (!needle || `${t.description} ${t.payee} ${t.accountName}`.toLowerCase().includes(needle)));
+        const total = matched.reduce((s, t) => s + t.netEffect, 0);
+        view = {
+          kind: "finance", title: input.text ? `“${input.text}”` : category ?? "Transactions", subtitle: label, currency: d.currency,
+          stats: [{ label: "Total", value: round2(Math.abs(total)), format: "currency", tone: total >= 0 ? "positive" : undefined }, { label: "Transactions", value: matched.length, format: "count" }],
+          chart: null,
+          rows: [...matched].sort((a, b) => b.posted - a.posted).slice(0, 6).map(rowOf),
+        };
+        break;
+      }
+      default: {
+        const month = d.monthSpending;
+        view = {
+          kind: "finance", title: "Overview", subtitle: "Where things stand", currency: d.currency,
+          stats: [
+            { label: "Net worth", value: round2(d.netWorth), format: "currency", detail: `${d.netWorthChange >= 0 ? "+" : ""}${Math.round(d.netWorthChange).toLocaleString("en-US")} over the period`, tone: d.netWorthChange >= 0 ? "positive" : "negative" },
+            { label: "Spent this month", value: round2(month.total), format: "currency", detail: `vs ${Math.round(month.lastMonthToDate).toLocaleString("en-US")} last month to date`, tone: month.total <= month.lastMonthToDate ? "positive" : "negative" },
+            { label: "Cash", value: round2(d.cash), format: "currency" },
+          ],
+          chart: { style: "bar", points: monthlySpend(null) },
+          rows: [],
+        };
+      }
+    }
+    return JSON.stringify({
+      output: {
+        currency: view.currency, title: view.title, period: view.subtitle,
+        stats: view.stats.map((s) => ({ [s.label]: s.value })),
+        ...(view.chart ? { chart: view.chart.points } : {}),
+        ...(view.rows.length ? { rows: view.rows } : {}),
+      },
+      view,
+    });
+  }
+
+  /** The chat agent's getFinanceSummary. Input: { rows (dashboard's) }. */
+  function financeSummary(json) {
+    const { rows } = JSON.parse(json);
+    try {
+      const page = board(rows);
+      const d = page.dashboard;
+      return JSON.stringify({
+        currency: d.currency,
+        lastSyncedAt: page.sync.lastSuccessAt ? new Date(page.sync.lastSuccessAt).toISOString() : null,
+        historyDays: page.historyDays,
+        netWorth: round2(d.netWorth), netWorthChange: round2(d.netWorthChange),
+        totalAssets: round2(d.totalAssets), totalLiabilities: round2(d.totalLiabilities),
+        last30Days: { income: round2(d.income30d), spending: round2(d.spending30d), net: round2(d.netFlow30d) },
+        accounts: d.accounts.map((a) => ({ name: a.name, institution: a.institution, kind: a.kind, balance: round2(a.contribution) })),
+        spendingByCategory: d.spending.byCategory.slice(0, 10).map((c) => ({ category: c.category, amount: round2(c.amount), sharePct: Math.round(c.share * 100) })),
+        monthlyCashFlow: d.cashFlow.map((mo) => ({ ...mo, income: round2(mo.income), spending: round2(mo.spending), net: round2(mo.net) })),
+      });
+    } catch (error) {
+      return JSON.stringify({ error: error.message || "Couldn't load finances." });
+    }
+  }
+
+  /** The chat agent's searchTransactions. Input: { rows, text?, category?, days, limit }. */
+  function searchTransactions(json) {
+    const { rows, text, category, days = 30, limit = 25 } = JSON.parse(json);
+    try {
+      const d = board(rows).dashboard;
+      const since = Date.now() / 1000 - days * 86_400;
+      const needle = text?.toLowerCase();
+      const matched = d.transactions.filter((t) => t.posted >= since
+        && (!category || t.category.toLowerCase() === category.toLowerCase())
+        && (!needle || `${t.description} ${t.payee} ${t.accountName}`.toLowerCase().includes(needle)));
+      const total = matched.reduce((s, t) => s + t.netEffect, 0);
+      return JSON.stringify({
+        matched: matched.length,
+        netTotal: round2(total),
+        transactions: matched.slice(0, limit).map((t) => ({
+          date: new Date(t.posted * 1000).toISOString().slice(0, 10), description: t.payee || t.description,
+          amount: round2(t.amount), category: t.category, account: t.accountName, pending: t.pending || undefined,
+        })),
+      });
+    } catch (error) {
+      return JSON.stringify({ error: error.message || "Couldn't load transactions." });
+    }
+  }
+
+  globalThis.Finance = { dashboard, syncRows, holdings, category, context, voiceFinance, financeSummary, searchTransactions };
 })();
