@@ -1344,7 +1344,9 @@
       "activeLockdowns": [],
       "hasTag": true,
       "blockingProfile": null,
-      "current": null
+      "current": null,
+      "lifetimeSeconds": 310800,
+      "dailyPace": 8040
     },
     "LiveStore.shared": {
       "$type": "LiveStore",
@@ -1589,7 +1591,86 @@
           "switch.espresso",
           "switch.office_fan"
         ],
-        "requests": [],
+        "requests": [
+          {
+            "$type": "MediaRequest",
+            "id": 1,
+            "tmdbId": 910001,
+            "title": "Northbound",
+            "mediaType": "movie",
+            "posterURL": "DemoPoster1",
+            "stage": "downloading",
+            "progress": 0.62,
+            "etaSeconds": 840,
+            "updatedAt": "2026-11-06T00:00:00Z",
+            "statusMessage": null
+          },
+          {
+            "$type": "MediaRequest",
+            "id": 2,
+            "tmdbId": 910002,
+            "title": "The Glass Orchard",
+            "mediaType": "movie",
+            "posterURL": "DemoPoster2",
+            "stage": "approved",
+            "progress": null,
+            "etaSeconds": null,
+            "updatedAt": "2026-11-05T00:00:00Z",
+            "statusMessage": null
+          },
+          {
+            "$type": "MediaRequest",
+            "id": 3,
+            "tmdbId": 910003,
+            "title": "Saltwater Hours",
+            "mediaType": "movie",
+            "posterURL": "DemoPoster3",
+            "stage": "available",
+            "progress": 1,
+            "etaSeconds": null,
+            "updatedAt": "2026-11-04T00:00:00Z",
+            "statusMessage": null
+          },
+          {
+            "$type": "MediaRequest",
+            "id": 4,
+            "tmdbId": 910004,
+            "title": "Paper Lanterns",
+            "mediaType": "movie",
+            "posterURL": "DemoPoster4",
+            "stage": "available",
+            "progress": 1,
+            "etaSeconds": null,
+            "updatedAt": "2026-11-03T00:00:00Z",
+            "statusMessage": null
+          },
+          {
+            "$type": "MediaRequest",
+            "id": 5,
+            "tmdbId": 910005,
+            "title": "Signal Lost",
+            "mediaType": "movie",
+            "posterURL": "DemoPoster5",
+            "stage": "available",
+            "progress": 1,
+            "etaSeconds": null,
+            "updatedAt": "2026-11-02T00:00:00Z",
+            "statusMessage": null
+          },
+          {
+            "$type": "MediaRequest",
+            "id": 6,
+            "tmdbId": 910006,
+            "title": "Last Light on Elm Street",
+            "mediaType": "movie",
+            "posterURL": "DemoPoster6",
+            "stage": "available",
+            "progress": 1,
+            "etaSeconds": null,
+            "updatedAt": "2026-11-01T00:00:00Z",
+            "statusMessage": null
+          }
+        ],
         "automations": {
           "$type": "AutomationsPayload",
           "automations": [
@@ -2024,9 +2105,89 @@
           "maxKelvin": null
         }
       ],
-      "activeDownloads": [],
-      "ready": [],
-      "isBusy": false
+      "activeDownloads": [
+        {
+          "$type": "MediaRequest",
+          "id": 1,
+          "tmdbId": 910001,
+          "title": "Northbound",
+          "mediaType": "movie",
+          "posterURL": "DemoPoster1",
+          "stage": "downloading",
+          "progress": 0.62,
+          "etaSeconds": 840,
+          "updatedAt": "2026-11-06T00:00:00Z",
+          "statusMessage": null
+        },
+        {
+          "$type": "MediaRequest",
+          "id": 2,
+          "tmdbId": 910002,
+          "title": "The Glass Orchard",
+          "mediaType": "movie",
+          "posterURL": "DemoPoster2",
+          "stage": "approved",
+          "progress": null,
+          "etaSeconds": null,
+          "updatedAt": "2026-11-05T00:00:00Z",
+          "statusMessage": null
+        }
+      ],
+      "ready": [
+        {
+          "$type": "MediaRequest",
+          "id": 3,
+          "tmdbId": 910003,
+          "title": "Saltwater Hours",
+          "mediaType": "movie",
+          "posterURL": "DemoPoster3",
+          "stage": "available",
+          "progress": 1,
+          "etaSeconds": null,
+          "updatedAt": "2026-11-04T00:00:00Z",
+          "statusMessage": null
+        },
+        {
+          "$type": "MediaRequest",
+          "id": 4,
+          "tmdbId": 910004,
+          "title": "Paper Lanterns",
+          "mediaType": "movie",
+          "posterURL": "DemoPoster4",
+          "stage": "available",
+          "progress": 1,
+          "etaSeconds": null,
+          "updatedAt": "2026-11-03T00:00:00Z",
+          "statusMessage": null
+        },
+        {
+          "$type": "MediaRequest",
+          "id": 5,
+          "tmdbId": 910005,
+          "title": "Signal Lost",
+          "mediaType": "movie",
+          "posterURL": "DemoPoster5",
+          "stage": "available",
+          "progress": 1,
+          "etaSeconds": null,
+          "updatedAt": "2026-11-02T00:00:00Z",
+          "statusMessage": null
+        },
+        {
+          "$type": "MediaRequest",
+          "id": 6,
+          "tmdbId": 910006,
+          "title": "Last Light on Elm Street",
+          "mediaType": "movie",
+          "posterURL": "DemoPoster6",
+          "stage": "available",
+          "progress": 1,
+          "etaSeconds": null,
+          "updatedAt": "2026-11-01T00:00:00Z",
+          "statusMessage": null
+        }
+      ],
+      "isBusy": true
     },
     "HomeView.habits": {
       "$type": "HabitsStore",
@@ -10405,7 +10566,9 @@
       "activeLockdowns": [],
       "hasTag": true,
       "blockingProfile": null,
-      "current": null
+      "current": null,
+      "lifetimeSeconds": 310800,
+      "dailyPace": 8040
     },
     "HomeGreeting.line": "Morning, Alex. All systems online",
     "HomeView.agenda": {
@@ -10720,6 +10883,228 @@
       "error": null,
       "busy": null,
       "fresh": true
+    },
+    "PosterImages.cached": {
+      "$byArgument": {
+        "DemoPoster1": {
+          "$asset": "DemoPoster1"
+        },
+        "DemoPoster2": {
+          "$asset": "DemoPoster2"
+        },
+        "DemoPoster3": {
+          "$asset": "DemoPoster3"
+        },
+        "DemoPoster4": {
+          "$asset": "DemoPoster4"
+        },
+        "DemoPoster5": {
+          "$asset": "DemoPoster5"
+        },
+        "DemoPoster6": {
+          "$asset": "DemoPoster6"
+        },
+        "DemoBook1": {
+          "$asset": "DemoBook1"
+        },
+        "DemoBook2": {
+          "$asset": "DemoBook2"
+        },
+        "DemoBook3": {
+          "$asset": "DemoBook3"
+        }
+      }
+    },
+    "ReflectionStore.shared": {
+      "$type": "ReflectionStore",
+      "quotes": [
+        {
+          "$type": "ReflectionQuote",
+          "id": "00000000-0000-4000-9000-000000000201",
+          "text": "You have power over your mind — not outside events. Realize this, and you will find strength.",
+          "author": "Marcus Aurelius",
+          "added": "2026-11-05T00:00:00Z",
+          "bookID": "00000000-0000-4000-9000-000000000101",
+          "note": "",
+          "page": 71,
+          "chapterID": null
+        },
+        {
+          "$type": "ReflectionQuote",
+          "id": "00000000-0000-4000-9000-000000000202",
+          "text": "We suffer more often in imagination than in reality.",
+          "author": "Seneca",
+          "added": "2026-11-03T00:00:00Z",
+          "bookID": "00000000-0000-4000-9000-000000000102",
+          "note": "",
+          "page": 34,
+          "chapterID": null
+        },
+        {
+          "$type": "ReflectionQuote",
+          "id": "00000000-0000-4000-9000-000000000203",
+          "text": "I went to the woods because I wished to live deliberately.",
+          "author": "Henry David Thoreau",
+          "added": "2026-11-01T00:00:00Z",
+          "bookID": "00000000-0000-4000-9000-000000000103",
+          "note": "",
+          "page": 90,
+          "chapterID": null
+        },
+        {
+          "$type": "ReflectionQuote",
+          "id": "00000000-0000-4000-9000-000000000204",
+          "text": "The happiness of your life depends upon the quality of your thoughts.",
+          "author": "Marcus Aurelius",
+          "added": "2026-10-29T00:00:00Z",
+          "bookID": "00000000-0000-4000-9000-000000000101",
+          "note": "",
+          "page": 118,
+          "chapterID": null
+        },
+        {
+          "$type": "ReflectionQuote",
+          "id": "00000000-0000-4000-9000-000000000205",
+          "text": "Luck is what happens when preparation meets opportunity.",
+          "author": "Seneca",
+          "added": "2026-10-25T00:00:00Z",
+          "bookID": null,
+          "note": "",
+          "page": null,
+          "chapterID": null
+        }
+      ],
+      "entries": [
+        {
+          "$type": "JournalEntry",
+          "id": "00000000-0000-4000-9000-000000000301",
+          "text": "Slow morning. Ran the river loop before the city woke up and felt clear for the first time this week. Remember: the hard part is starting.",
+          "created": "2026-11-06T07:00:00Z",
+          "updated": "2026-11-06T07:00:00Z"
+        },
+        {
+          "$type": "JournalEntry",
+          "id": "00000000-0000-4000-9000-000000000302",
+          "text": "Long planning session for the studio move. Too many small decisions; wrote them down so they stop circling.",
+          "created": "2026-11-05T07:00:00Z",
+          "updated": "2026-11-05T07:00:00Z"
+        },
+        {
+          "$type": "JournalEntry",
+          "id": "00000000-0000-4000-9000-000000000303",
+          "text": "Dinner with Maya. We talked about the year ahead and what to say no to. Felt lighter walking home.",
+          "created": "2026-11-03T07:00:00Z",
+          "updated": "2026-11-03T07:00:00Z"
+        },
+        {
+          "$type": "JournalEntry",
+          "id": "00000000-0000-4000-9000-000000000304",
+          "text": "Read on the porch for an hour. Thoreau on simplicity hit differently today.",
+          "created": "2026-10-31T07:00:00Z",
+          "updated": "2026-10-31T07:00:00Z"
+        }
+      ],
+      "sessions": [
+        {
+          "$type": "MeditationRecord",
+          "id": "00000000-0000-4000-9000-000000000400",
+          "date": "2026-11-06T06:30:00Z",
+          "minutes": 10
+        },
+        {
+          "$type": "MeditationRecord",
+          "id": "00000000-0000-4000-9000-000000000401",
+          "date": "2026-11-05T06:30:00Z",
+          "minutes": 15
+        },
+        {
+          "$type": "MeditationRecord",
+          "id": "00000000-0000-4000-9000-000000000402",
+          "date": "2026-11-04T06:30:00Z",
+          "minutes": 10
+        },
+        {
+          "$type": "MeditationRecord",
+          "id": "00000000-0000-4000-9000-000000000403",
+          "date": "2026-11-03T06:30:00Z",
+          "minutes": 20
+        },
+        {
+          "$type": "MeditationRecord",
+          "id": "00000000-0000-4000-9000-000000000404",
+          "date": "2026-11-02T06:30:00Z",
+          "minutes": 12
+        },
+        {
+          "$type": "MeditationRecord",
+          "id": "00000000-0000-4000-9000-000000000405",
+          "date": "2026-11-01T06:30:00Z",
+          "minutes": 10
+        },
+        {
+          "$type": "MeditationRecord",
+          "id": "00000000-0000-4000-9000-000000000406",
+          "date": "2026-10-31T06:30:00Z",
+          "minutes": 15
+        }
+      ],
+      "books": [
+        {
+          "$type": "Book",
+          "id": "00000000-0000-4000-9000-000000000101",
+          "sourceKey": "demo-1",
+          "title": "Meditations",
+          "author": "Marcus Aurelius",
+          "coverURL": "DemoBook1",
+          "year": "180",
+          "pages": 304,
+          "publisher": "Penguin Classics",
+          "notes": "",
+          "bookmarkPage": 142,
+          "bookmarkedAt": "2026-11-04T22:00:00Z",
+          "added": "2026-10-28T00:00:00Z",
+          "chapters": []
+        },
+        {
+          "$type": "Book",
+          "id": "00000000-0000-4000-9000-000000000102",
+          "sourceKey": "demo-2",
+          "title": "Letters from a Stoic",
+          "author": "Seneca",
+          "coverURL": "DemoBook2",
+          "year": "65",
+          "pages": 256,
+          "publisher": "Penguin Classics",
+          "notes": "",
+          "bookmarkPage": 88,
+          "bookmarkedAt": "2026-11-03T20:00:00Z",
+          "added": "2026-10-19T00:00:00Z",
+          "chapters": []
+        },
+        {
+          "$type": "Book",
+          "id": "00000000-0000-4000-9000-000000000103",
+          "sourceKey": "demo-3",
+          "title": "Walden",
+          "author": "Henry David Thoreau",
+          "coverURL": "DemoBook3",
+          "year": "1854",
+          "pages": 352,
+          "publisher": "Ticknor and Fields",
+          "notes": "",
+          "bookmarkPage": 201,
+          "bookmarkedAt": "2026-11-02T18:00:00Z",
+          "added": "2026-10-10T00:00:00Z",
+          "chapters": []
+        }
+      ]
+    },
+    "ReflectionView.journalLock": {
+      "$type": "JournalLock",
+      "isLocked": false,
+      "unlocking": false,
+      "methodName": "Face ID",
+      "methodIcon": "faceid"
     },
     "CardStack.wallet": [
       {
