@@ -154,6 +154,8 @@ final class APIClient: @unchecked Sendable {
         #if DEBUG
         if Demo.isOn { return await DemoHub.respond(req) }
         #endif
+        // Routes that moved onto the phone answer here; the rest (lights, TV) still go to the Pi.
+        if let local = await LocalHub.respond(req) { return local }
         do {
             return try await session.data(for: req)
         } catch let error as URLError where Self.transient.contains(error.code) && (req.httpMethod ?? "GET") == "GET" {
