@@ -1062,6 +1062,54 @@
             "volumeKg": 4180,
             "avgHr": 112,
             "maxHr": 155
+          },
+          {
+            "$type": "WorkoutSummary",
+            "id": "w-3",
+            "name": "Legs",
+            "startedAt": "2026-11-03T17:30:00.000Z",
+            "endedAt": "2026-11-03T18:18:00.000Z",
+            "exercises": [
+              "Squat",
+              "Romanian Deadlift",
+              "Lunges"
+            ],
+            "sets": 12,
+            "volumeKg": 7420,
+            "avgHr": 124,
+            "maxHr": 168
+          },
+          {
+            "$type": "WorkoutSummary",
+            "id": "w-4",
+            "name": "Push",
+            "startedAt": "2026-11-01T09:30:00.000Z",
+            "endedAt": "2026-11-01T10:18:00.000Z",
+            "exercises": [
+              "Bench Press",
+              "Overhead Press",
+              "Dips"
+            ],
+            "sets": 11,
+            "volumeKg": 3980,
+            "avgHr": 116,
+            "maxHr": 152
+          },
+          {
+            "$type": "WorkoutSummary",
+            "id": "w-5",
+            "name": "Pull",
+            "startedAt": "2026-10-30T17:30:00.000Z",
+            "endedAt": "2026-10-30T18:18:00.000Z",
+            "exercises": [
+              "Deadlift",
+              "Barbell Row",
+              "Pull-up"
+            ],
+            "sets": 12,
+            "volumeKg": 6110,
+            "avgHr": 119,
+            "maxHr": 160
           }
         ],
         "previous": {
