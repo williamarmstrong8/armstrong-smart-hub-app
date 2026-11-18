@@ -1,43 +1,44 @@
 import Charts
 import SwiftUI
 
-/// Brokerage positions across every connected account (Fidelity, Wells Fargo, …):
-/// what it's all worth, how it's split, what's up and down, and each holding.
-/// Opened from the Investments card on Finance.
+/// Positions across the connected investment accounts, with the everyday
+/// brokerage kept apart from retirement accounts. One number, one line for
+/// today and all time, the value chart, a slim allocation bar, then the
+/// holdings as Stocks-style rows. Opened from the Investments card on Finance.
 struct InvestmentsView: View {
     let store: HoldingsStore
     let finance: FinanceStore
     let toast: Toast
+    var initialGroup: InvestmentGroup = .brokerage
 
     @Environment(AppSession.self) private var session
     @State private var sort: HoldingSort = .value
     @State private var opened: Holding?
-    @State private var quotes = QuoteStore()
+    @State private var group: InvestmentGroup?
 
     var body: some View {
+        let groups = store.response?.groups ?? []
+        let chosen = group ?? (groups.contains(initialGroup) ? initialGroup : groups.first)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                if let r = store.response, r.hasHoldings == true, let totals = r.totals {
-                    header(r, totals)
-                    Card(title: "Value") {
-                        HoldingLineChart(points: r.history ?? [], color: HubDesign.action)
+                Text("Investments").font(.system(size: 34, weight: .light)).accessibilityAddTraits(.isHeader)
+                if store.hasHoldings, let p = store.portfolio(chosen), !p.isEmpty {
+                    if groups.count > 1 {
+                        Picker("Accounts", selection: Binding(get: { chosen ?? .brokerage }, set: { group = $0 })) {
+                            ForEach(groups) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    if let allocation = r.allocation, !allocation.isEmpty {
-                        Card(title: "Allocation") { AllocationDonut(slices: allocation, total: totals.value) }
-                    }
-                    let positions = r.positions ?? []
-                    if positions.contains(where: { !$0.isCash && $0.gainPct != nil }) {
-                        Card(title: "Gain since bought") { GainBars(positions: positions) }
-                    }
-                    if let accounts = r.accounts, !accounts.isEmpty {
-                        BrokerageAccounts(accounts: accounts)
-                    }
-                    positionsCard(positions)
+                    header(p)
+                    HoldingLineChart(points: p.history, color: (p.dayChange ?? 0) >= 0 ? .stockUp : .stockDown, compact: true)
+                    AllocationBar(portfolio: p)
+                    positionsList(p.positions)
+                    if !p.accounts.isEmpty { BrokerageAccounts(accounts: p.accounts) }
                 } else if let error = store.error, store.response == nil {
                     MessageView(title: "Couldn't load positions", systemImage: "exclamationmark.triangle", message: error,
                                 actionTitle: "Try again") { Task { await store.load(api: session.api) } }
                 } else if store.fetched || store.response != nil {
-                    MessageView(title: "No positions yet", systemImage: "chart.pie",
+                    MessageView(title: "No positions yet", systemImage: "chart.line.uptrend.xyaxis",
                                 message: "SimpleFIN hasn't reported holdings for any brokerage account. Pull to sync.")
                 } else {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 300)
@@ -51,68 +52,88 @@ struct InvestmentsView: View {
         .hubPageStyle()
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .task {
-            await store.load(api: session.api)
-            await quotes.load(symbols: symbols)
-        }
+        .task { await store.load(api: session.api) }
         .refreshable {
             await finance.sync(api: session.api, toast: toast)
             await store.load(api: session.api)
-            await quotes.load(symbols: symbols)
         }
-        .navigationDestination(item: $opened) { HoldingDetailView(holding: $0, total: store.response?.totals?.value ?? 0) }
+        .navigationDestination(item: $opened) { HoldingDetailView(holding: $0, total: store.portfolio(chosen)?.value ?? 0) }
     }
 
-    private var symbols: [String] {
-        (store.response?.positions ?? []).filter { !$0.isCash }.map(\.symbol)
-    }
-
-    private func header(_ r: HoldingsResponse, _ t: HoldingsTotals) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Investments").font(.system(size: 34, weight: .light)).accessibilityAddTraits(.isHeader)
-            Text(Fmt.compact(t.value)).font(Fit.number(52))
-            HStack(spacing: 8) {
-                ChangePill(amount: t.gain, pct: t.gainPct, label: "all time")
-                if let day = t.dayChange { ChangePill(amount: day, pct: t.dayChangePct, label: "today") }
+    /// The value, then today's move and the all-time gain, each said once.
+    private func header(_ p: Portfolio) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(Fmt.currency(p.value)).font(Fit.number(48)).contentTransition(.numericText())
+            if let day = p.dayChange {
+                Text(Fmt.signed(day) + (p.dayChangePct.map { " (\(Pct.signed($0)))" } ?? "") + " today")
+                    .font(.subheadline.weight(.semibold)).monospacedDigit()
+                    .foregroundStyle(day >= 0 ? Color.stockUp : .stockDown)
             }
-            HStack(spacing: 14) {
-                LegendDot(color: HubDesign.action, text: "Invested " + Fmt.compact(t.invested))
-                LegendDot(color: AssetClassColor.of("Cash"), text: "Cash " + Fmt.compact(t.cash))
-            }
-            if let asOf = r.asOf {
-                Text("Prices as of " + Fmt.relative(ms: asOf * 1000)).font(.caption).foregroundStyle(.secondary)
+            if p.gainPct != nil {
+                Text(Fmt.signed(p.gain) + (p.gainPct.map { " (\(Pct.signed($0)))" } ?? "") + " all time")
+                    .font(.footnote).monospacedDigit().foregroundStyle(.secondary)
             }
         }
     }
 
-    private func positionsCard(_ positions: [Holding]) -> some View {
+    private func positionsList(_ positions: [Holding]) -> some View {
         let sorted = sort.apply(positions)
-        return Card {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Positions").font(.headline)
-                    Text("\(positions.count)").font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
-                    Spacer()
-                    Menu {
-                        Picker("Sort", selection: $sort) {
-                            ForEach(HoldingSort.allCases) { Text($0.title).tag($0) }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(sort.title)
-                            Image(systemName: "arrow.up.arrow.down")
-                        }
-                        .font(.footnote.weight(.medium))
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Holdings").font(.headline)
+                Spacer()
+                Menu {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(HoldingSort.allCases) { Text($0.title).tag($0) }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(sort.title)
+                        Image(systemName: "arrow.up.arrow.down")
+                    }
+                    .font(.footnote.weight(.medium))
+                }
+            }
+            .padding(.bottom, 4)
+            ForEach(sorted) { h in
+                Divider().overlay(Fit.hairline)
+                Button { opened = h } label: { HoldingRow(holding: h, quote: store.quotes[h.symbol]) }
+                    .buttonStyle(.plain)
+            }
+            Divider().overlay(Fit.hairline)
+        }
+    }
+}
+
+/// How the money is split by asset class: one slim bar and a short legend.
+private struct AllocationBar: View {
+    let portfolio: Portfolio
+
+    var body: some View {
+        let slices = portfolio.allocation.filter { $0.share >= 0.005 }
+        VStack(alignment: .leading, spacing: 10) {
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(slices, id: \.assetClass) { s in
+                        AssetClassColor.of(s.assetClass)
+                            .frame(width: max(geo.size.width * s.share - 2, 2))
                     }
                 }
-                .padding(.bottom, 8)
-                ForEach(sorted) { h in
-                    Button { opened = h } label: { HoldingRow(holding: h, quote: quotes.quotes[h.symbol]) }
-                        .buttonStyle(.plain)
-                    if h.id != sorted.last?.id { Divider().overlay(Fit.hairline) }
+                .clipShape(.capsule)
+            }
+            .frame(height: 8)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), alignment: .leading)], alignment: .leading, spacing: 6) {
+                ForEach(slices, id: \.assetClass) { s in
+                    HStack(spacing: 6) {
+                        Circle().fill(AssetClassColor.of(s.assetClass)).frame(width: 7, height: 7)
+                        Text(s.assetClass).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text(Pct.plain(s.share)).font(.caption.weight(.semibold)).monospacedDigit()
+                    }
                 }
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Allocation: " + slices.map { "\($0.assetClass) \(Pct.plain($0.share))" }.joined(separator: ", "))
     }
 }
 
@@ -170,27 +191,6 @@ enum Pct {
     }
 }
 
-/// "+$1,875 · +17.9% all time" on glass, green or red.
-private struct ChangePill: View {
-    let amount: Double
-    let pct: Double?
-    let label: String
-
-    var body: some View {
-        let color: Color = amount >= 0 ? .positive : .negative
-        HStack(spacing: 4) {
-            Image(systemName: amount >= 0 ? "arrow.up.right" : "arrow.down.right").font(.caption2.weight(.bold))
-            Text((amount < 0 ? "−" : "+") + Fmt.compact(abs(amount)) + (pct.map { " · " + Pct.signed($0) } ?? ""))
-                .monospacedDigit()
-            Text(label).foregroundStyle(.secondary)
-        }
-        .font(.footnote.weight(.semibold))
-        .foregroundStyle(color)
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .glassEffect(.regular, in: .capsule)
-    }
-}
-
 /// The ticker on a tile in its asset class's color.
 struct SymbolBadge: View {
     let symbol: String
@@ -230,7 +230,7 @@ private struct HoldingRow: View {
                 Text(h.name).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Sparkline(values: line, color: color, reference: quote?.previousClose)
+            TickerSparkline(values: line, color: color, reference: quote?.previousClose)
                 .frame(width: 70, height: 34)
             VStack(alignment: .trailing, spacing: 4) {
                 Text(price.formatted(.number.precision(.fractionLength(2)))).font(.system(size: 18, weight: .semibold)).monospacedDigit()
@@ -256,57 +256,8 @@ private struct HoldingRow: View {
     }
 }
 
-/// Today's price move per symbol, from Yahoo's public chart endpoint (no key).
-struct Quote: Sendable {
-    let price: Double
-    let previousClose: Double
-    let series: [Double]
-    var change: Double { price - previousClose }
-    var changePct: Double? { previousClose > 0 ? price / previousClose - 1 : nil }
-}
-
-@MainActor @Observable
-final class QuoteStore {
-    private(set) var quotes: [String: Quote] = [:]
-
-    func load(symbols: [String]) async {
-        let unique = Array(Set(symbols))
-        let results = await withTaskGroup(of: (String, Quote?).self) { group in
-            for symbol in unique { group.addTask { (symbol, await Self.fetch(symbol)) } }
-            var out: [String: Quote] = [:]
-            for await (symbol, quote) in group { if let quote { out[symbol] = quote } }
-            return out
-        }
-        if !results.isEmpty { quotes.merge(results) { _, new in new } }
-    }
-
-    private struct Chart: Decodable {
-        struct Result: Decodable {
-            struct Meta: Decodable { let regularMarketPrice: Double?; let chartPreviousClose: Double? }
-            struct Indicators: Decodable { struct Q: Decodable { let close: [Double?]? }; let quote: [Q]? }
-            let meta: Meta
-            let indicators: Indicators?
-        }
-        struct Body: Decodable { let result: [Result]? }
-        let chart: Body
-    }
-
-    nonisolated private static func fetch(_ symbol: String) async -> Quote? {
-        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?range=1d&interval=5m") else { return nil }
-        var request = URLRequest(url: url, timeoutInterval: 12)
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let result = try? JSONDecoder().decode(Chart.self, from: data).chart.result?.first,
-              let price = result.meta.regularMarketPrice,
-              let previous = result.meta.chartPreviousClose else { return nil }
-        let closes = (result.indicators?.quote?.first?.close ?? []).compactMap { $0 }
-        return Quote(price: price, previousClose: previous, series: closes.count >= 2 ? closes : [previous, price])
-    }
-}
-
 /// A small filled line with no axes; a dashed rule marks the reference (yesterday's close) when it's in range.
-private struct Sparkline: View {
+struct TickerSparkline: View {
     let values: [Double]
     let color: Color
     var reference: Double?
@@ -338,7 +289,7 @@ private struct Sparkline: View {
     }
 }
 
-private extension Color {
+extension Color {
     /// Stocks-app red and green for the change pill and sparkline.
     static let stockUp = Color(red: 0.19, green: 0.70, blue: 0.33)
     static let stockDown = Color(red: 0.92, green: 0.30, blue: 0.24)
@@ -352,12 +303,16 @@ func shareCount(_ value: Double) -> String {
 struct HoldingLineChart: View {
     let points: [SeriesPoint]
     let color: Color
+    /// Under a header that already shows the value: no repeat of it, and nothing at all until there are two days.
+    var compact = false
 
     @State private var selected: Date?
 
     var body: some View {
         let days = points.map { DayValue(date: $0.day, value: $0.value) }.sorted { $0.date < $1.date }
-        if days.count < 2 {
+        if days.count < 2, compact {
+            EmptyView()
+        } else if days.count < 2 {
             VStack(alignment: .leading, spacing: 6) {
                 if let only = days.last {
                     Text(Fmt.compact(only.value)).font(Fit.value)
@@ -373,7 +328,11 @@ struct HoldingLineChart: View {
             let scale = ChartScale(low: days.map(\.value).min() ?? 0, high: days.map(\.value).max() ?? 1)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(Fmt.compact(shown.value)).font(Fit.value)
+                    if compact && chosen == nil {
+                        Text("Since " + days.first!.date.formatted(.dateTime.month(.abbreviated).day())).font(Fit.label).foregroundStyle(Fit.muted)
+                    } else {
+                        Text(Fmt.compact(shown.value)).font(Fit.value)
+                    }
                     if first > 0 {
                         let change = shown.value - first
                         Text(Pct.signed(change / first)).font(.footnote.weight(.semibold)).monospacedDigit()
@@ -405,97 +364,6 @@ struct HoldingLineChart: View {
                     .glassYAxis(scale) { Fmt.axis($0) }
                 }
                 .padding(.bottom, 24)
-            }
-        }
-    }
-}
-
-/// How the money is split by asset class: a donut, then the classes as rows.
-/// Touch a slice to read it in the middle.
-private struct AllocationDonut: View {
-    let slices: [AllocationSlice]
-    let total: Double
-
-    @State private var angle: Double?
-
-    var body: some View {
-        let picked = pick(angle)
-        VStack(spacing: 18) {
-            Chart(slices) { s in
-                SectorMark(angle: .value("Value", s.value), innerRadius: .ratio(0.64), angularInset: 1.5)
-                    .cornerRadius(4)
-                    .foregroundStyle(AssetClassColor.of(s.assetClass))
-                    .opacity(picked == nil || picked?.id == s.id ? 1 : 0.35)
-            }
-            .chartAngleSelection(value: $angle)
-            .chartLegend(.hidden)
-            .frame(height: 200)
-            .chartBackground { _ in
-                VStack(spacing: 2) {
-                    Text(picked?.assetClass ?? "Total").font(.caption).foregroundStyle(.secondary)
-                    Text(Fmt.compact(picked?.value ?? total)).font(.title3.weight(.semibold)).monospacedDigit()
-                    if let picked { Text(Pct.plain(picked.share)).font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-                }
-            }
-            VStack(spacing: 10) {
-                ForEach(slices) { s in
-                    HStack(spacing: 10) {
-                        Circle().fill(AssetClassColor.of(s.assetClass)).frame(width: 9, height: 9)
-                        Text(s.assetClass).font(.subheadline)
-                        Spacer()
-                        Text(Fmt.compact(s.value)).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
-                        Text(Pct.plain(s.share)).font(.subheadline.weight(.semibold)).monospacedDigit()
-                            .frame(minWidth: 44, alignment: .trailing)
-                    }
-                }
-            }
-        }
-    }
-
-    /// The slice under the finger: SectorMark's selection value is a running total.
-    private func pick(_ angle: Double?) -> AllocationSlice? {
-        guard let angle else { return nil }
-        var running = 0.0
-        for s in slices {
-            running += s.value
-            if angle <= running { return s }
-        }
-        return nil
-    }
-}
-
-/// Each position's gain over what was paid, best to worst, as bars from zero.
-private struct GainBars: View {
-    let positions: [Holding]
-
-    var body: some View {
-        let rows = positions.filter { !$0.isCash && $0.gainPct != nil }.sorted { ($0.gainPct ?? 0) > ($1.gainPct ?? 0) }
-        let up = rows.filter { ($0.gainPct ?? 0) >= 0 }.count
-        let maxAbs = max(rows.map { abs($0.gainPct ?? 0) }.max() ?? 1, 0.0001)
-        VStack(alignment: .leading, spacing: 10) {
-            Text("\(up) up, \(rows.count - up) down").font(.footnote).foregroundStyle(.secondary)
-            ForEach(rows) { h in
-                let pct = h.gainPct ?? 0
-                let color: Color = pct >= 0 ? .positive : .negative
-                HStack(spacing: 10) {
-                    Text(h.symbol).font(.caption.weight(.semibold)).frame(width: 50, alignment: .leading)
-                    GeometryReader { geo in
-                        let half = geo.size.width / 2
-                        let width = max(half * abs(pct) / maxAbs, 2)
-                        ZStack(alignment: .leading) {
-                            Rectangle().fill(Fit.hairline).frame(width: 1).offset(x: half)
-                            Capsule().fill(color)
-                                .frame(width: width, height: 8)
-                                .offset(x: pct >= 0 ? half : half - width)
-                        }
-                        .frame(maxHeight: .infinity)
-                    }
-                    .frame(height: 14)
-                    Text(Pct.signed(pct)).font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(color)
-                        .frame(width: 56, alignment: .trailing)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(h.symbol), \(Pct.signed(pct))")
             }
         }
     }

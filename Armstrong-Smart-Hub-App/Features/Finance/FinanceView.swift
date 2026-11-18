@@ -12,6 +12,7 @@ struct FinanceView: View {
     /// Brokerage positions, for the Investments card and page.
     @State private var holdings = HoldingsStore()
     @State private var showingInvestments = false
+    @State private var investmentsGroup: InvestmentGroup = .brokerage
 
     var body: some View {
         NavigationStack {
@@ -40,7 +41,7 @@ struct FinanceView: View {
                 }
             }
             .navigationDestination(isPresented: $showingAll) { TransactionsView(store: store, toast: toast) }
-            .navigationDestination(isPresented: $showingInvestments) { InvestmentsView(store: holdings, finance: store, toast: toast) }
+            .navigationDestination(isPresented: $showingInvestments) { InvestmentsView(store: holdings, finance: store, toast: toast, initialGroup: investmentsGroup) }
             #if DEBUG
             .onAppear {
                 DemoCue.on("nav", arg: { name in
@@ -135,11 +136,11 @@ struct FinanceView: View {
 
         AccountsCard(accounts: d.accounts)
 
-        if holdings.hasHoldings, let totals = holdings.response?.totals {
-            Button { showingInvestments = true } label: {
-                InvestmentsCard(totals: totals, positions: holdings.response?.positions ?? [])
+        if holdings.hasHoldings {
+            InvestmentsCard(store: holdings) { group in
+                investmentsGroup = group
+                showingInvestments = true
             }
-            .buttonStyle(.plain)
         }
 
         Button { showingAll = true } label: {
@@ -295,51 +296,89 @@ private struct MonthBars: View {
     }
 }
 
-/// The way into Investments: what the positions are worth, their gain, and a
-/// strip of the biggest holdings in their asset-class colors.
+/// The way into Investments: the brokerage account up top, Stocks-style (value,
+/// today's line, a filled change pill), and the retirement accounts as one row
+/// beneath. Each opens Investments on its own tab.
 private struct InvestmentsCard: View {
-    let totals: HoldingsTotals
-    let positions: [Holding]
+    let store: HoldingsStore
+    let open: (InvestmentGroup) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Investments").font(.headline)
-                Spacer()
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(Fmt.compact(totals.value)).font(.title2.weight(.semibold)).monospacedDigit()
-                if let pct = totals.gainPct {
-                    Text(Pct.signed(pct) + " all time").font(.footnote.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(totals.gain >= 0 ? Color.positive : .negative)
-                }
-                if let day = totals.dayChangePct {
-                    Text(Pct.signed(day) + " today").font(.footnote).monospacedDigit().foregroundStyle(.secondary)
-                }
-            }
-            // Each position's share of the portfolio, side by side.
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(positions.filter { $0.weight >= 0.004 }) { h in
-                        AssetClassColor.of(h.assetClass)
-                            .frame(width: max(geo.size.width * h.weight - 2, 2))
+        let groups = store.response?.groups ?? []
+        let main: InvestmentGroup? = groups.contains(.brokerage) ? .brokerage : groups.first
+        VStack(alignment: .leading, spacing: 0) {
+            if let p = store.portfolio(main), !p.isEmpty {
+                Button { open(main ?? .brokerage) } label: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(groups.count > 1 ? (main?.title ?? "Investments") : "Investments").font(.headline)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                        HStack(alignment: .center, spacing: 14) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(Fmt.currency(p.value)).font(.title2.weight(.semibold)).monospacedDigit()
+                                    .minimumScaleFactor(0.7).lineLimit(1)
+                                ChangeTag(change: p.dayChange, pct: p.dayChangePct, suffix: "today")
+                            }
+                            Spacer(minLength: 8)
+                            TickerSparkline(values: p.intraday.count >= 2 ? p.intraday : p.history.map(\.value),
+                                            color: (p.dayChange ?? 0) >= 0 ? .stockUp : .stockDown,
+                                            reference: p.intraday.count >= 2 ? p.previousValue : nil)
+                                .frame(width: 110, height: 48)
+                        }
                     }
+                    .padding(HubLayout.cardPadding)
+                    .contentShape(.rect)
                 }
-                .clipShape(.capsule)
+                .buttonStyle(.plain)
             }
-            .frame(height: 8)
-            HStack(spacing: 8) {
-                ForEach(positions.filter { !$0.isCash }.prefix(4)) { h in
-                    Text(h.symbol).font(.caption.weight(.semibold)).foregroundStyle(AssetClassColor.of(h.assetClass))
+            ForEach(groups.filter { $0 != main }) { g in
+                if let p = store.portfolio(g), !p.isEmpty {
+                    Divider().overlay(Fit.hairline).padding(.horizontal, HubLayout.cardPadding)
+                    Button { open(g) } label: {
+                        HStack(spacing: 10) {
+                            Text(g.title).font(.subheadline.weight(.medium))
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(Fmt.compact(p.value)).font(.subheadline.weight(.semibold)).monospacedDigit()
+                                if let pct = p.dayChangePct {
+                                    Text(Pct.signed(pct) + " today").font(.caption.weight(.medium)).monospacedDigit()
+                                        .foregroundStyle(pct >= 0 ? Color.stockUp : .stockDown)
+                                }
+                            }
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, HubLayout.cardPadding)
+                        .padding(.vertical, 14)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
                 }
-                if positions.count > 4 { Text("+\(positions.count - 4) more").font(.caption).foregroundStyle(.secondary) }
             }
         }
-        .padding(HubLayout.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassGlare(.regular.interactive(), in: .rect(cornerRadius: HubLayout.cardRadius))
-        .contentShape(.rect)
+    }
+}
+
+/// "+$84.20 · +0.62% today" in a filled green or red tag.
+private struct ChangeTag: View {
+    let change: Double?
+    let pct: Double?
+    let suffix: String
+
+    var body: some View {
+        if let change {
+            HStack(spacing: 4) {
+                Text(Fmt.signed(change) + (pct.map { " · " + Pct.signed($0) } ?? ""))
+                Text(suffix).opacity(0.8)
+            }
+            .font(.footnote.weight(.semibold)).monospacedDigit()
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(change >= 0 ? Color.stockUp : .stockDown, in: .rect(cornerRadius: 6))
+        }
     }
 }
 
