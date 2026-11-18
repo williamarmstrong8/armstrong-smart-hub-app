@@ -114,7 +114,7 @@
       },
       "scenePhase": "active",
       "accessibilityReduceMotion": true,
-      "colorScheme": "light",
+      "colorScheme": "dark",
       "dynamicTypeSize": "large",
       "horizontalSizeClass": "compact",
       "verticalSizeClass": "regular",
