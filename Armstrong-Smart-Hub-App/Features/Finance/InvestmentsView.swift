@@ -12,6 +12,7 @@ struct InvestmentsView: View {
     @Environment(AppSession.self) private var session
     @State private var sort: HoldingSort = .value
     @State private var opened: Holding?
+    @State private var quotes = QuoteStore()
 
     var body: some View {
         ScrollView {
@@ -50,12 +51,20 @@ struct InvestmentsView: View {
         .hubPageStyle()
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .task { await store.load(api: session.api) }
+        .task {
+            await store.load(api: session.api)
+            await quotes.load(symbols: symbols)
+        }
         .refreshable {
             await finance.sync(api: session.api, toast: toast)
             await store.load(api: session.api)
+            await quotes.load(symbols: symbols)
         }
         .navigationDestination(item: $opened) { HoldingDetailView(holding: $0, total: store.response?.totals?.value ?? 0) }
+    }
+
+    private var symbols: [String] {
+        (store.response?.positions ?? []).filter { !$0.isCash }.map(\.symbol)
     }
 
     private func header(_ r: HoldingsResponse, _ t: HoldingsTotals) -> some View {
@@ -98,7 +107,7 @@ struct InvestmentsView: View {
                 }
                 .padding(.bottom, 8)
                 ForEach(sorted) { h in
-                    Button { opened = h } label: { HoldingRow(holding: h) }
+                    Button { opened = h } label: { HoldingRow(holding: h, quote: quotes.quotes[h.symbol]) }
                         .buttonStyle(.plain)
                     if h.id != sorted.last?.id { Divider().overlay(Fit.hairline) }
                 }
@@ -204,24 +213,28 @@ struct SymbolBadge: View {
 /// Apple Stocks-style row: symbol and name, a sparkline, then price over a filled change pill.
 private struct HoldingRow: View {
     let holding: Holding
+    let quote: Quote?
 
     var body: some View {
         let h = holding
-        // Per-share move today, like the Stocks app; falls back to the percent when shares are unknown.
-        let perShare: Double? = h.dayChange.flatMap { h.shares > 0 ? $0 / h.shares : nil }
-        let up = (h.dayChange ?? h.dayChangePct ?? 0) >= 0
+        let price = quote?.price ?? h.price
+        // Move since yesterday's close; without a live quote, the hub's per-share day change.
+        let change: Double? = quote?.change ?? h.dayChange.flatMap { h.shares > 0 ? $0 / h.shares : nil }
+        let pct: Double? = quote?.changePct ?? h.dayChangePct
+        let up = (change ?? pct ?? 0) >= 0
         let color: Color = up ? .stockUp : .stockDown
+        let line: [Double] = quote.map(\.series) ?? h.history.sorted { $0.day < $1.day }.map(\.value)
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(h.symbol).font(.system(size: 20, weight: .bold)).lineLimit(1)
                 Text(h.name).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            HoldingSparkline(points: h.history, color: color)
+            Sparkline(values: line, color: color, reference: quote?.previousClose)
                 .frame(width: 70, height: 34)
             VStack(alignment: .trailing, spacing: 4) {
-                Text(h.price.formatted(.number.precision(.fractionLength(2)))).font(.system(size: 18, weight: .semibold)).monospacedDigit()
-                Text(changeText(perShare, h.dayChangePct))
+                Text(price.formatted(.number.precision(.fractionLength(2)))).font(.system(size: 18, weight: .semibold)).monospacedDigit()
+                Text(changeText(change, pct))
                     .font(.system(size: 15, weight: .medium)).monospacedDigit()
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8).padding(.vertical, 3)
@@ -234,35 +247,88 @@ private struct HoldingRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func changeText(_ perShare: Double?, _ pct: Double?) -> String {
-        if let perShare {
-            return (perShare < 0 ? "-" : "+") + abs(perShare).formatted(.number.precision(.fractionLength(2)))
+    private func changeText(_ change: Double?, _ pct: Double?) -> String {
+        if let change {
+            return (change < 0 ? "-" : "+") + abs(change).formatted(.number.precision(.fractionLength(2)))
         }
         if let pct { return Pct.signed(pct) }
         return "—"
     }
 }
 
-/// The position's recent value as a small filled line, no axes.
-private struct HoldingSparkline: View {
-    let points: [SeriesPoint]
+/// Today's price move per symbol, from Yahoo's public chart endpoint (no key).
+struct Quote: Sendable {
+    let price: Double
+    let previousClose: Double
+    let series: [Double]
+    var change: Double { price - previousClose }
+    var changePct: Double? { previousClose > 0 ? price / previousClose - 1 : nil }
+}
+
+@MainActor @Observable
+final class QuoteStore {
+    private(set) var quotes: [String: Quote] = [:]
+
+    func load(symbols: [String]) async {
+        let unique = Array(Set(symbols))
+        let results = await withTaskGroup(of: (String, Quote?).self) { group in
+            for symbol in unique { group.addTask { (symbol, await Self.fetch(symbol)) } }
+            var out: [String: Quote] = [:]
+            for await (symbol, quote) in group { if let quote { out[symbol] = quote } }
+            return out
+        }
+        if !results.isEmpty { quotes.merge(results) { _, new in new } }
+    }
+
+    private struct Chart: Decodable {
+        struct Result: Decodable {
+            struct Meta: Decodable { let regularMarketPrice: Double?; let chartPreviousClose: Double? }
+            struct Indicators: Decodable { struct Q: Decodable { let close: [Double?]? }; let quote: [Q]? }
+            let meta: Meta
+            let indicators: Indicators?
+        }
+        struct Body: Decodable { let result: [Result]? }
+        let chart: Body
+    }
+
+    nonisolated private static func fetch(_ symbol: String) async -> Quote? {
+        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?range=1d&interval=5m") else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: 12)
+        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let result = try? JSONDecoder().decode(Chart.self, from: data).chart.result?.first,
+              let price = result.meta.regularMarketPrice,
+              let previous = result.meta.chartPreviousClose else { return nil }
+        let closes = (result.indicators?.quote?.first?.close ?? []).compactMap { $0 }
+        return Quote(price: price, previousClose: previous, series: closes.count >= 2 ? closes : [previous, price])
+    }
+}
+
+/// A small filled line with no axes; a dashed rule marks the reference (yesterday's close) when it's in range.
+private struct Sparkline: View {
+    let values: [Double]
     let color: Color
+    var reference: Double?
 
     var body: some View {
-        let days = points.sorted { $0.day < $1.day }
-        if days.count < 2 {
+        if values.count < 2 {
             Rectangle().fill(color.opacity(0.35)).frame(height: 1).frame(maxHeight: .infinity)
         } else {
-            let values = days.map(\.value)
-            let lo = values.min() ?? 0, hi = values.max() ?? 1
+            let lo = min(values.min() ?? 0, reference ?? .infinity), hi = max(values.max() ?? 1, reference ?? -.infinity)
             let pad = max((hi - lo) * 0.08, 0.0001)
             Chart {
-                ForEach(Array(days.enumerated()), id: \.offset) { i, d in
-                    AreaMark(x: .value("i", i), yStart: .value("Base", lo - pad), yEnd: .value("V", d.value))
+                ForEach(Array(values.enumerated()), id: \.offset) { i, v in
+                    AreaMark(x: .value("i", i), yStart: .value("Base", lo - pad), yEnd: .value("V", v))
                         .foregroundStyle(LinearGradient(colors: [color.opacity(0.35), color.opacity(0)], startPoint: .top, endPoint: .bottom))
-                    LineMark(x: .value("i", i), y: .value("V", d.value))
+                    LineMark(x: .value("i", i), y: .value("V", v))
                         .foregroundStyle(color)
                         .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                }
+                if let reference {
+                    RuleMark(y: .value("Prev", reference))
+                        .foregroundStyle(color.opacity(0.7))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 2]))
                 }
             }
             .chartXAxis(.hidden).chartYAxis(.hidden)
