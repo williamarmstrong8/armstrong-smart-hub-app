@@ -660,7 +660,107 @@
       "$type": "WorkoutStore",
       "home": {
         "$type": "WorkoutsHome",
-        "exercises": [],
+        "exercises": [
+          {
+            "$type": "Exercise",
+            "id": "bench-press-barbell",
+            "name": "Bench Press",
+            "muscle": "chest",
+            "equipment": "barbell",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "overhead-press-barbell",
+            "name": "Overhead Press",
+            "muscle": "shoulders",
+            "equipment": "barbell",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "chest-dip",
+            "name": "Dips",
+            "muscle": "triceps",
+            "equipment": "bodyweight",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "deadlift-barbell",
+            "name": "Deadlift",
+            "muscle": "lower_back",
+            "equipment": "barbell",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "pull-up",
+            "name": "Pull Up",
+            "muscle": "lats",
+            "equipment": "bodyweight",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "barbell-row",
+            "name": "Bent Over Row",
+            "muscle": "upper_back",
+            "equipment": "barbell",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "squat-barbell",
+            "name": "Squat",
+            "muscle": "quadriceps",
+            "equipment": "barbell",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "romanian-deadlift",
+            "name": "Romanian Deadlift",
+            "muscle": "hamstrings",
+            "equipment": "barbell",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "lat-pulldown",
+            "name": "Lat Pulldown",
+            "muscle": "lats",
+            "equipment": "cable",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "bicep-curl-dumbbell",
+            "name": "Bicep Curl",
+            "muscle": "biceps",
+            "equipment": "dumbbell",
+            "kind": "weight_reps",
+            "custom": false
+          },
+          {
+            "$type": "Exercise",
+            "id": "plank",
+            "name": "Plank",
+            "muscle": "abdominals",
+            "equipment": "bodyweight",
+            "kind": "duration",
+            "custom": false
+          }
+        ],
         "routines": [
           {
             "$type": "Routine",
@@ -1043,7 +1143,108 @@
       "maxHr": 188,
       "restEndsAt": null,
       "restTotal": 0,
-      "setTimer": null
+      "setTimer": null,
+      "exercises": [
+        {
+          "$type": "Exercise",
+          "id": "bench-press-barbell",
+          "name": "Bench Press",
+          "muscle": "chest",
+          "equipment": "barbell",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "overhead-press-barbell",
+          "name": "Overhead Press",
+          "muscle": "shoulders",
+          "equipment": "barbell",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "chest-dip",
+          "name": "Dips",
+          "muscle": "triceps",
+          "equipment": "bodyweight",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "deadlift-barbell",
+          "name": "Deadlift",
+          "muscle": "lower_back",
+          "equipment": "barbell",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "pull-up",
+          "name": "Pull Up",
+          "muscle": "lats",
+          "equipment": "bodyweight",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "barbell-row",
+          "name": "Bent Over Row",
+          "muscle": "upper_back",
+          "equipment": "barbell",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "squat-barbell",
+          "name": "Squat",
+          "muscle": "quadriceps",
+          "equipment": "barbell",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "romanian-deadlift",
+          "name": "Romanian Deadlift",
+          "muscle": "hamstrings",
+          "equipment": "barbell",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "lat-pulldown",
+          "name": "Lat Pulldown",
+          "muscle": "lats",
+          "equipment": "cable",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "bicep-curl-dumbbell",
+          "name": "Bicep Curl",
+          "muscle": "biceps",
+          "equipment": "dumbbell",
+          "kind": "weight_reps",
+          "custom": false
+        },
+        {
+          "$type": "Exercise",
+          "id": "plank",
+          "name": "Plank",
+          "muscle": "abdominals",
+          "equipment": "bodyweight",
+          "kind": "duration",
+          "custom": false
+        }
+      ]
     },
     "CheckinStore.shared": {
       "$type": "CheckinStore",
