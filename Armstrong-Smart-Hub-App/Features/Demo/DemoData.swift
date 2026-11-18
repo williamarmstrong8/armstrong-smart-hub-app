@@ -67,6 +67,7 @@ enum DemoHub {
         case "/api/mobile/habits": body = habitsResponse()
         case "/api/home": body = homeState()
         case "/api/mobile/me": body = ["id": "demo", "email": "alex@riverahome.net", "name": "Alex Rivera"]
+        case "/api/mobile/pi": body = piStatus()
         case "/api/mobile/action": body = action(req.httpBody)
         case "/api/mobile/fitness/feedback" where !isPost:
             // How a session felt: already answered, with the hub's guess beside it.
@@ -343,6 +344,24 @@ enum DemoHub {
             "goal": ["target": 1_000_000.0, "monthlyContribution": 2500.0, "annualReturnPct": 7.0],
             "customCategories": ["Climbing"],
             "quickCategories": ["out": ["Food & Drinks", "Groceries", "Transport"], "in": ["Income", "Transfers"]],
+        ]
+    }
+
+    // MARK: Pi
+
+    /// A healthy Pi: Home's badge reads "Pi healthy" and the detail page has every container up.
+    private static func piStatus() -> [String: Any] {
+        func container(_ name: String, _ up: String) -> [String: Any] {
+            ["name": name, "state": "running", "status": up, "health": "healthy", "image": name]
+        }
+        func service(_ name: String) -> [String: Any] { ["name": name, "up": true, "uptime24h": 100] }
+        return [
+            "available": true, "host": "armstrong-pi", "temperature": 47.5, "load": [0.42, 0.38, 0.35], "cores": 4,
+            "memory": ["usedMB": 3174, "totalMB": 7936], "swap": ["usedMB": 0, "totalMB": 2048],
+            "disk": ["usedGB": 41, "totalGB": 117], "uptimeSeconds": 518_400, "hubUptimeSeconds": 518_400,
+            "containers": [container("homeassistant", "Up 6 days"), container("jarvis", "Up 6 days"), container("plex", "Up 2 days"),
+                           container("uptime-kuma", "Up 6 days"), container("caddy", "Up 6 days")],
+            "services": ["Home Assistant", "Jarvis", "Plex", "Hub"].map(service),
         ]
     }
 
