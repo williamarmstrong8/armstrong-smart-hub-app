@@ -201,34 +201,81 @@ struct SymbolBadge: View {
     }
 }
 
+/// Apple Stocks-style row: symbol and name, a sparkline, then price over a filled change pill.
 private struct HoldingRow: View {
     let holding: Holding
 
     var body: some View {
+        let h = holding
+        // Per-share move today, like the Stocks app; falls back to the percent when shares are unknown.
+        let perShare: Double? = h.dayChange.flatMap { h.shares > 0 ? $0 / h.shares : nil }
+        let up = (h.dayChange ?? h.dayChangePct ?? 0) >= 0
+        let color: Color = up ? .stockUp : .stockDown
         HStack(spacing: 12) {
-            SymbolBadge(symbol: holding.symbol, assetClass: holding.assetClass)
             VStack(alignment: .leading, spacing: 2) {
-                Text(holding.name).font(.subheadline.weight(.medium)).lineLimit(1)
-                Text(holding.isCash
-                     ? "Cash · \(Pct.plain(holding.weight))"
-                     : "\(shareCount(holding.shares)) sh · \(Fmt.currency(holding.price)) · \(Pct.plain(holding.weight))")
-                    .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                Text(h.symbol).font(.system(size: 20, weight: .bold)).lineLimit(1)
+                Text(h.name).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(Fmt.currency(holding.marketValue)).font(.subheadline.weight(.semibold)).monospacedDigit()
-                if let pct = holding.gainPct, let gain = holding.gain {
-                    Text(Pct.signed(pct)).font(.caption.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(gain >= 0 ? Color.positive : .negative)
-                } else if holding.isCash {
-                    Text("Cash").font(.caption).foregroundStyle(.secondary)
-                }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HoldingSparkline(points: h.history, color: color)
+                .frame(width: 70, height: 34)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(h.price.formatted(.number.precision(.fractionLength(2)))).font(.system(size: 18, weight: .semibold)).monospacedDigit()
+                Text(changeText(perShare, h.dayChangePct))
+                    .font(.system(size: 15, weight: .medium)).monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .frame(minWidth: 76)
+                    .background(color, in: .rect(cornerRadius: 6))
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
     }
+
+    private func changeText(_ perShare: Double?, _ pct: Double?) -> String {
+        if let perShare {
+            return (perShare < 0 ? "-" : "+") + abs(perShare).formatted(.number.precision(.fractionLength(2)))
+        }
+        if let pct { return Pct.signed(pct) }
+        return "—"
+    }
+}
+
+/// The position's recent value as a small filled line, no axes.
+private struct HoldingSparkline: View {
+    let points: [SeriesPoint]
+    let color: Color
+
+    var body: some View {
+        let days = points.sorted { $0.day < $1.day }
+        if days.count < 2 {
+            Rectangle().fill(color.opacity(0.35)).frame(height: 1).frame(maxHeight: .infinity)
+        } else {
+            let values = days.map(\.value)
+            let lo = values.min() ?? 0, hi = values.max() ?? 1
+            let pad = max((hi - lo) * 0.08, 0.0001)
+            Chart {
+                ForEach(Array(days.enumerated()), id: \.offset) { i, d in
+                    AreaMark(x: .value("i", i), yStart: .value("Base", lo - pad), yEnd: .value("V", d.value))
+                        .foregroundStyle(LinearGradient(colors: [color.opacity(0.35), color.opacity(0)], startPoint: .top, endPoint: .bottom))
+                    LineMark(x: .value("i", i), y: .value("V", d.value))
+                        .foregroundStyle(color)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                }
+            }
+            .chartXAxis(.hidden).chartYAxis(.hidden)
+            .chartYScale(domain: (lo - pad)...(hi + pad))
+            .chartLegend(.hidden)
+        }
+    }
+}
+
+private extension Color {
+    /// Stocks-app red and green for the change pill and sparkline.
+    static let stockUp = Color(red: 0.19, green: 0.70, blue: 0.33)
+    static let stockDown = Color(red: 0.92, green: 0.30, blue: 0.24)
 }
 
 func shareCount(_ value: Double) -> String {
