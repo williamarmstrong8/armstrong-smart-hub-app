@@ -194,19 +194,20 @@ private struct TagCard: View {
             }
             .accessibilityElement(children: .combine)
 
-            HStack(spacing: 10) {
+            VStack(spacing: 6) {
                 Button { onTag(guess) } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: CategoryStyle.symbol(guess)).font(.subheadline)
+                    HStack(spacing: 8) {
+                        Image(systemName: CategoryStyle.symbol(guess))
                             .foregroundStyle(CategoryStyle.color(guess))
-                        Text(guess).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
-                        Spacer(minLength: 4)
-                        Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(HubDesign.action)
+                        Text(guess).lineLimit(1).minimumScaleFactor(0.75)
+                        Image(systemName: "checkmark").font(.subheadline.weight(.bold))
+                            .foregroundStyle(HubDesign.action)
                     }
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(HubDesign.ink)
-                    .padding(.horizontal, 14)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .glassGlare(.regular.tint(CategoryStyle.color(guess).opacity(0.18)).interactive(), in: .capsule)
+                    .padding(.horizontal, 18)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .glassGlare(.regular.tint(CategoryStyle.color(guess).opacity(0.22)).interactive(), in: .capsule)
                     .contentShape(.capsule)
                 }
                 .buttonStyle(CardPressStyle())
@@ -216,17 +217,18 @@ private struct TagCard: View {
                     Text("Something else")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(HubDesign.action)
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 12)
                         .frame(minHeight: 44)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-            }
 
-            if remaining > 1 {
-                Text("\(remaining - 1) more to tag")
-                    .font(.caption).foregroundStyle(BrickLook.soft).monospacedDigit()
+                if remaining > 1 {
+                    Text("\(remaining - 1) more to tag")
+                        .font(.caption).foregroundStyle(BrickLook.soft).monospacedDigit()
+                }
             }
+            .frame(maxWidth: .infinity)
         }
         .padding(HubLayout.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
