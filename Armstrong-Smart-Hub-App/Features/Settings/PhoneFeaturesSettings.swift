@@ -6,6 +6,7 @@ struct PhoneFeaturesSettings: View {
     @State private var health = HealthSync.shared
     @State private var briefing = HealthBriefing.shared
     @State private var places = PlaceMonitor.shared
+    @State private var gymPass = GymPass.shared
     @State private var workout = TodayWorkout.shared
     /// The place whose address is being typed in.
     @State private var searching: PlaceMonitor.Kind?
@@ -88,6 +89,9 @@ struct PhoneFeaturesSettings: View {
             }
             if places.places[.gym] != nil {
                 Toggle("Ask to start a workout at the gym", isOn: $places.gymPrompts)
+                if gymPass.code != nil {
+                    Toggle("Open my gym pass when I get there", isOn: $gymPass.autoOpen)
+                }
             }
             if let problem = places.problem {
                 Text(problem).font(.footnote).foregroundStyle(.red)
@@ -95,7 +99,7 @@ struct PhoneFeaturesSettings: View {
         } header: {
             Text("Places")
         } footer: {
-            Text("Type an address, or set a place while you're there. Getting home turns William's room lamp on and sends the evening check-in (after 3 pm; 9 pm if you were home all along). Arriving at the gym asks to start a workout; time at work and the gym goes in the night briefing. Needs location set to Always. Kept on this phone.")
+            Text("Type an address, or set a place while you're there. Getting home turns William's room lamp on and sends the evening check-in (after 3 pm; 9 pm if you were home all along). Arriving at the gym asks to start a workout, and opening the app there shows your gym pass; time at work and the gym goes in the night briefing. Needs location set to Always. Kept on this phone.")
         }
         .sheet(item: $searching) { kind in AddressSearchSheet(kind: kind) }
     }

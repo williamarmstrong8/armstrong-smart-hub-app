@@ -40,6 +40,7 @@ struct FitnessView: View {
         LazyVStack(spacing: HubLayout.sectionGap) {
             if watch.savedWatchID == nil {
                 AlcoholCard(fitness: store)
+                GymPassCard()
                 workoutsSection
             } else {
                 if let error = store.error, !store.loaded {
@@ -55,6 +56,8 @@ struct FitnessView: View {
                 BrickCard(padding: 0) {
                     OverviewList(store: store).padding(.horizontal, HubLayout.cardPadding)
                 }
+                // The key tag's barcode, by the workouts. It also opens by itself at the gym (GymPass).
+                GymPassCard()
                 // Keep the carousel's horizontal scroll targets together.
                 workoutsSection
                 syncStatus

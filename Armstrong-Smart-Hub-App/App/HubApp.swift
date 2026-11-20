@@ -65,6 +65,12 @@ struct HubApp: App {
                 .onChange(of: scenePhase) { _, p in if p == .background { watch.live.save() } }
                 // Drinks logged while the hub was out of reach.
                 .onChange(of: scenePhase) { _, p in if p == .active, session.isSignedIn { AlcoholStore.shared.sync() } }
+                // Opening the app at the gym puts the pass up, once a visit.
+                .onChange(of: scenePhase, initial: true) { _, p in
+                    if p == .active, session.isSignedIn, UIDevice.current.userInterfaceIdiom == .phone {
+                        GymPass.shared.showIfJustArrived()
+                    }
+                }
         }
         // iOS's background refreshes (BackgroundRefresh.schedule asks for them).
         .backgroundTask(.appRefresh(BackgroundRefresh.identifier)) {

@@ -9,7 +9,8 @@ import UserNotifications
 /// the app in the background on an arrival or departure.
 ///
 /// - Arriving at the gym with no workout going asks to start one; leaving with
-///   one still going asks to finish it.
+///   one still going asks to finish it. The first time the app comes to the
+///   front during a visit, the gym pass goes up (GymPass).
 /// - Every arrival and departure is kept (the last 60 days), so the evening
 ///   briefing can say how long you were at work or the gym.
 ///
@@ -245,6 +246,11 @@ final class PlaceMonitor {
         }
     }
 
+    /// The visit going on now at a place, if you're there.
+    func openVisit(_ kind: Kind) -> Visit? {
+        visits.last { $0.kind == kind && $0.left == nil }
+    }
+
     // MARK: Time at places
 
     /// Seconds spent at a place on a calendar day (visits clipped to the day).
@@ -278,8 +284,16 @@ final class PlaceMonitor {
 
     private func arrived(_ kind: Kind) {
         if kind == .home { arrivedHome() }
-        guard kind == .gym, gymPrompts, WorkoutStore.shared.active == nil else { return }
-        notify(category: Self.gymArrived, title: "At the gym", body: "Start a workout?")
+        guard kind == .gym else { return }
+        // Got there with the app open: the pass goes up now.
+        if UIApplication.shared.applicationState == .active { GymPass.shared.showIfJustArrived() }
+        guard gymPrompts, WorkoutStore.shared.active == nil else { return }
+        notify(category: Self.gymArrived, title: "At the gym", body: Self.gymArrivedBody)
+    }
+
+    /// The pass opens with the app, so the arrival says so when there is one.
+    private static var gymArrivedBody: String {
+        GymPass.shared.code == nil ? "Start a workout?" : "Your pass is ready. Start a workout?"
     }
 
     /// Home: William's room lamp on (through the hub, as the Home tab does) and the evening check-in.
@@ -335,8 +349,12 @@ final class PlaceMonitor {
             }
             return result
         case (.gym, true):
-            notify(category: Self.gymArrived, title: "At the gym", body: "Start a workout?", after: 5)
-            return "Gym notification in 5 seconds. Start workout really starts one; discard it after."
+            notify(category: Self.gymArrived, title: "At the gym", body: Self.gymArrivedBody, after: 5)
+            guard GymPass.shared.code != nil, GymPass.shared.autoOpen else {
+                return "Gym notification in 5 seconds. Start workout really starts one; discard it after."
+            }
+            GymPass.shared.armTest()
+            return "Gym notification in 5 seconds. Tap it, or leave the app and open it again within 2 minutes: your pass opens as it would at the gym. Start workout really starts one; discard it after."
         case (.gym, false):
             notify(category: Self.gymLeft, title: "Left the gym", body: "Your workout is still going. Finish it?", after: 5)
             return "Leaving-the-gym notification in 5 seconds."
@@ -357,7 +375,8 @@ final class PlaceMonitor {
     }
 
     /// A place notification answered. Gym: Start opens a new workout, a tap opens
-    /// the one going. Home (the lamp didn't come on): the Home tab, with the lights.
+    /// the one going, and on arrival the pass goes over either. Home (the lamp
+    /// didn't come on): the Home tab, with the lights.
     func handle(category: String, action: String) async {
         if category == Self.lampFailed {
             await CheckinReminders.route(.home)
@@ -370,5 +389,7 @@ final class PlaceMonitor {
         }
         await CheckinReminders.route(.fitness)
         if workouts.active != nil { workouts.isPresented = true }
+        // Just got there: the pass on top, to get in first; the workout is underneath once it's closed.
+        GymPass.shared.showIfJustArrived()
     }
 }
