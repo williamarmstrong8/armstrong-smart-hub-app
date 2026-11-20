@@ -74,12 +74,13 @@ struct HomeView: View {
                 habits.rollDay()
                 await store.poll(api: session.api)
             }
-            // The Pi card refreshes every minute while Home is open.
+            // The Pi card refreshes every minute while Home is open, and every 15 seconds while
+            // the Pi is out of reach, so it turns green again soon after the Pi is back.
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
                 while !Task.isCancelled {
                     await pi.load(api: session.api)
-                    try? await Task.sleep(for: .seconds(60))
+                    try? await Task.sleep(for: .seconds(pi.failures > 0 ? 15 : 60))
                 }
             }
             .task { if !habits.fetched { await habits.load(api: session.api) } }
@@ -225,10 +226,14 @@ struct HomeView: View {
     }
 
     /// The last known health (from the phone's copy until the hub answers); a redacted badge
-    /// of the same size before anything is known, so nothing below it moves.
+    /// of the same size before anything is known, so nothing below it moves. Once the hub
+    /// stops answering, a red "Can't reach the Pi" instead of a stale "Pi healthy".
     @ViewBuilder
     private var piBadge: some View {
-        if let status = pi.status {
+        if pi.unreachable {
+            NavigationLink { PiDetailView(pi: pi) } label: { badge(problem: "Can't reach the Pi") }
+                .buttonStyle(.plain)
+        } else if let status = pi.status {
             if status.available, let containers = status.containers, !containers.isEmpty {
                 NavigationLink { PiDetailView(pi: pi) } label: { dockerCheck(status, containers) }
                     .buttonStyle(.plain)
@@ -250,7 +255,11 @@ struct HomeView: View {
             if !bad.isEmpty { return bad.count == 1 ? "\(bad[0].name) is down" : "\(bad.count) containers down" }
             return nil
         }()
-        return HStack(spacing: 8) {
+        return badge(problem: problem)
+    }
+
+    private func badge(problem: String?) -> some View {
+        HStack(spacing: 8) {
             if problem != nil { Circle().fill(HubDesign.danger).frame(width: 8, height: 8) }
             Text(problem ?? "Pi healthy").font(.footnote).foregroundStyle(BrickLook.soft)
         }
@@ -267,9 +276,13 @@ struct HomeView: View {
                 message: "Set HEARTHBOARD_URL and HEARTHBOARD_TOKEN on the hub, then pull to refresh."
             )
         } else {
-            // Only what the hub itself reports: while it's out of reach the last state (or a
-            // skeleton) shows quietly and the next poll catches up.
-            if let error = store.state?.errors.entities, store.loadError == nil {
+            // A single missed poll stays quiet (the next one usually catches up); from the
+            // second, the lights say they're only the last known state.
+            if store.unreachable, let error = store.loadError {
+                ErrorBanner(message: store.entities.isEmpty ? error : "\(error) Showing the last known state.") {
+                    Task { await store.refresh(api: session.api) }
+                }
+            } else if let error = store.state?.errors.entities, store.loadError == nil {
                 ErrorBanner(message: store.entities.isEmpty ? error : "\(error) Showing the last known state.") {
                     Task { await store.refresh(api: session.api) }
                 }
@@ -289,7 +302,12 @@ struct HomeView: View {
 
             habitsSection
 
-            if let status = pi.status {
+            if pi.unreachable {
+                NavigationLink { PiDetailView(pi: pi) } label: {
+                    PiStatusCard(status: pi.status ?? .placeholder, unreachable: true, lastSeen: pi.lastSeen)
+                }
+                .buttonStyle(.plain)
+            } else if let status = pi.status {
                 if status.available {
                     NavigationLink { PiDetailView(pi: pi) } label: { PiStatusCard(status: status) }
                         .buttonStyle(.plain)

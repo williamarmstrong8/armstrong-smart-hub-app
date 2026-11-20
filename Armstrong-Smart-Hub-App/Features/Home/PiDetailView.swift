@@ -8,7 +8,11 @@ struct PiDetailView: View {
 
     var body: some View {
         ScrollView {
-            if let s = pi.status, s.available {
+            if pi.unreachable {
+                // The numbers the phone kept would look current, so they stay hidden.
+                MessageView(title: "Can't reach the Pi", systemImage: "wifi.exclamationmark",
+                            message: unreachableMessage)
+            } else if let s = pi.status, s.available {
                 VStack(alignment: .leading, spacing: HubLayout.sectionGap) {
                     header(s)
                     rings(s)
@@ -30,6 +34,12 @@ struct PiDetailView: View {
         .refreshable { await pi.load(api: session.api) }
         .task { await pi.load(api: session.api) }
         .hubPageStyle()
+    }
+
+    private var unreachableMessage: String {
+        let seen = PiStatusCard.ago(pi.lastSeen).map { "Last heard from it \($0). " } ?? ""
+        return seen + "The lights, TV and this page can't update until the phone can reach the hub on the Pi. "
+            + "Check that Tailscale is connected on this phone and on the Pi."
     }
 
     private func header(_ s: PiStatus) -> some View {

@@ -19,7 +19,14 @@ final class HomeStore {
         }
     }
     private(set) var loadError: String?
+    /// Polls in a row that failed. One miss is often the network waking up with the app, so
+    /// Home only warns from the second (about 8 seconds later).
+    private(set) var failures = 0
     private(set) var pending: Set<String> = []
+
+    /// The hub (on the Pi) hasn't answered the last two polls: the lights on screen are only
+    /// the last known state and switching them won't work.
+    var unreachable: Bool { failures >= 2 }
 
     private var overrides: [String: (patch: (inout HAEntity) -> Void, check: (HAEntity) -> Bool, until: Date)] = [:]
     private static let overrideSeconds: TimeInterval = 10
@@ -66,9 +73,11 @@ final class HomeStore {
             merged.automations = next.automations ?? state?.automations
             state = merged
             loadError = nil
+            failures = 0
         } catch is CancellationError {
         } catch {
             loadError = error.localizedDescription
+            failures += 1
         }
     }
 

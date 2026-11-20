@@ -33,8 +33,18 @@ final class PiStore {
     private(set) var busy: String?
     /// Whether `status` came from the hub this session (otherwise it's the copy on the phone).
     private(set) var fresh = false
+    /// Tries in a row that got no answer from the hub. The hub runs on the Pi, so then nothing
+    /// knows how the Pi is doing and `status` is only the last answer the phone kept.
+    private(set) var failures = 0
+    /// When the hub last answered, kept across launches so Home can say how long it's been.
+    private(set) var lastSeen: Date? = UserDefaults.standard.object(forKey: PiStore.lastSeenKey) as? Date
+
+    /// APIClient already retries a dropped request once, so a failed load means the Pi (or the
+    /// tailnet between it and the phone) is out of reach.
+    var unreachable: Bool { failures >= 1 }
 
     private static let cacheName = "pi"
+    private static let lastSeenKey = "pi.lastSeen"
 
     func load(api: APIClient) async {
         do {
@@ -43,9 +53,13 @@ final class PiStore {
             DiskCache.write(raw, Self.cacheName)
             fresh = true
             error = nil
+            failures = 0
+            lastSeen = .now
+            UserDefaults.standard.set(lastSeen, forKey: Self.lastSeenKey)
         } catch is CancellationError {
         } catch {
             self.error = error.localizedDescription
+            failures += 1
         }
     }
 
