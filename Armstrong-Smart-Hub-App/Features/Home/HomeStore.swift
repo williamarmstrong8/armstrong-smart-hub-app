@@ -114,13 +114,27 @@ final class HomeStore {
         state = s
     }
 
+    /// How long a switch waits for the Pi before it flips back. Home Assistant answers in well
+    /// under a second, so this only runs out when the Pi can't be reached.
+    private static let changeTimeout: TimeInterval = 15
+
+    /// While the Pi is out of reach a switch can't do anything, so it stays put and says so
+    /// (and checks again, in case the Pi just came back) instead of flipping on screen only.
+    private func blockedOffline(api: APIClient, toast: Toast) async -> Bool {
+        guard unreachable else { return false }
+        toast.error(APIError(message: "Can't reach the Pi, so this can't change. Check that Tailscale is connected on this phone and on the Pi."))
+        await refresh(api: api)
+        return true
+    }
+
     func toggle(_ entity: HAEntity, api: APIClient, toast: Toast) async {
+        if await blockedOffline(api: api, toast: toast) { return }
         let next = entity.isOn ? (entity.control == .lock ? "locked" : "off") : (entity.control == .lock ? "unlocked" : "on")
         patch(entity.id, { $0.state = next }, confirmedWhen: { $0.state == next })
         pending.insert(entity.id)
         defer { pending.remove(entity.id) }
         do {
-            let _: Empty? = try await api.run("toggleEntity", [.string(entity.id)])
+            let _: Empty? = try await api.run("toggleEntity", [.string(entity.id)], timeout: Self.changeTimeout)
         } catch {
             revert(entity)
             toast.error(error)
@@ -135,6 +149,7 @@ final class HomeStore {
     }
 
     func setLight(_ entity: HAEntity, _ change: LightChange, api: APIClient, toast: Toast) async {
+        if await blockedOffline(api: api, toast: toast) { return }
         patch(entity.id, { e in
             e.state = change.on == false ? "off" : "on"
             if let b = change.brightnessPct { e.brightness = Double(b) / 100 * 255 }
@@ -151,7 +166,7 @@ final class HomeStore {
         if let rgb = change.rgb { body["rgb"] = .array(rgb.map { .int($0) }) }
         if let k = change.kelvin { body["kelvin"] = .int(k) }
         do {
-            let _: Empty? = try await api.run("setLight", [.string(entity.id), .object(body)])
+            let _: Empty? = try await api.run("setLight", [.string(entity.id), .object(body)], timeout: Self.changeTimeout)
         } catch {
             revert(entity)
             toast.error(error)

@@ -72,13 +72,15 @@ final class APIClient: @unchecked Sendable {
     }
 
     /// Calls one of the web app's Server Actions by name, through /api/mobile/action.
-    func action<T: Decodable>(_ name: String, _ args: [JSONValue] = [], as: T.Type = T.self) async throws -> T {
-        try await send(request("/api/mobile/action", method: "POST", body: ActionBody(name: name, args: args), timeout: 60))
+    func action<T: Decodable>(_ name: String, _ args: [JSONValue] = [], as: T.Type = T.self,
+                              timeout: TimeInterval = 60) async throws -> T {
+        try await send(request("/api/mobile/action", method: "POST", body: ActionBody(name: name, args: args), timeout: timeout))
     }
 
     /// Like `action`, but unwraps `{ ok, data, error }` and throws the error text.
-    func run<T: Decodable>(_ name: String, _ args: [JSONValue] = [], as: T.Type = T.self) async throws -> T? {
-        let result: ActionResult<T> = try await action(name, args)
+    func run<T: Decodable>(_ name: String, _ args: [JSONValue] = [], as: T.Type = T.self,
+                           timeout: TimeInterval = 60) async throws -> T? {
+        let result: ActionResult<T> = try await action(name, args, timeout: timeout)
         if !result.ok { throw APIError(message: result.error ?? "That didn't work.") }
         return result.data
     }
