@@ -16,12 +16,17 @@ extension View {
                 // to a thin stroke. The square is wide enough to cover every edge at any turn, and
                 // the turn happens in `visualEffect`, so scrolling redraws the rim without running
                 // any view body.
-                Rectangle()
-                    .fill(AngularGradient(stops: GlassLight.rim, center: .center))
-                    .aspectRatio(1, contentMode: .fill)
-                    .scaleEffect(1.42)
-                    .visualEffect { content, proxy in
-                        content.rotationEffect(GlassLight.angle(for: proxy))
+                // The clear frame keeps the card's own size, so the mask draws the card's outline and
+                // not the oversized square's (which turned capsules into big circles).
+                Color.clear
+                    .overlay {
+                        Rectangle()
+                            .fill(AngularGradient(stops: GlassLight.rim, center: .center))
+                            .aspectRatio(1, contentMode: .fill)
+                            .scaleEffect(1.42)
+                            .visualEffect { content, proxy in
+                                content.rotationEffect(GlassLight.angle(for: proxy))
+                            }
                     }
                     .mask { shape.stroke(lineWidth: 1.4) }
                     .allowsHitTesting(false)
