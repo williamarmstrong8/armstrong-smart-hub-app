@@ -135,7 +135,7 @@ struct FinanceView: View {
 
         MonthBars(items: d.monthSpending.byCategory, currency: d.currency)
 
-        AccountsCard(accounts: d.accounts)
+        AccountsCard(accounts: d.accounts, live: holdings.liveBalances)
 
         if holdings.hasHoldings {
             InvestmentsCard(store: holdings) { group in
@@ -398,6 +398,8 @@ private struct ChangeTag: View {
 /// Accounts with their bank's logo and balance, folded away until opened.
 private struct AccountsCard: View {
     let accounts: [Account]
+    /// Investment accounts at today's prices, by id, in place of the balance from the last sync.
+    var live: [String: Double] = [:]
     @State private var open = false
 
     var body: some View {
@@ -426,7 +428,7 @@ private struct AccountsCard: View {
                             Text(a.institution).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
-                        Text(Fmt.compact(a.isLiability ? -a.magnitude : a.rawBalance, a.currency))
+                        Text(Fmt.compact(a.isLiability ? -a.magnitude : (live[a.id] ?? a.rawBalance), a.currency))
                             .font(.subheadline.weight(.semibold)).monospacedDigit()
                             .foregroundStyle(a.isLiability ? Color.negative : .primary)
                     }

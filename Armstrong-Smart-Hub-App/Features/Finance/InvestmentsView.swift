@@ -70,7 +70,7 @@ struct InvestmentsView: View {
                     .foregroundStyle(day >= 0 ? Color.stockUp : .stockDown)
             }
             if p.gainPct != nil {
-                Text(Fmt.signed(p.gain) + (p.gainPct.map { " (\(Pct.signed($0)))" } ?? "") + " all time")
+                Text(Fmt.signed(p.gain) + (p.gainPct.map { " (\(Pct.signed($0)))" } ?? "") + " since bought")
                     .font(.footnote).monospacedDigit().foregroundStyle(.secondary)
             }
         }
@@ -299,7 +299,8 @@ func shareCount(_ value: Double) -> String {
     value.formatted(.number.precision(.fractionLength(0...3)))
 }
 
-/// Portfolio (or one position) value per day, from the hub's daily snapshots.
+/// Portfolio (or one position) value per day: today's shares at each day's public
+/// close, back five years, or the sync snapshots when past prices couldn't load.
 struct HoldingLineChart: View {
     let points: [SeriesPoint]
     let color: Color
@@ -307,9 +308,26 @@ struct HoldingLineChart: View {
     var compact = false
 
     @State private var selected: Date?
+    @State private var window = 365
+
+    /// The windows on offer, in days, and what each is called.
+    private static let windows = [30, 90, 365, 1825]
+    nonisolated private static func name(_ days: Int) -> String {
+        switch days {
+        case ..<60: "1M"
+        case ..<180: "3M"
+        case ..<1000: "1Y"
+        default: "5Y"
+        }
+    }
 
     var body: some View {
-        let days = points.map { DayValue(date: $0.day, value: $0.value) }.sorted { $0.date < $1.date }
+        let all = points.map { DayValue(date: $0.day, value: $0.value) }.sorted { $0.date < $1.date }
+        let span = all.count >= 2 ? all.last!.date.timeIntervalSince(all.first!.date) / 86_400 : 0
+        // Each window that shows more than the one before it; past prices cover them all.
+        let offered = Self.windows.enumerated().filter { i, _ in i == 0 || span > Double(Self.windows[i - 1]) + 7 }.map(\.element)
+        let chosenWindow = offered.contains(window) ? window : (offered.last ?? window)
+        let days = offered.count > 1 ? Self.trim(all, to: chosenWindow) : all
         if days.count < 2, compact {
             EmptyView()
         } else if days.count < 2 {
@@ -318,7 +336,7 @@ struct HoldingLineChart: View {
                     Text(Fmt.compact(only.value)).font(Fit.value)
                     Text(only.date.formatted(.dateTime.month(.abbreviated).day())).font(.caption).foregroundStyle(.secondary)
                 }
-                Text("The chart fills in a day at a time: each sync records what every position is worth.")
+                Text("Past prices couldn't load, so the chart fills in a day at a time with each sync.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
         } else {
@@ -326,10 +344,13 @@ struct HoldingLineChart: View {
             let shown = chosen ?? days.last!
             let first = days.first!.value
             let scale = ChartScale(low: days.map(\.value).min() ?? 0, high: days.map(\.value).max() ?? 1)
+            // Over most of a year, days need their year and the axis reads in months.
+            let long = days.last!.date.timeIntervalSince(days.first!.date) > 200 * 86_400
+            let dayText: (Date) -> String = { long ? $0.formatted(.dateTime.month(.abbreviated).day().year()) : $0.formatted(.dateTime.month(.abbreviated).day()) }
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     if compact && chosen == nil {
-                        Text("Since " + days.first!.date.formatted(.dateTime.month(.abbreviated).day())).font(Fit.label).foregroundStyle(Fit.muted)
+                        Text("Since " + dayText(days.first!.date)).font(Fit.label).foregroundStyle(Fit.muted)
                     } else {
                         Text(Fmt.compact(shown.value)).font(Fit.value)
                     }
@@ -339,7 +360,7 @@ struct HoldingLineChart: View {
                             .foregroundStyle(change >= 0 ? Color.positive : .negative)
                     }
                     Spacer()
-                    Text(shown.date.formatted(.dateTime.month(.abbreviated).day())).font(Fit.label).foregroundStyle(Fit.muted)
+                    Text(dayText(shown.date)).font(Fit.label).foregroundStyle(Fit.muted)
                 }
                 ChartContainer(height: 160) { plotWidth in
                     let ticks = ChartTicks.fit(days.map(\.date), width: plotWidth, labelWidth: 52)
@@ -360,12 +381,30 @@ struct HoldingLineChart: View {
                         }
                     }
                     .chartXSelection(value: $selected)
-                    .glassXLabels(ticks, active: ChartTicks.nearest(ticks, to: chosen?.date)) { $0.formatted(.dateTime.month(.abbreviated).day()) }
+                    .glassXLabels(ticks, active: ChartTicks.nearest(ticks, to: chosen?.date)) {
+                        long ? $0.formatted(.dateTime.month(.abbreviated).year(.twoDigits)) : $0.formatted(.dateTime.month(.abbreviated).day())
+                    }
                     .glassYAxis(scale) { Fmt.axis($0) }
                 }
                 .padding(.bottom, 24)
+                if offered.count > 1 {
+                    PeriodPicker(days: Binding(get: { chosenWindow }, set: { window = $0; selected = nil }),
+                                 options: offered, label: Self.name)
+                }
             }
         }
+    }
+
+    /// The days inside the window, thinned to about two hundred so a five-year line stays light.
+    private static func trim(_ all: [DayValue], to window: Int) -> [DayValue] {
+        guard let last = all.last else { return all }
+        let start = last.date.addingTimeInterval(-Double(window) * 86_400)
+        let inside = all.filter { $0.date >= start }
+        guard inside.count > 2 else { return Array(all.suffix(2)) }
+        let step = max(1, inside.count / 200)
+        guard step > 1 else { return inside }
+        // Count back from the newest so today always stays.
+        return inside.enumerated().filter { (inside.count - 1 - $0.offset) % step == 0 }.map(\.element)
     }
 }
 
@@ -426,7 +465,10 @@ struct HoldingDetailView: View {
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .glassEffect(.regular, in: .capsule)
                 }
-                Card(title: "Value") { HoldingLineChart(points: h.history, color: AssetClassColor.of(h.assetClass)) }
+                // Cash has no price to chart.
+                if !h.isCash || h.history.count >= 2 {
+                    Card(title: "Value") { HoldingLineChart(points: h.history, color: AssetClassColor.of(h.assetClass)) }
+                }
                 Card(title: "Details") {
                     let stats: [(String, String)] = [
                         ("Shares", shareCount(h.shares)),

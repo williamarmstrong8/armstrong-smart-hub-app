@@ -419,6 +419,7 @@ struct MiniTrend: View {
 struct PeriodPicker: View {
     @Binding var days: Int
     var options: [Int] = [7, 30, 90]
+    var label: (Int) -> String = { $0 >= 365 ? "1Y" : "\($0)D" }
 
     var body: some View {
         HStack(spacing: 18) {
@@ -427,7 +428,7 @@ struct PeriodPicker: View {
                     withAnimation(.smooth) { days = option }
                 } label: {
                     VStack(spacing: 4) {
-                        Text(option >= 365 ? "1Y" : "\(option)D").font(Fit.label.weight(days == option ? .semibold : .regular))
+                        Text(label(option)).font(Fit.label.weight(days == option ? .semibold : .regular))
                             .foregroundStyle(days == option ? Color.primary : Fit.muted)
                         Capsule().fill(days == option ? Color.primary : .clear).frame(width: 18, height: 2)
                     }

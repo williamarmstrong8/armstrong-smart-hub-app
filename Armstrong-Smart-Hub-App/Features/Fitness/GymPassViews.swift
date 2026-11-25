@@ -65,6 +65,15 @@ struct GymPassCard: View {
         if Demo.isOn {
             EmptyView()
         } else if let code = pass.code {
+            // The pass only shows while you're at the gym.
+            if places.inside.contains(.gym) { passButton(code) }
+        } else {
+            addButton
+        }
+    }
+
+    private func passButton(_ code: String) -> some View {
+        Group {
             Button { pass.show() } label: {
                 BrickCard {
                     VStack(alignment: .leading, spacing: 14) {
@@ -72,7 +81,7 @@ struct GymPassCard: View {
                             Image(systemName: "barcode").font(.system(size: 20, weight: .light))
                             Text("Gym pass").font(.headline)
                             Spacer(minLength: 8)
-                            Text(places.inside.contains(.gym) ? "At the gym" : "Show")
+                            Text("At the gym")
                                 .font(.subheadline)
                                 .foregroundStyle(HubDesign.action)
                         }
@@ -85,14 +94,18 @@ struct GymPassCard: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Gym pass, \(code)")
             .accessibilityHint("Shows the pass full screen for the scanner")
-        } else {
+        }
+    }
+
+    private var addButton: some View {
+        Group {
             Button { adding = true } label: {
                 BrickCard {
                     HStack(spacing: 12) {
                         Image(systemName: "barcode").font(.system(size: 20, weight: .light))
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Add your gym pass").font(.headline)
-                            Text("It opens by itself when you get to the gym.")
+                            Text("It shows up when you get to the gym.")
                                 .font(.subheadline).foregroundStyle(BrickLook.soft)
                         }
                         Spacer(minLength: 8)
