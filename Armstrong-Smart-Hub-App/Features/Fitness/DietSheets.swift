@@ -4,12 +4,15 @@ import SwiftUI
 enum DietSheet: Identifiable {
     /// A new meal (nil) or one to edit.
     case meal(Meal?)
+    /// A new meal filled in from an idea.
+    case draft(Meal)
     /// How he feels: about a meal or not, new or one to edit.
     case feeling(mealID: String?, check: GutCheck?)
 
     var id: String {
         switch self {
         case let .meal(meal): "meal.\(meal?.id ?? "new")"
+        case let .draft(meal): "draft.\(meal.id)"
         case let .feeling(mealID, check): "feeling.\(check?.id ?? mealID ?? "new")"
         }
     }
@@ -17,6 +20,7 @@ enum DietSheet: Identifiable {
     @MainActor @ViewBuilder var view: some View {
         switch self {
         case let .meal(meal): MealSheet(meal: meal)
+        case let .draft(meal): MealSheet(meal: nil, draft: meal)
         case let .feeling(mealID, check): FeelingSheet(mealID: mealID, check: check)
         }
     }
@@ -115,14 +119,16 @@ struct MealSheet: View {
     @State private var confirmDelete = false
     @FocusState private var searching: Bool
 
-    init(meal: Meal?) {
+    /// Edits `meal`, or starts a new one, filled in from `draft` when there is one.
+    init(meal: Meal?, draft: Meal? = nil) {
         editing = meal
+        let start = meal ?? draft
         let now = Date.now
-        _at = State(initialValue: meal?.at ?? now)
-        _slot = State(initialValue: meal?.slot ?? .of(now))
-        _foods = State(initialValue: meal?.foods ?? [])
-        _note = State(initialValue: meal?.note ?? "")
-        _slotPicked = State(initialValue: meal != nil)
+        _at = State(initialValue: start?.at ?? now)
+        _slot = State(initialValue: start?.slot ?? .of(now))
+        _foods = State(initialValue: start?.foods ?? [])
+        _note = State(initialValue: start?.note ?? "")
+        _slotPicked = State(initialValue: start != nil)
     }
 
     private var canSave: Bool { !foods.isEmpty || !note.trimmingCharacters(in: .whitespaces).isEmpty }

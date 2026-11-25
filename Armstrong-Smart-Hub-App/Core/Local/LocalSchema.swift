@@ -180,6 +180,19 @@ nonisolated enum LocalSchema {
         );
         create unique index if not exists diet_foods_name on diet_foods (lower(name));
         """,
+        // 8: the kitchen: foods he has, mostly from imported grocery receipts. A food is in
+        // stock until gone_at is set; checked_at is when he last said he still has it.
+        """
+        create table if not exists diet_receipts (
+          id text primary key, store text, purchased_at text, imported_at text not null, items integer not null default 0
+        );
+        create table if not exists diet_pantry (
+          id text primary key, name text not null, line text, food_id text, source text not null,
+          receipt_id text references diet_receipts (id) on delete set null,
+          added_at text not null, checked_at text, gone_at text
+        );
+        create index if not exists diet_pantry_food on diet_pantry (food_id);
+        """,
     ]
 
     static func migrate(_ db: LocalDB) {

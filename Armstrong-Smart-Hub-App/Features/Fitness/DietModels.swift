@@ -280,7 +280,7 @@ enum LowFodmap {
         f("tofu-firm", "Firm tofu", .protein, .low, tip: "Firm tofu is low; silken tofu is high in GOS.", aka: ["tofu"]),
         f("tempeh", "Tempeh", .protein, .low),
         f("tofu-silken", "Silken tofu", .protein, .high, [.gos]),
-        f("sausage", "Sausage or deli meat", .protein, .moderate, [.fructans], tip: "Depends on the recipe: many have garlic, onion or wheat.", aka: ["hot dog", "salami", "chorizo"]),
+        f("sausage", "Sausage or deli meat", .protein, .moderate, [.fructans], tip: "Depends on the recipe: many have garlic, onion or wheat.", aka: ["sausage", "hot dog", "salami", "chorizo"]),
 
         // Dairy & alternatives
         f("lf-milk", "Lactose-free milk", .dairy, .low),
@@ -329,7 +329,7 @@ enum LowFodmap {
 
         // Sauces, oils & seasoning
         f("olive-oil", "Olive oil and other oils", .condiments, .low, aka: ["oil", "avocado oil", "canola oil"]),
-        f("garlic-oil", "Garlic-infused oil", .condiments, .low, tip: "Garlic flavor without the fructans."),
+        f("garlic-oil", "Garlic-infused oil", .condiments, .low, tip: "Garlic flavor without the fructans.", aka: ["garlic oil"]),
         f("soy-sauce", "Soy sauce", .condiments, .low, aka: ["tamari"]),
         f("mayo", "Mayonnaise", .condiments, .low, aka: ["mayo"]),
         f("mustard", "Mustard", .condiments, .low),
@@ -344,7 +344,7 @@ enum LowFodmap {
         f("bbq", "BBQ sauce", .condiments, .high, [.fructans, .fructose]),
         f("pesto", "Pesto", .condiments, .high, [.fructans]),
         f("pasta-sauce", "Jarred pasta sauce", .condiments, .high, [.fructans], tip: "Onion and garlic; look for a low-FODMAP certified one.", aka: ["marinara", "tomato sauce"]),
-        f("stock", "Stock or broth", .condiments, .high, [.fructans], tip: "Regular stock has onion and garlic; use a low-FODMAP one.", aka: ["broth", "bouillon", "soup"]),
+        f("stock", "Stock or broth", .condiments, .high, [.fructans], tip: "Regular stock has onion and garlic; use a low-FODMAP one.", aka: ["broth", "bouillon", "soup", "chicken broth", "bone broth", "vegetable broth", "chicken stock"]),
         f("gravy", "Gravy", .condiments, .high, [.fructans]),
         f("guacamole", "Guacamole", .condiments, .high, [.sorbitol, .fructans]),
 

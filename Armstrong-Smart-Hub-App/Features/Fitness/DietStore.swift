@@ -29,8 +29,12 @@ final class DietStore {
     private var skipped: Set<String>
     /// A meal a notification asked to answer about in the app; the Diet card opens it.
     var askAbout: String?
+    /// Foods in stock in his kitchen, newest first (DietPantry.swift).
+    var pantry: [PantryItem] = []
+    /// Imported receipts, newest first.
+    var receipts: [DietReceipt] = []
 
-    private var db: LocalDB? { Demo.isOn ? nil : LocalDB.shared }
+    var db: LocalDB? { Demo.isOn ? nil : LocalDB.shared }
 
     init() {
         skipped = Set(UserDefaults.standard.stringArray(forKey: Self.skippedKey) ?? [])
@@ -79,6 +83,7 @@ final class DietStore {
         plan = settings["diet.plan"].flatMap(DietPlan.init(rawValue:)) ?? .lowFodmap
         phase = settings["diet.phase"].flatMap(DietPhase.init(rawValue:)) ?? .elimination
         phaseSince = settings["diet.phase_since"]
+        loadPantry()
     }
 
     private static func groups(_ value: Any?) -> [FodmapGroup] {

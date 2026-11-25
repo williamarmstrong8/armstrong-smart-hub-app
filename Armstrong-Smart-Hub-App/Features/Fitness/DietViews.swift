@@ -15,9 +15,12 @@ struct DietCard: View {
             VStack(alignment: .leading, spacing: 16) {
                 NavigationLink(value: FitnessPage.diet) { header }
                     .buttonStyle(.plain)
-                // Re-asks as meals age into (and out of) the window.
+                // Re-asks as meals age into (and out of) the window, and moves the ideas on to the next meal.
                 TimelineView(.periodic(from: .now, by: 60)) { context in
-                    if let meal = store.awaitingCheck(now: context.date) { prompt(meal) } else { today }
+                    VStack(alignment: .leading, spacing: 16) {
+                        if let meal = store.awaitingCheck(now: context.date) { prompt(meal) } else { today }
+                        ideas(now: context.date)
+                    }
                 }
                 HStack(spacing: 10) {
                     DietCardButton(title: "Log a meal", symbol: "fork.knife", primary: true) { sheet = .meal(nil) }
@@ -74,6 +77,31 @@ struct DietCard: View {
         .padding(.top, 2)
         .transition(.opacity)
         .sensoryFeedback(.success, trigger: store.check(for: meal.id) != nil)
+    }
+
+    /// The top two low-FODMAP ideas for the next meal, from what's in the kitchen.
+    private func ideas(now: Date) -> some View {
+        let slot = DietIdeas.upcoming(store, now: now)
+        let picks = DietIdeas.suggest(store, slot: slot, now: now, limit: 2)
+        let late = slot == .snack && DietIdeas.isLate(now)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                BrickCaps(text: late ? "Ideas for a late snack" : "Ideas for \(slot.title.lowercased())").foregroundStyle(BrickLook.soft)
+                Spacer(minLength: 8)
+                NavigationLink(value: FitnessPage.diet) {
+                    Text("More").font(.footnote.weight(.semibold)).foregroundStyle(Fit.action)
+                        .frame(minHeight: HubLayout.minHitTarget)
+                }
+                .buttonStyle(.plain)
+            }
+            ForEach(picks) { pick in
+                Button { sheet = .draft(DietIdeas.draft(pick, slot: slot, at: now)) } label: {
+                    IdeaLine(pick: pick, showsHave: !store.pantry.isEmpty)
+                }
+                .buttonStyle(.plain)
+                if pick.id != picks.last?.id { BrickDivider() }
+            }
+        }
     }
 
     /// Today's meals, one line each, with how he felt after.
@@ -157,14 +185,17 @@ struct DietPage: View {
     @State private var store = DietStore.shared
     @State private var sheet: DietSheet?
     @State private var changingStart = false
+    @State private var importing = false
 
     var body: some View {
         let insights = DietInsights(store: store)
         FitPage(title: "Diet") {
             plan
+            IdeasSection(store: store, sheet: $sheet)
             FitSection(title: "Today", trailing: Date.now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) {
                 DietDayLog(store: store, day: localDay(), sheet: $sheet)
             }
+            kitchen
             if !store.checks.isEmpty { felt }
             foodsToWatch(insights)
             if !insights.agreeable.isEmpty { agreeable(insights) }
@@ -179,6 +210,45 @@ struct DietPage: View {
         }
         .sheet(item: $sheet) { $0.view }
         .sheet(isPresented: $changingStart) { PhaseStartSheet() }
+        .sheet(isPresented: $importing) { ReceiptImportSheet() }
+    }
+
+    // MARK: Kitchen
+
+    /// What he has: a few foods, the last receipt, and the way to import one.
+    private var kitchen: some View {
+        let fresh = store.freshPantry
+        let low = fresh.filter { item in item.foodID.flatMap(store.food)?.level == .low }.count
+        let trailing = store.receipts.first.map { "Last: \($0.title)" }
+        return FitSection(title: "Your kitchen", trailing: trailing) {
+            if fresh.isEmpty {
+                Takeaway(text: "Import a grocery receipt (a scan, a screenshot of your Whole Foods order, a PDF or the email's text) and the meal ideas use what you have.")
+            } else {
+                Text("\(fresh.count) foods, \(low) of them low FODMAP").font(.subheadline).foregroundStyle(BrickLook.ink)
+                FlowLayout(spacing: 6) {
+                    ForEach(fresh.prefix(12)) { item in
+                        HStack(spacing: 5) {
+                            FodmapDot(level: item.foodID.flatMap(store.food)?.level ?? .unknown, size: 7)
+                            Text(item.name).font(.caption.weight(.medium)).foregroundStyle(BrickLook.ink).lineLimit(1)
+                        }
+                        .padding(.horizontal, 10).frame(minHeight: 28)
+                        .glassGlare(.regular, in: .capsule)
+                    }
+                }
+            }
+            HStack(spacing: 10) {
+                DietCardButton(title: "Import receipt", symbol: "doc.text.viewfinder", primary: fresh.isEmpty) { importing = true }
+                if !store.pantry.isEmpty {
+                    NavigationLink { PantryPage() } label: {
+                        Label("Kitchen", systemImage: "refrigerator")
+                            .font(.body.weight(.semibold)).foregroundStyle(BrickLook.ink)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .glassGlare(.regular.interactive(), in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     /// "Low FODMAP · Elimination, day 3".
