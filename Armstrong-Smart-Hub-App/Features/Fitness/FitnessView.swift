@@ -40,6 +40,7 @@ struct FitnessView: View {
         LazyVStack(spacing: HubLayout.sectionGap) {
             if watch.savedWatchID == nil {
                 AlcoholCard(fitness: store)
+                DietCard().id(AppRouter.Card.diet)
                 GymPassCard()
                 workoutsSection
             } else {
@@ -52,6 +53,8 @@ struct FitnessView: View {
                     AlcoholCard(fitness: store)
                     today
                 }
+                // What he eats and how he feels after (DietViews.swift).
+                DietCard().id(AppRouter.Card.diet)
                 // Live updates stay inside individual overview rows.
                 BrickCard(padding: 0) {
                     OverviewList(store: store).padding(.horizontal, HubLayout.cardPadding)

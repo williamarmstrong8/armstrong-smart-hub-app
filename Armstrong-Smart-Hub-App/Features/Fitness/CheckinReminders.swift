@@ -111,6 +111,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             PlaceMonitor.notificationCategory,
             HealthBriefing.notificationCategory,
             LifeContext.notificationCategory,
+            DietStore.notificationCategory,
         ]).union(options))
     }
 
@@ -289,6 +290,11 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
             await Self.route(.fitness, card: .briefing)
             return
         }
+        if category.hasPrefix(DietStore.categoryPrefix) {
+            let meal = content.userInfo["meal"] as? String
+            await DietStore.shared.answer(action: action, mealID: meal)
+            return
+        }
         guard category == Self.category || category == Self.guessCategory || category.hasPrefix(Self.optionsPrefix), let day else { return }
         if content.userInfo["test"] as? Bool == true {
             switch action {
@@ -322,7 +328,7 @@ final class CheckinReminders: NSObject, UNUserNotificationCenterDelegate {
         let category = notification.request.content.categoryIdentifier
         let shown = [Self.category, Self.guessCategory, HealthBriefing.category, "jarvis"].contains(category)
             || category.hasPrefix(PlaceMonitor.categoryPrefix) || category.hasPrefix(Self.optionsPrefix)
-            || category.hasPrefix(LifeContext.categoryPrefix)
+            || category.hasPrefix(LifeContext.categoryPrefix) || category.hasPrefix(DietStore.categoryPrefix)
         return shown ? [.banner, .sound] : []
     }
 

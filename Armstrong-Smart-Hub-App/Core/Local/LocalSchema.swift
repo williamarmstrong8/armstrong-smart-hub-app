@@ -152,6 +152,34 @@ nonisolated enum LocalSchema {
         create table if not exists home_visible (entity_id text primary key);
         create table if not exists settings (key text primary key, value text not null);
         """,
+        // 7: the diet log: meals and their foods (with the FODMAP rating they had when logged),
+        // how he felt after (a check with no symptoms is "felt fine"), and foods of his own.
+        """
+        create table if not exists diet_meals (
+          id text primary key, at text not null, day text not null, slot text not null, note text,
+          logged_at text not null, updated_at text not null
+        );
+        create index if not exists diet_meals_at on diet_meals (at desc);
+        create table if not exists diet_meal_foods (
+          meal_id text not null references diet_meals (id) on delete cascade, position integer not null,
+          food_id text, name text not null, fodmap text not null, groups text,
+          primary key (meal_id, position)
+        );
+        create table if not exists diet_checks (
+          id text primary key, meal_id text references diet_meals (id) on delete set null,
+          at text not null, day text not null, note text, updated_at text not null
+        );
+        create index if not exists diet_checks_at on diet_checks (at desc);
+        create table if not exists diet_symptoms (
+          check_id text not null references diet_checks (id) on delete cascade, symptom text not null,
+          severity integer not null, primary key (check_id, symptom)
+        );
+        create table if not exists diet_foods (
+          id text primary key, name text not null, fodmap text not null default 'unknown', groups text,
+          created_at text not null
+        );
+        create unique index if not exists diet_foods_name on diet_foods (lower(name));
+        """,
     ]
 
     static func migrate(_ db: LocalDB) {

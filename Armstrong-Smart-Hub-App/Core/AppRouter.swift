@@ -9,7 +9,7 @@ import Observation
 final class AppRouter {
     static let shared = AppRouter()
 
-    enum Card: String { case checkin, briefing }
+    enum Card: String { case checkin, briefing, diet }
 
     struct Request: Equatable {
         var tab: HubTab

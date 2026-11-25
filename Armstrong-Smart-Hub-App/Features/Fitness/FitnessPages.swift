@@ -6,7 +6,7 @@ import SwiftUI
 /// inputs behind it, a trend and the details, divided by hairlines. The
 /// visual kit is in FitnessDesign.swift.
 enum FitnessPage: Hashable {
-    case readiness, recovery, strain, sleep, heart, energy, training, health, alcohol
+    case readiness, recovery, strain, sleep, heart, energy, training, health, alcohol, diet
 
     var title: String {
         switch self {
@@ -19,6 +19,7 @@ enum FitnessPage: Hashable {
         case .training: "Fitness"
         case .health: "Health"
         case .alcohol: "Alcohol"
+        case .diet: "Diet"
         }
     }
 
@@ -33,6 +34,7 @@ enum FitnessPage: Hashable {
         case .training: TrainingPage(store: store)
         case .health: HealthPage(store: store)
         case .alcohol: AlcoholPage(store: store)
+        case .diet: DietPage()
         }
     }
 }
