@@ -193,6 +193,10 @@ nonisolated enum LocalSchema {
         );
         create index if not exists diet_pantry_food on diet_pantry (food_id);
         """,
+        // 9: why one of his own foods has the rating it has ("Rated from what's in it: onion.").
+        """
+        alter table diet_foods add column tip text;
+        """,
     ]
 
     static func migrate(_ db: LocalDB) {

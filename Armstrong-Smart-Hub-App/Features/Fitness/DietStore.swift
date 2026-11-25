@@ -70,10 +70,10 @@ final class DietStore {
             return GutCheck(id: id, at: at, mealID: r["meal_id"] as? String, symptoms: symptoms[id] ?? [:], note: r["note"] as? String)
         }
 
-        customFoods = db.query("select id, name, fodmap, groups from diet_foods order by name collate nocase").compactMap { r in
+        customFoods = db.query("select id, name, fodmap, groups, tip from diet_foods order by name collate nocase").compactMap { r in
             guard let id = r["id"] as? String, let name = r["name"] as? String else { return nil }
             return DietFood(id: id, name: name, category: nil, level: FodmapLevel(rawValue: r["fodmap"] as? String ?? "") ?? .unknown,
-                            groups: Self.groups(r["groups"]))
+                            groups: Self.groups(r["groups"]), tip: r["tip"] as? String)
         }
 
         let settings = Dictionary(db.query("select key, value from settings where key like 'diet.%'").compactMap { r -> (String, String)? in
@@ -84,6 +84,7 @@ final class DietStore {
         phase = settings["diet.phase"].flatMap(DietPhase.init(rawValue:)) ?? .elimination
         phaseSince = settings["diet.phase_since"]
         loadPantry()
+        Task { await rateUnratedFoods() }
     }
 
     private static func groups(_ value: Any?) -> [FodmapGroup] {
@@ -161,24 +162,100 @@ final class DietStore {
         }
     }
 
-    /// A food of his own, kept so it comes up next time. Not rated until he says otherwise.
+    /// What adding a typed name would give: the guide's food when he typed its name,
+    /// else a rating from the guide foods in it ("pickled beets" is beets), else nil
+    /// (the phone's model rates it once it's added).
+    func preview(_ name: String) -> DietFood? {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let food = guideFood(named: clean) { return food }
+        return LowFodmap.estimate(clean)
+    }
+
+    private func guideFood(named name: String) -> DietFood? {
+        plan.foods.first { $0.name.caseInsensitiveCompare(name) == .orderedSame } ?? plan.foods.first { $0.isNamed(name) }
+    }
+
+    /// A food of his own, kept so it comes up next time, rated from the guide foods
+    /// in its name, or by the phone's model when there are none.
     @discardableResult
     func addCustomFood(_ name: String) -> DietFood {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if let existing = allFoods.first(where: { $0.name.caseInsensitiveCompare(clean) == .orderedSame }) { return existing }
-        let food = DietFood(id: "custom:\(clean.lowercased())", name: clean, category: nil, level: .unknown)
+        if let guide = guideFood(named: clean) { return guide }
+        let estimate = LowFodmap.estimate(clean)
+        let food = DietFood(id: "custom:\(clean.lowercased())", name: clean, category: nil, level: estimate?.level ?? .unknown,
+                            groups: estimate?.groups ?? [], tip: estimate?.tip)
         customFoods.append(food)
         customFoods.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        db?.run("insert or ignore into diet_foods (id, name, fodmap, groups, created_at) values (?, ?, ?, ?, ?)",
-                [food.id, food.name, food.level.rawValue, nil, LocalDB.iso(.now)])
+        db?.run("insert or ignore into diet_foods (id, name, fodmap, groups, tip, created_at) values (?, ?, ?, ?, ?, ?)",
+                [food.id, food.name, food.level.rawValue, Self.text(food.groups), food.tip, LocalDB.iso(.now)])
+        if food.level == .unknown { Task { await rateWithModel(food) } }
         return food
     }
 
-    /// Rates one of his own foods; meals already logged keep the rating they had.
-    func rate(_ food: DietFood, _ level: FodmapLevel) {
-        guard let index = customFoods.firstIndex(where: { $0.id == food.id }) else { return }
+    /// Foods being rated by the model right now, so a sheet can say so.
+    private(set) var rating: Set<String> = []
+
+    /// Asks the phone's model about a food nothing in the guide explains.
+    func rateWithModel(_ food: DietFood) async {
+        guard !rating.contains(food.id) else { return }
+        rating.insert(food.id)
+        defer { rating.remove(food.id) }
+        guard let r = await DietFoodRater.rate(food.name), let level = FodmapLevel(rawValue: r.level) else { return }
+        applyRating(food.id, level: level, groups: r.groups.compactMap(FodmapGroup.init(rawValue:)), tip: r.tip)
+    }
+
+    /// Sets one of his foods' rating, and gives it to meals that logged it unrated.
+    private func applyRating(_ id: String, level: FodmapLevel, groups: [FodmapGroup], tip: String?) {
+        guard let index = customFoods.firstIndex(where: { $0.id == id }) else { return }
         customFoods[index].level = level
-        db?.run("update diet_foods set fodmap = ? where id = ?", [level.rawValue, food.id])
+        customFoods[index].groups = groups
+        customFoods[index].tip = tip
+        db?.run("update diet_foods set fodmap = ?, groups = ?, tip = ? where id = ?", [level.rawValue, Self.text(groups), tip, id])
+        fillUnrated(foodID: id, with: MealFood(customFoods[index]))
+    }
+
+    /// Meals that logged a food before it had a rating take the rating it has now.
+    private func fillUnrated(foodID: String, with food: MealFood) {
+        db?.run("update diet_meal_foods set food_id = ?, name = ?, fodmap = ?, groups = ? where food_id = ? and fodmap = 'unknown'",
+                [food.foodID, food.name, food.level.rawValue, Self.text(food.groups), foodID])
+        for m in meals.indices {
+            for f in meals[m].foods.indices where meals[m].foods[f].foodID == foodID && meals[m].foods[f].level == .unknown {
+                meals[m].foods[f] = food
+            }
+        }
+    }
+
+    /// His foods with no rating: the guide's own food when it has one by that name now
+    /// (meals move to it), else rated from what's in it, else by the model.
+    private func rateUnratedFoods() async {
+        for food in customFoods {
+            if let guide = guideFood(named: food.name) {
+                db?.run("update diet_meal_foods set food_id = ?, name = ?, fodmap = ?, groups = ? where food_id = ?",
+                        [guide.id, guide.name, guide.level.rawValue, Self.text(guide.groups), food.id])
+                for m in meals.indices {
+                    for f in meals[m].foods.indices where meals[m].foods[f].foodID == food.id { meals[m].foods[f] = MealFood(guide) }
+                }
+                removeCustomFood(food)
+            } else if food.level == .unknown {
+                if let estimate = LowFodmap.estimate(food.name) {
+                    applyRating(food.id, level: estimate.level, groups: estimate.groups, tip: estimate.tip)
+                } else {
+                    await rateWithModel(food)
+                }
+            }
+        }
+    }
+
+    private static func text(_ groups: [FodmapGroup]) -> String? {
+        groups.isEmpty ? nil : groups.map(\.rawValue).joined(separator: ",")
+    }
+
+    /// Rates one of his own foods himself; meals already logged keep the rating they had,
+    /// unless they had none.
+    func rate(_ food: DietFood, _ level: FodmapLevel) {
+        guard customFoods.contains(where: { $0.id == food.id }) else { return }
+        applyRating(food.id, level: level, groups: level == .low ? [] : food.groups, tip: "You rated it.")
     }
 
     func removeCustomFood(_ food: DietFood) {

@@ -132,7 +132,7 @@ enum DietIdeas {
 
     /// The idea as a meal to log: its foods and the extras he has.
     static func draft(_ pick: IdeaPick, slot: MealSlot, at date: Date = .now) -> Meal {
-        Meal(id: LocalDB.uuid(), at: date, slot: slot, foods: (pick.foods + pick.extras).map(MealFood.init), note: pick.idea.name)
+        Meal(id: LocalDB.uuid(), at: date, slot: slot, foods: (pick.foods + pick.extras).map(MealFood.init), note: nil)
     }
 
     // MARK: The ideas

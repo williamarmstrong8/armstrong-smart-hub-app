@@ -103,8 +103,9 @@ struct FodmapDot: View {
 // MARK: Meal sheet
 
 /// Logging a meal in one screen: which meal and when, the foods (searched in
-/// the low-FODMAP guide, or typed in), a note, then Log. Each food shows its rating
-/// as it's added, so a high one is caught before eating it next time.
+/// the low-FODMAP guide, or typed in and rated), and how he feels if he already
+/// knows, then Log. Each food shows its rating as it's added, so a high one is
+/// caught before eating it next time.
 struct MealSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var store = DietStore.shared
@@ -112,8 +113,11 @@ struct MealSheet: View {
     @State private var at: Date
     @State private var slot: MealSlot
     @State private var foods: [MealFood]
-    @State private var note: String
     @State private var query = ""
+    /// How he feels with the meal: symptoms, or "Feeling fine". Neither means not answered yet.
+    @State private var feeling: [Symptom: Severity]
+    @State private var fine: Bool
+    private let existingCheck: GutCheck?
     /// Once he picks the meal himself, changing the time doesn't change it.
     @State private var slotPicked: Bool
     @State private var confirmDelete = false
@@ -127,11 +131,22 @@ struct MealSheet: View {
         _at = State(initialValue: start?.at ?? now)
         _slot = State(initialValue: start?.slot ?? .of(now))
         _foods = State(initialValue: start?.foods ?? [])
-        _note = State(initialValue: start?.note ?? "")
         _slotPicked = State(initialValue: start != nil)
+        let check = meal.flatMap { DietStore.shared.check(for: $0.id) }
+        existingCheck = check
+        _feeling = State(initialValue: check?.symptoms ?? [:])
+        _fine = State(initialValue: check?.isFine ?? false)
     }
 
-    private var canSave: Bool { !foods.isEmpty || !note.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var canSave: Bool { !foods.isEmpty }
+
+    /// The foods with any rating that came in since they were added (the phone's model can take a moment).
+    private var rated: [MealFood] {
+        foods.map { f in
+            guard f.level == .unknown, let id = f.foodID, let now = store.food(id), now.level != .unknown else { return f }
+            return MealFood(now)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -150,12 +165,7 @@ struct MealSheet: View {
                             if query.trimmingCharacters(in: .whitespaces).isEmpty { suggestions } else { results }
                         }
                     }
-                    DietSheetSection(title: "Note") {
-                        TextField("Portion, brand, where you ate…", text: $note, axis: .vertical)
-                            .lineLimit(1...4)
-                            .padding(.horizontal, 16).padding(.vertical, 14)
-                            .glassGlare(.regular, in: .rect(cornerRadius: 18, style: .continuous))
-                    }
+                    DietSheetSection(title: "How you feel", trailing: "Optional") { feelingPicker }
                     if editing != nil { deleteButton }
                 }
                 .padding(.horizontal, HubLayout.gutter)
@@ -184,6 +194,7 @@ struct MealSheet: View {
         .presentationBackground { AmbientBackdrop() }
         .sensoryFeedback(.selection, trigger: foods.count)
         .sensoryFeedback(.selection, trigger: slot)
+        .sensoryFeedback(.selection, trigger: feeling)
     }
 
     private var saveTitle: String {
@@ -192,9 +203,41 @@ struct MealSheet: View {
     }
 
     private func save() {
-        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        store.save(Meal(id: editing?.id ?? LocalDB.uuid(), at: at, slot: slot, foods: foods, note: trimmed.isEmpty ? nil : trimmed))
+        let meal = Meal(id: editing?.id ?? LocalDB.uuid(), at: at, slot: slot, foods: rated, note: editing?.note)
+        store.save(meal)
+        if fine || !feeling.isEmpty {
+            // Felt at the meal, or soon after one logged later.
+            let when = existingCheck?.at ?? max(at, min(.now, at.addingTimeInterval(2 * 3600)))
+            store.save(GutCheck(id: existingCheck?.id ?? LocalDB.uuid(), at: when, mealID: meal.id,
+                                symptoms: fine ? [:] : feeling, note: existingCheck?.note))
+        } else if let existingCheck {
+            store.deleteCheck(existingCheck)
+        }
         dismiss()
+    }
+
+    /// "Feeling fine", or the symptoms (tap again for worse). Left alone, he's asked later.
+    private var feelingPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            DietChip(title: "Feeling fine", symbol: "face.smiling", selected: fine && feeling.isEmpty) {
+                withAnimation(HubMotion.standard) {
+                    fine.toggle()
+                    if fine { feeling = [:] }
+                }
+            }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(Symptom.allCases) { symptom in
+                    SymptomTile(symptom: symptom, severity: feeling[symptom]) {
+                        withAnimation(HubMotion.standard) {
+                            feeling[symptom] = feeling[symptom].map { $0.next } ?? .mild
+                            fine = false
+                        }
+                    }
+                }
+            }
+            Text(fine || !feeling.isEmpty ? "Tap a symptom again for worse." : "Skip it and you'll be asked about two hours after.")
+                .font(.caption).foregroundStyle(BrickLook.soft)
+        }
     }
 
     // MARK: Parts
@@ -213,12 +256,16 @@ struct MealSheet: View {
     /// The foods picked so far, each with its rating and an ×.
     private var chosen: some View {
         FlowLayout(spacing: 8) {
-            ForEach(foods) { food in
+            ForEach(rated) { food in
                 Button {
                     withAnimation(HubMotion.standard) { foods.removeAll { $0.id == food.id } }
                 } label: {
                     HStack(spacing: 7) {
-                        FodmapDot(level: food.level)
+                        if food.foodID.map(store.rating.contains) == true {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            FodmapDot(level: food.level)
+                        }
                         Text(food.name).font(.subheadline.weight(.medium)).foregroundStyle(BrickLook.ink).lineLimit(1)
                         Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(BrickLook.soft)
                     }
@@ -233,8 +280,8 @@ struct MealSheet: View {
 
     /// What in the meal isn't low FODMAP, and the tip for it.
     @ViewBuilder private var warning: some View {
-        let high = foods.filter { $0.level == .high }
-        let watch = foods.filter { $0.level == .moderate }
+        let high = rated.filter { $0.level == .high }
+        let watch = rated.filter { $0.level == .moderate }
         if !high.isEmpty || !watch.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 if !high.isEmpty {
@@ -308,7 +355,7 @@ struct MealSheet: View {
     private var results: some View {
         let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let matches = Array(store.search(typed).prefix(25))
-        let exact = matches.contains { $0.name.caseInsensitiveCompare(typed) == .orderedSame }
+        let exact = matches.contains { $0.name.caseInsensitiveCompare(typed) == .orderedSame || $0.isNamed(typed) }
         return VStack(spacing: 0) {
             ForEach(matches) { food in
                 Button { add(food) } label: { FoodRow(food: food, added: foods.contains { $0.id == food.id }) }
@@ -316,14 +363,22 @@ struct MealSheet: View {
                 BrickDivider()
             }
             if !exact {
+                let preview = store.preview(typed)
                 Button { addTyped() } label: {
-                    HStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "plus.circle").font(.title3).foregroundStyle(Fit.action)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Add “\(typed)”").font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
-                            Text("As your own food, not rated").font(.caption).foregroundStyle(BrickLook.soft)
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text("Add “\(typed)”").font(.body.weight(.medium)).foregroundStyle(BrickLook.ink)
+                                Spacer(minLength: 4)
+                                if let preview {
+                                    Text(preview.level.short).font(.caption.weight(.semibold)).foregroundStyle(preview.level.color)
+                                }
+                            }
+                            Text(preview?.tip ?? (DietFoodRater.isAvailable ? "Your phone will rate it from what it's usually made with."
+                                                                             : "As your own food. Rate it in the food guide."))
+                                .font(.caption).foregroundStyle(BrickLook.soft).fixedSize(horizontal: false, vertical: true)
                         }
-                        Spacer(minLength: 0)
                     }
                     .padding(.vertical, 12)
                     .contentShape(.rect)
@@ -400,8 +455,8 @@ struct FoodRow: View {
 
 // MARK: Feeling sheet
 
-/// How he feels: which meal it's after, the symptoms (tap again for worse), when,
-/// and a note. Nothing picked saves as "Feeling fine".
+/// How he feels: which meal it's after, the symptoms (tap again for worse), and
+/// when. Nothing picked saves as "Feeling fine".
 struct FeelingSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var store = DietStore.shared
@@ -409,7 +464,6 @@ struct FeelingSheet: View {
     @State private var mealID: String?
     @State private var at: Date
     @State private var symptoms: [Symptom: Severity]
-    @State private var note: String
     @State private var confirmDelete = false
 
     init(mealID: String?, check: GutCheck?) {
@@ -421,7 +475,6 @@ struct FeelingSheet: View {
         _mealID = State(initialValue: meal)
         _at = State(initialValue: existing?.at ?? .now)
         _symptoms = State(initialValue: existing?.symptoms ?? [:])
-        _note = State(initialValue: existing?.note ?? "")
     }
 
     private var meal: Meal? { store.meal(mealID) }
@@ -435,12 +488,6 @@ struct FeelingSheet: View {
                     DietSheetSection(title: "When") {
                         DatePicker("Felt this at", selection: $at, in: ...Date.now.addingTimeInterval(600), displayedComponents: [.date, .hourAndMinute])
                             .font(.body).foregroundStyle(BrickLook.ink)
-                    }
-                    DietSheetSection(title: "Note") {
-                        TextField("Anything else? Stress, sleep, how much you ate…", text: $note, axis: .vertical)
-                            .lineLimit(1...4)
-                            .padding(.horizontal, 16).padding(.vertical, 14)
-                            .glassGlare(.regular, in: .rect(cornerRadius: 18, style: .continuous))
                     }
                     if editing != nil { deleteButton }
                 }
@@ -470,7 +517,7 @@ struct FeelingSheet: View {
     }
 
     private func save() {
-        store.save(GutCheck(id: editing?.id ?? LocalDB.uuid(), at: at, mealID: mealID, symptoms: symptoms, note: note))
+        store.save(GutCheck(id: editing?.id ?? LocalDB.uuid(), at: at, mealID: mealID, symptoms: symptoms, note: editing?.note))
         dismiss()
     }
 

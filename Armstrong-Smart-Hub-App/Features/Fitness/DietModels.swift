@@ -105,10 +105,25 @@ struct DietFood: Identifiable, Hashable {
     /// Other names to find it by.
     var aliases: [String] = []
 
+    /// True when the name or another name holds what he typed, or every word he typed
+    /// starts a word of it: "pickled onion" finds "Pickled onions", "chick rice" finds "Chicken and rice".
     func matches(_ query: String) -> Bool {
-        let q = query.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
         let fold = { (s: String) in s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
-        return fold(name).contains(q) || aliases.contains { fold($0).contains(q) }
+        let q = fold(query)
+        let names = [name] + aliases
+        if names.contains(where: { fold($0).contains(q) }) { return true }
+        let typed = ReceiptReader.tokens(q)
+        guard !typed.isEmpty else { return false }
+        return names.contains { phrase in
+            let words = ReceiptReader.tokens(fold(phrase))
+            return typed.allSatisfy { t in words.contains { $0.hasPrefix(t) } }
+        }
+    }
+
+    /// True when he typed exactly its name or another name, plurals aside.
+    func isNamed(_ text: String) -> Bool {
+        let typed = ReceiptReader.tokens(text)
+        return !typed.isEmpty && ([name] + aliases).contains { ReceiptReader.tokens($0) == typed }
     }
 }
 
@@ -196,7 +211,7 @@ enum LowFodmap {
         f("oyster-mushroom", "Oyster mushrooms", .vegetables, .low, tip: "The one mushroom that's low; canned champignons are too."),
         f("seaweed", "Seaweed", .vegetables, .low, aka: ["nori"]),
         f("broccoli", "Broccoli", .vegetables, .moderate, [.fructose], tip: "Florets are low at about ¾ cup; stalks are higher in fructose."),
-        f("zucchini", "Zucchini", .vegetables, .moderate, [.fructans], tip: "Low at about ⅓ cup; larger servings add fructans.", aka: ["courgette"]),
+        f("zucchini", "Zucchini", .vegetables, .moderate, [.fructans], tip: "Low at about ⅓ cup; larger servings add fructans.", aka: ["courgette", "zoodles"]),
         f("sweet-potato", "Sweet potato", .vegetables, .moderate, [.mannitol], tip: "Low at about ½ cup; more adds mannitol.", aka: ["yam"]),
         f("corn", "Sweet corn", .vegetables, .moderate, [.sorbitol], tip: "Low at about half a cob; more adds sorbitol.", aka: ["corn on the cob"]),
         f("celery", "Celery", .vegetables, .moderate, [.mannitol], tip: "Low under a quarter of a stalk; more adds mannitol."),
@@ -206,9 +221,9 @@ enum LowFodmap {
         f("snow-peas", "Snow peas", .vegetables, .moderate, [.fructans, .mannitol], tip: "Low at about 5 pods."),
         f("green-peas", "Green peas", .vegetables, .moderate, [.gos, .fructans], tip: "Only a spoonful or so is low."),
         f("garlic", "Garlic", .vegetables, .high, [.fructans], tip: "Garlic-infused oil is fine: fructans don't go into the oil.", aka: ["garlic powder"]),
-        f("onion", "Onion", .vegetables, .high, [.fructans], tip: "Every kind, and onion powder. Use chives or spring onion greens instead.", aka: ["shallot", "red onion", "onion powder"]),
+        f("onion", "Onion", .vegetables, .high, [.fructans], tip: "Every kind, and onion powder. Use chives or spring onion greens instead.", aka: ["shallot", "red onion", "onion powder", "fried onions", "crispy onions", "caramelized onions"]),
         f("leek", "Leek", .vegetables, .high, [.fructans], tip: "The dark green leaves are low; the white bulb is high."),
-        f("cauliflower", "Cauliflower", .vegetables, .high, [.mannitol]),
+        f("cauliflower", "Cauliflower", .vegetables, .high, [.mannitol], aka: ["cauliflower rice"]),
         f("mushrooms", "Mushrooms", .vegetables, .high, [.mannitol], tip: "Button, portobello and shiitake. Oyster mushrooms are low.", aka: ["portobello", "shiitake", "button mushrooms"]),
         f("asparagus", "Asparagus", .vegetables, .high, [.fructose, .fructans]),
         f("artichoke", "Artichoke", .vegetables, .high, [.fructans]),
@@ -248,7 +263,7 @@ enum LowFodmap {
         f("gf-bread", "Gluten-free bread", .grains, .low, tip: "Check the label for inulin, chicory root, apple or honey."),
         f("gf-pasta", "Gluten-free pasta", .grains, .low, aka: ["rice pasta", "corn pasta"]),
         f("rice-noodles", "Rice noodles", .grains, .low, aka: ["vermicelli", "pad thai noodles"]),
-        f("corn-tortilla", "Corn tortillas", .grains, .low, aka: ["tacos", "tortilla chips"]),
+        f("corn-tortilla", "Corn tortillas", .grains, .low, aka: ["tortilla chips", "taco shells"]),
         f("polenta", "Polenta", .grains, .low, aka: ["cornmeal", "grits"]),
         f("popcorn", "Popcorn", .grains, .low),
         f("rice-cakes", "Rice cakes or crackers", .grains, .low, aka: ["rice crackers"]),
@@ -256,7 +271,7 @@ enum LowFodmap {
         f("millet", "Millet", .grains, .low),
         f("oats", "Oats", .grains, .moderate, [.fructans, .gos], tip: "Low at about ½ cup uncooked; more adds fructans and GOS.", aka: ["oatmeal", "porridge", "overnight oats"]),
         f("sourdough", "Sourdough bread", .grains, .moderate, [.fructans], tip: "Traditional, slow-fermented white wheat or spelt sourdough is low at 2 slices."),
-        f("wheat-bread", "Wheat bread", .grains, .high, [.fructans], tip: "A single slice of white bread is sometimes tolerated. Sourdough or gluten-free is the swap.", aka: ["toast", "sandwich bread", "whole wheat bread", "bun"]),
+        f("wheat-bread", "Wheat bread", .grains, .high, [.fructans], tip: "A single slice of white bread is sometimes tolerated. Sourdough or gluten-free is the swap.", aka: ["bread", "toast", "sandwich bread", "whole wheat bread", "bun"]),
         f("wheat-pasta", "Pasta", .grains, .high, [.fructans], tip: "Gluten-free, rice or corn pasta are the swap.", aka: ["spaghetti", "penne", "macaroni", "wheat pasta"]),
         f("flour-tortilla", "Flour tortilla", .grains, .high, [.fructans], tip: "Corn tortillas are the swap.", aka: ["wrap"]),
         f("bagel", "Bagel", .grains, .high, [.fructans]),
@@ -286,7 +301,7 @@ enum LowFodmap {
         f("lf-milk", "Lactose-free milk", .dairy, .low),
         f("almond-milk", "Almond milk", .dairy, .low),
         f("rice-milk", "Rice milk", .dairy, .low),
-        f("hard-cheese", "Hard cheese", .dairy, .low, aka: ["cheddar", "parmesan", "swiss", "mozzarella", "provolone", "gouda"]),
+        f("hard-cheese", "Hard cheese", .dairy, .low, aka: ["cheese", "cheddar", "parmesan", "swiss", "mozzarella", "provolone", "gouda"]),
         f("brie", "Brie or camembert", .dairy, .low),
         f("feta", "Feta", .dairy, .low),
         f("butter", "Butter", .dairy, .low),
@@ -328,7 +343,7 @@ enum LowFodmap {
         f("hummus", "Hummus", .legumes, .high, [.gos, .fructans]),
 
         // Sauces, oils & seasoning
-        f("olive-oil", "Olive oil and other oils", .condiments, .low, aka: ["oil", "avocado oil", "canola oil"]),
+        f("olive-oil", "Olive oil and other oils", .condiments, .low, aka: ["oil", "avocado oil", "canola oil", "coconut oil", "sesame oil", "vegetable oil"]),
         f("garlic-oil", "Garlic-infused oil", .condiments, .low, tip: "Garlic flavor without the fructans.", aka: ["garlic oil"]),
         f("soy-sauce", "Soy sauce", .condiments, .low, aka: ["tamari"]),
         f("mayo", "Mayonnaise", .condiments, .low, aka: ["mayo"]),
@@ -380,7 +395,7 @@ enum LowFodmap {
 
         // Meals & takeout
         f("sushi", "Sushi", .meals, .low, tip: "Skip tempura, imitation crab and sweet sauces."),
-        f("poke", "Poke bowl", .meals, .moderate, [.fructans], tip: "Skip the onion and creamy or garlic sauces."),
+        f("poke", "Poke bowl", .meals, .moderate, [.fructans], tip: "Skip the onion and creamy or garlic sauces.", aka: ["poke"]),
         f("pho", "Pho", .meals, .moderate, [.fructans], tip: "Rice noodles are fine, but the broth is usually made with onion."),
         f("stir-fry", "Stir-fry", .meals, .moderate, [.fructans], tip: "Fine without garlic and onion."),
         f("salad", "Salad", .meals, .moderate, [.fructans], tip: "Depends on the dressing and toppings."),
@@ -390,9 +405,228 @@ enum LowFodmap {
         f("curry", "Curry", .meals, .high, [.fructans], tip: "Most are built on onion and garlic."),
         f("fried-rice", "Fried rice", .meals, .high, [.fructans], tip: "Usually garlic and onion."),
         f("mac-cheese", "Mac and cheese", .meals, .high, [.fructans, .lactose]),
+
+        // More vegetables
+        f("pickled-onion", "Pickled onions", .vegetables, .moderate, [.fructans], tip: "Large pickled onions, drained, are low in a modest serving (about 2). Fructans leach into the brine, so skip the liquid. Small cocktail onions are high.", aka: ["pickled onion", "pickled red onion", "pickled red onions"]),
+        f("cocktail-onion", "Cocktail onions", .vegetables, .high, [.fructans], tip: "The small pickled onions have no low serving.", aka: ["pearl onions"]),
+        f("pickles", "Pickles", .vegetables, .low, tip: "Gherkins in vinegar are low. Check the brine for garlic.", aka: ["gherkins", "dill pickles", "cornichons", "pickle"]),
+        f("sauerkraut", "Sauerkraut", .vegetables, .moderate, [.mannitol], tip: "About a tablespoon of white-cabbage sauerkraut is low; red-cabbage kraut is higher."),
+        f("kimchi", "Kimchi", .vegetables, .moderate, [.fructans], tip: "Most have garlic and spring onion. A tablespoon or two is usually fine."),
+        f("pickled-ginger", "Pickled ginger", .vegetables, .low, aka: ["gari", "sushi ginger"]),
+        f("jalapeno", "Chili peppers", .vegetables, .low, tip: "Spicy food can upset the gut on its own.", aka: ["jalapeno", "jalapenos", "chili", "chilli", "serrano", "habanero", "pickled jalapenos"]),
+        f("sun-dried-tomato", "Sun-dried tomatoes", .vegetables, .moderate, [.fructose], tip: "About 2 pieces is low."),
+        f("tomato-paste", "Tomato paste", .vegetables, .low, tip: "About 2 tablespoons."),
+        f("fennel", "Fennel bulb", .vegetables, .moderate, [.fructans], tip: "Low at about ½ cup."),
+        f("okra", "Okra", .vegetables, .moderate, [.fructans], tip: "Low at about 6 pods."),
+        f("endive", "Endive", .vegetables, .low, aka: ["chicory leaves", "radicchio"]),
+        f("summer-squash", "Yellow squash", .vegetables, .low, aka: ["summer squash", "pattypan"]),
+        f("acorn-squash", "Acorn squash", .vegetables, .moderate, [.gos], tip: "Low at about ½ cup."),
+        f("water-chestnut", "Water chestnuts", .vegetables, .low),
+        f("bamboo", "Bamboo shoots", .vegetables, .low),
+        f("collards", "Collard greens", .vegetables, .low, aka: ["collards", "mustard greens", "watercress", "microgreens"]),
+        f("alfalfa", "Alfalfa sprouts", .vegetables, .low),
+        f("capers", "Capers", .vegetables, .low),
+        f("lemongrass", "Lemongrass", .vegetables, .low),
+        f("cassava", "Cassava", .vegetables, .low, aka: ["yuca", "tapioca"]),
+        f("plantain", "Plantain", .vegetables, .low),
+        f("artichoke-hearts", "Artichoke hearts, canned", .vegetables, .moderate, [.fructans], tip: "Low at about ⅛ cup."),
+        f("mixed-veg", "Mixed vegetables", .vegetables, .moderate, [.gos, .fructans], tip: "Frozen mixes often have peas, onion or cauliflower. Check what's in it."),
+        f("garlic-scapes", "Garlic scapes", .vegetables, .high, [.fructans]),
+
+        // More fruit
+        f("grapefruit", "Grapefruit", .fruit, .moderate, [.fructans], tip: "Low at about half a small grapefruit."),
+        f("pomegranate", "Pomegranate", .fruit, .moderate, [.fructans], tip: "Low at about ¼ cup of seeds."),
+        f("coconut", "Coconut", .fruit, .low, tip: "Shredded or fresh, about ¼ cup.", aka: ["shredded coconut", "coconut flakes"]),
+        f("guava", "Guava, ripe", .fruit, .low),
+        f("starfruit", "Starfruit", .fruit, .low),
+        f("lychee", "Lychee", .fruit, .high, [.sorbitol]),
+        f("persimmon", "Persimmon", .fruit, .high, [.fructose]),
+        f("boysenberry", "Boysenberries", .fruit, .high, [.fructose]),
+        f("dried-cranberries", "Dried cranberries", .fruit, .moderate, [.fructans], tip: "About a tablespoon is low."),
+        f("fruit-salad", "Fruit salad", .fruit, .moderate, [.fructose, .sorbitol], tip: "Depends on the fruit: apple, pear, mango and watermelon are high."),
+        f("smoothie", "Smoothie", .drinks, .moderate, [.fructose, .lactose], tip: "Fine with firm banana, berries and lactose-free milk; mango, apple, honey or regular yogurt make it high."),
+
+        // More grains & starches
+        f("potato-chips", "Potato chips", .grains, .low, tip: "Plain or salted. Flavored chips often have onion or garlic powder.", aka: ["chips", "crisps", "kettle chips"]),
+        f("corn-chips", "Corn chips", .grains, .low, aka: ["fritos"]),
+        f("rice-cereal", "Rice or corn cereal", .grains, .low, tip: "Check for malt, honey or inulin.", aka: ["rice krispies", "rice puffs", "cornflakes", "corn flakes"]),
+        f("cereal", "Cereal", .grains, .moderate, [.fructans], tip: "Rice and corn cereals are low; wheat, bran and granola ones aren't.", aka: ["cheerios"]),
+        f("bran", "Bran cereal", .grains, .high, [.fructans], aka: ["all bran", "raisin bran", "shredded wheat", "weetabix"]),
+        f("gf-crackers", "Gluten-free crackers", .grains, .low),
+        f("rice-paper", "Rice paper", .grains, .low),
+        f("sorghum", "Sorghum", .grains, .low, aka: ["teff", "amaranth"]),
+        f("cornstarch", "Cornstarch", .grains, .low, aka: ["corn flour", "potato starch", "rice flour"]),
+        f("glass-noodles", "Glass noodles", .grains, .low, aka: ["cellophane noodles", "mung bean noodles"]),
+        f("soba", "Soba noodles", .grains, .moderate, [.fructans], tip: "100% buckwheat soba is low; most mix in wheat."),
+        f("spelt", "Spelt", .grains, .moderate, [.fructans], tip: "Spelt sourdough is low; other spelt bread isn't."),
+        f("almond-flour", "Almond flour", .grains, .moderate, [.gos], tip: "Low at about ¼ cup.", aka: ["almond meal"]),
+        f("gf-flour", "Gluten-free flour", .grains, .low, tip: "Check it isn't made with bean flour."),
+        f("wheat-flour", "Wheat flour", .grains, .high, [.fructans], aka: ["flour", "all purpose flour"]),
+        f("pancakes", "Pancakes or waffles", .grains, .high, [.fructans, .lactose], tip: "Made with gluten-free flour and lactose-free milk they're low.", aka: ["pancake", "waffle", "waffles", "french toast", "crepes"]),
+        f("pita", "Pita or naan", .grains, .high, [.fructans], aka: ["naan", "flatbread", "pita bread"]),
+        f("english-muffin", "English muffin", .grains, .high, [.fructans]),
+        f("breadcrumbs", "Breadcrumbs", .grains, .high, [.fructans], aka: ["panko", "croutons", "breaded"]),
+        f("gnocchi", "Gnocchi", .grains, .high, [.fructans], tip: "Made with wheat flour."),
+        f("tater-tots", "Tater tots", .grains, .moderate, [.fructans], tip: "Some have onion or wheat; plain ones are low."),
+        f("oatcakes", "Oatcakes", .grains, .moderate, [.fructans], tip: "About 2 is low."),
+
+        // More meat, fish & eggs
+        f("duck", "Duck", .protein, .low, aka: ["venison", "bison", "goat"]),
+        f("sardines", "Sardines", .protein, .low, aka: ["anchovies", "mackerel", "canned tuna", "trout", "halibut"]),
+        f("smoked-salmon", "Smoked salmon", .protein, .low, aka: ["lox"]),
+        f("prosciutto", "Prosciutto", .protein, .low, tip: "Plain cured meats are low; check salami and sausage for garlic.", aka: ["pancetta"]),
+        f("rotisserie", "Rotisserie chicken", .protein, .moderate, [.fructans], tip: "The rub often has garlic or onion. The skin holds most of it."),
+        f("jerky", "Jerky", .protein, .moderate, [.fructans], tip: "Most have garlic, onion or honey. Look for plain or low-FODMAP certified."),
+        f("pepperoni", "Pepperoni", .protein, .moderate, [.fructans], tip: "Usually garlic powder. A few slices is likely fine."),
+        f("meatballs", "Meatballs", .protein, .high, [.fructans], tip: "Onion, garlic and breadcrumbs."),
+        f("nuggets", "Chicken nuggets or tenders", .protein, .high, [.fructans], tip: "Wheat breading and often onion powder.", aka: ["chicken tenders", "chicken fingers", "fried chicken", "schnitzel"]),
+        f("imitation-crab", "Imitation crab", .protein, .high, [.sorbitol, .fructans], aka: ["surimi", "crab sticks"]),
+        f("veggie-burger", "Veggie burger", .protein, .high, [.gos, .fructans], tip: "Usually beans, onion and garlic.", aka: ["black bean burger", "plant based burger", "impossible burger", "beyond burger"]),
+        f("egg-whites", "Egg whites", .protein, .low, aka: ["egg white"]),
+
+        // More dairy & alternatives
+        f("lf-ice-cream", "Lactose-free ice cream", .dairy, .low),
+        f("lf-cottage", "Lactose-free cottage cheese", .dairy, .low),
+        f("goat-cheese", "Goat cheese", .dairy, .low, tip: "About 40 g.", aka: ["chevre"]),
+        f("halloumi", "Halloumi", .dairy, .low, tip: "About 40 g."),
+        f("mascarpone", "Mascarpone", .dairy, .moderate, [.lactose], tip: "About 2 tablespoons."),
+        f("ghee", "Ghee", .dairy, .low),
+        f("coconut-yogurt", "Coconut yogurt", .dairy, .moderate, [.sorbitol], tip: "Check for inulin."),
+        f("hemp-milk", "Hemp or macadamia milk", .dairy, .low, aka: ["hemp milk", "macadamia milk"]),
+        f("whipped-cream", "Whipped cream", .dairy, .moderate, [.lactose], tip: "A dollop is low."),
+        f("buttermilk", "Buttermilk", .dairy, .high, [.lactose]),
+        f("kefir", "Kefir", .dairy, .high, [.lactose], tip: "Lactose-free kefir is the swap."),
+        f("goat-milk", "Goat milk", .dairy, .high, [.lactose]),
+        f("condensed-milk", "Condensed or evaporated milk", .dairy, .high, [.lactose], aka: ["condensed milk", "evaporated milk"]),
+        f("custard", "Custard or pudding", .dairy, .high, [.lactose], aka: ["pudding", "flan"]),
+        f("frozen-yogurt", "Frozen yogurt", .dairy, .high, [.lactose], aka: ["froyo"]),
+
+        // More nuts & seeds
+        f("brazil-nuts", "Brazil nuts", .nuts, .low),
+        f("hemp-seeds", "Hemp seeds", .nuts, .low, aka: ["hemp hearts"]),
+        f("sunbutter", "Sunflower seed butter", .nuts, .low, aka: ["sunbutter"]),
+        f("mixed-nuts", "Mixed nuts", .nuts, .high, [.gos, .fructans], tip: "Usually cashews and pistachios.", aka: ["trail mix"]),
+        f("nutella", "Chocolate hazelnut spread", .nuts, .moderate, [.gos, .lactose], tip: "About 2 tablespoons.", aka: ["nutella"]),
+
+        // More beans & legumes
+        f("falafel", "Falafel", .legumes, .high, [.gos, .fructans]),
+        f("dal", "Dal", .legumes, .high, [.gos, .fructans], aka: ["dhal", "daal", "lentil soup"]),
+        f("split-peas", "Split peas", .legumes, .high, [.gos], aka: ["black eyed peas", "lima beans", "butter beans", "soybeans", "navy beans", "cannellini"]),
+
+        // More sauces & seasoning
+        f("worcestershire", "Worcestershire sauce", .condiments, .low, tip: "About 2 tablespoons."),
+        f("ponzu", "Ponzu or mirin", .condiments, .low, aka: ["mirin", "rice wine"]),
+        f("wasabi", "Wasabi or horseradish", .condiments, .low, aka: ["wasabi", "horseradish"]),
+        f("nutritional-yeast", "Nutritional yeast", .condiments, .low),
+        f("cocoa", "Cocoa powder", .condiments, .low, aka: ["cacao"]),
+        f("vanilla", "Vanilla", .condiments, .low),
+        f("teriyaki", "Teriyaki sauce", .condiments, .moderate, [.fructans, .fructose], tip: "Usually garlic and honey; a tablespoon is likely fine."),
+        f("hoisin", "Hoisin sauce", .condiments, .moderate, [.fructans], tip: "About ½ tablespoon."),
+        f("sweet-chili", "Sweet chili sauce", .condiments, .moderate, [.fructans], tip: "About a tablespoon; check for garlic."),
+        f("satay", "Peanut sauce", .condiments, .moderate, [.fructans], tip: "Peanuts are fine; the garlic and onion aren't.", aka: ["satay"]),
+        f("gochujang", "Gochujang", .condiments, .moderate, [.fructans], tip: "About a tablespoon."),
+        f("relish", "Relish", .condiments, .moderate, [.fructans, .fructose], tip: "Often onion and corn syrup."),
+        f("harissa", "Harissa", .condiments, .moderate, [.fructans], tip: "Usually garlic; a teaspoon is likely fine."),
+        f("ranch", "Ranch dressing", .condiments, .high, [.fructans, .lactose], tip: "Garlic and onion powder, plus buttermilk."),
+        f("caesar", "Caesar dressing", .condiments, .high, [.fructans], tip: "Garlic.", aka: ["caesar"]),
+        f("tzatziki", "Tzatziki", .condiments, .high, [.fructans, .lactose], tip: "Garlic and yogurt."),
+        f("aioli", "Aioli or garlic mayo", .condiments, .high, [.fructans], aka: ["garlic mayo"]),
+        f("chimichurri", "Chimichurri", .condiments, .high, [.fructans], aka: ["salsa verde"]),
+        f("curry-paste", "Curry paste", .condiments, .high, [.fructans], aka: ["curry powder"]),
+        f("taco-seasoning", "Taco seasoning", .condiments, .high, [.fructans], tip: "Onion and garlic powder. Mix your own with cumin, paprika and chili.", aka: ["fajita seasoning", "seasoning mix", "garlic salt", "onion salt"]),
+        f("chutney", "Chutney", .condiments, .high, [.fructose, .fructans]),
+        f("tahini-sauce", "Tahini sauce", .condiments, .moderate, [.fructans], tip: "Tahini is low; the garlic often in the sauce isn't."),
+
+        // More sweets
+        f("marmalade", "Marmalade", .sweets, .low),
+        f("marshmallows", "Marshmallows", .sweets, .low),
+        f("candy", "Candy", .sweets, .moderate, [.fructose], tip: "Hard candy and jelly beans made with sugar are low; ones with corn syrup or sugar alcohols aren't.", aka: ["jelly beans", "gummies", "gummy bears", "lollipop"]),
+        f("white-chocolate", "White chocolate", .sweets, .moderate, [.lactose], tip: "A small serving."),
+        f("sorbet", "Sorbet", .sweets, .moderate, [.fructose], tip: "Lemon, raspberry and strawberry are low; mango isn't."),
+        f("cheesecake", "Cheesecake", .sweets, .high, [.lactose, .fructans]),
+        f("pie", "Pie", .sweets, .high, [.fructans, .fructose], aka: ["apple pie", "tart"]),
+        f("brownie", "Brownie", .sweets, .high, [.fructans], aka: ["brownies", "cookies", "biscuits"]),
+        f("golden-syrup", "Golden syrup or rice malt syrup", .sweets, .low, aka: ["rice malt syrup", "golden syrup"]),
+        f("molasses", "Molasses", .sweets, .moderate, [.fructans], tip: "About a teaspoon."),
+        f("coconut-sugar", "Coconut sugar", .sweets, .moderate, [.fructans], tip: "About a teaspoon."),
+
+        // More drinks
+        f("matcha", "Matcha", .drinks, .low, tip: "About a teaspoon of powder; with lactose-free milk for a latte."),
+        f("ginger-tea", "Ginger tea", .drinks, .low, aka: ["rooibos"]),
+        f("cranberry-juice", "Cranberry juice", .drinks, .low),
+        f("tomato-juice", "Tomato juice", .drinks, .moderate, [.fructose], tip: "About a cup."),
+        f("lemonade", "Lemonade", .drinks, .moderate, [.fructose], tip: "Fine made with sugar; most bottled is corn syrup."),
+        f("sports-drink", "Sports drink", .drinks, .moderate, [.fructose], tip: "Check for high-fructose corn syrup.", aka: ["gatorade", "powerade", "electrolyte drink"]),
+        f("energy-drink", "Energy drink", .drinks, .moderate, [.fructose], tip: "Caffeine and fizz can upset the gut; sugar-free ones may have sugar alcohols.", aka: ["red bull", "celsius", "monster"]),
+        f("hot-chocolate", "Hot chocolate", .drinks, .high, [.lactose], tip: "Make it with lactose-free milk.", aka: ["hot cocoa"]),
+        f("oolong", "Oolong or strong black tea", .drinks, .high, [.fructans], aka: ["oolong", "dandelion tea"]),
+        f("sparkling-wine", "Sparkling wine", .drinks, .low, tip: "About one glass.", aka: ["prosecco", "champagne", "cava"]),
+        f("sake", "Sake", .drinks, .low),
+        f("cider", "Cider", .drinks, .high, [.fructose, .sorbitol], aka: ["hard cider", "apple cider"]),
+        f("port", "Port or dessert wine", .drinks, .high, [.fructose], aka: ["dessert wine", "sherry"]),
+        f("cocktail", "Cocktail", .drinks, .moderate, [.fructose], tip: "Spirits are low; juice, syrups and mixers often aren't.", aka: ["margarita", "mojito", "mixed drink"]),
+
+        // More meals & takeout
+        f("sandwich", "Sandwich", .meals, .high, [.fructans], tip: "The bread. Sourdough or gluten-free bread makes it low.", aka: ["sub", "hoagie", "panini", "blt"]),
+        f("tacos", "Tacos", .meals, .moderate, [.fructans], tip: "Corn tortillas are fine; skip onion, salsa and taco seasoning.", aka: ["taco"]),
+        f("quesadilla", "Quesadilla", .meals, .high, [.fructans], tip: "Flour tortilla. A corn tortilla with hard cheese is low."),
+        f("nachos", "Nachos", .meals, .moderate, [.fructans, .gos], tip: "Chips and cheese are fine; beans, salsa and onion aren't."),
+        f("fajitas", "Fajitas", .meals, .high, [.fructans], tip: "Onion and seasoning."),
+        f("chili-con-carne", "Chili", .meals, .high, [.gos, .fructans], tip: "Beans, onion and garlic.", aka: ["chili con carne"]),
+        f("lasagna", "Lasagna", .meals, .high, [.fructans, .lactose]),
+        f("ramen-bowl", "Ramen", .meals, .high, [.fructans], tip: "Wheat noodles and a broth made with garlic and onion.", aka: ["ramen bowl", "tonkotsu"]),
+        f("pad-thai", "Pad thai", .meals, .moderate, [.fructans], tip: "Rice noodles are fine; ask for no garlic or shallots."),
+        f("dumplings", "Dumplings", .meals, .high, [.fructans], aka: ["gyoza", "potstickers", "dim sum", "bao"]),
+        f("spring-rolls", "Spring rolls", .meals, .moderate, [.fructans], tip: "Fresh rice-paper rolls are usually fine; fried ones use wheat wrappers.", aka: ["summer rolls"]),
+        f("wings", "Chicken wings", .meals, .moderate, [.fructans], tip: "Plain or salt-and-pepper wings are low; buffalo and BBQ sauces have garlic.", aka: ["buffalo wings"]),
+        f("kebab", "Kebab or gyro", .meals, .high, [.fructans], tip: "Pita, onion and garlic sauce.", aka: ["gyro", "shawarma", "doner"]),
+        f("bowl", "Grain bowl", .meals, .moderate, [.fructans], tip: "Rice or quinoa with plain protein is low; watch the dressing.", aka: ["rice bowl", "burrito bowl", "chipotle bowl", "sweetgreen", "cava bowl"]),
+        f("bibimbap", "Bibimbap", .meals, .moderate, [.fructans], tip: "The gochujang and any garlic."),
+        f("risotto", "Risotto", .meals, .moderate, [.fructans], tip: "Usually onion and regular stock."),
+        f("paella", "Paella", .meals, .moderate, [.fructans], tip: "Usually onion and garlic."),
+        f("quiche", "Quiche", .meals, .high, [.fructans, .lactose]),
+        f("eggs-benedict", "Eggs benedict", .meals, .high, [.fructans], tip: "The English muffin."),
+        f("fish-chips", "Fish and chips", .meals, .high, [.fructans], tip: "The wheat batter."),
+        f("acai", "Açaí bowl", .meals, .moderate, [.fructose, .fructans], tip: "Granola, honey and some fruit add up.", aka: ["acai bowl", "smoothie bowl"]),
+        f("chicken-rice", "Chicken and rice", .meals, .low, tip: "Plain: watch for garlic in the seasoning."),
+        f("steak-potatoes", "Steak and potatoes", .meals, .low),
+        f("omelette-meal", "Breakfast plate", .meals, .moderate, [.fructans], tip: "Eggs, bacon and potatoes are low; toast and sausage aren't.", aka: ["eggs and bacon", "full breakfast", "diner breakfast"]),
     ]
 
     static let byID: [String: DietFood] = Dictionary(foods.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+
+    /// The guide foods named inside a food that isn't in the guide, most specific
+    /// first: "garlic bread" is garlic and wheat bread, "garlic-infused oil" only the oil.
+    static func ingredients(of text: String) -> [DietFood] {
+        let words = ReceiptReader.tokens(text)
+        guard !words.isEmpty else { return [] }
+        var found: [(food: DietFood, words: Set<String>)] = []
+        for food in foods {
+            let phrases = ([food.name] + food.aliases).map { Set(ReceiptReader.tokens($0)) }
+                .filter { !$0.isEmpty && $0.isSubset(of: words) }
+            if let best = phrases.max(by: { $0.count < $1.count }) { found.append((food, best)) }
+        }
+        // A match inside a bigger one is the same words read twice ("oil" in "garlic oil").
+        let kept = found.filter { a in !found.contains { b in b.food.id != a.food.id && a.words.isStrictSubset(of: b.words) } }
+        return kept.sorted { $0.words.count > $1.words.count }.map(\.food)
+    }
+
+    /// A rating for a food that isn't in the guide, from the guide foods in its name:
+    /// the worst of them, since one high ingredient makes the dish high.
+    static func estimate(_ name: String) -> DietFood? {
+        let parts = ingredients(of: name)
+        guard !parts.isEmpty else { return nil }
+        let order: [FodmapLevel] = [.high, .moderate, .low]
+        let level = order.first { l in parts.contains { $0.level == l } } ?? .low
+        let groups = FodmapGroup.allCases.filter { g in parts.contains { $0.level != .low && $0.groups.contains(g) } }
+        let names = parts.filter { $0.level == level }.map { $0.name.lowercased() }.joined(separator: ", ")
+        let tip = switch level {
+        case .high: "Rated from what's in it. High: \(names)."
+        case .moderate: "Rated from what's in it. Watch the portion: \(names)."
+        default: "Rated from what's in it: \(names)."
+        }
+        return DietFood(id: "", name: name, category: nil, level: level, groups: groups, tip: tip)
+    }
 }
 
 // MARK: Meals

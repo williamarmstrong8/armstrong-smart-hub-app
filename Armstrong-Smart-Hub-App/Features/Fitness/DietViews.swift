@@ -481,7 +481,6 @@ struct DietDayLog: View {
                         Text(check.at.formatted(date: .omitted, time: .shortened)).font(.subheadline).foregroundStyle(BrickLook.soft)
                     }
                     if !check.isFine { Text(check.summary).font(.subheadline).foregroundStyle(check.worst?.color ?? BrickLook.ink) }
-                    if let note = check.note { Text(note).font(.caption).foregroundStyle(BrickLook.soft).lineLimit(2) }
                 }
                 Spacer(minLength: 0)
             }
