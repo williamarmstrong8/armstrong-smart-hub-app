@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+#if canImport(JournalingSuggestions)
 import JournalingSuggestions
 
 /// A moment picked from Apple's Journaling Suggestions, written out as the
@@ -96,3 +97,5 @@ enum JournalMoment {
         }
     }
 }
+
+#endif

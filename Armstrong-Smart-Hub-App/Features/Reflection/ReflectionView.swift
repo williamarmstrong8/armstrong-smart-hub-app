@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(JournalingSuggestions)
 import JournalingSuggestions
+#endif
 import LocalAuthentication
 
 private let durations = [1, 3, 5, 10]
@@ -205,10 +207,7 @@ struct ReflectionView: View {
                     JournalEditor(entry: nil, draft: text, lock: journalLock, onSave: { store.saveEntry(id: nil, text: $0) }, onDelete: nil)
                 }
             }
-            .journalingSuggestionsPicker(isPresented: $pickingMoment) { suggestion in
-                let text = await JournalMoment.draft(from: suggestion)
-                journal = .draft(text)
-            }
+            .modifier(MomentPicker(isPresented: $pickingMoment) { journal = .draft($0) })
             .onChange(of: scenePhase) { _, phase in
                 // Only on background: the Face ID prompt itself makes the scene inactive.
                 if phase == .background { journalLock.lock() }
@@ -1141,5 +1140,21 @@ private struct QuoteCarousel: View {
                 withAnimation(.easeInOut(duration: 0.8)) { start += 1 }
             }
         }
+    }
+}
+
+/// Apple's Journaling Suggestions picker. The framework ships for devices only, so on
+/// the Simulator this is a no-op and the app still builds.
+private struct MomentPicker: ViewModifier {
+    @Binding var isPresented: Bool
+    let onDraft: (String) -> Void
+    func body(content: Content) -> some View {
+        #if canImport(JournalingSuggestions)
+        content.journalingSuggestionsPicker(isPresented: $isPresented) { suggestion in
+            onDraft(await JournalMoment.draft(from: suggestion))
+        }
+        #else
+        content
+        #endif
     }
 }

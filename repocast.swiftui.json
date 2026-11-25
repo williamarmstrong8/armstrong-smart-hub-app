@@ -11157,7 +11157,7 @@
       },
       "importing": false,
       "note": null,
-      "blur": 0,
+      "blur": 4,
       "parallax": false
     },
     "AlcoholStore.promptNight": null,
